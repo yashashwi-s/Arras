@@ -35,7 +35,7 @@ struct ContentView: View {
 
             Menu {
                 Button("From Finder…") { pickFile() }
-                Button("From Folder…") { pickFolder() }
+                Button("Create Space…") { pickSpace() }
             } label: {
                 Label("Add", systemImage: "plus")
                     .font(.system(size: 11, weight: .medium))
@@ -99,7 +99,7 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 Button("Choose Photo…") { pickFile() }
                     .controlSize(.regular)
-                Button("Choose Folder…") { pickFolder() }
+                Button("Create Space…") { pickSpace() }
                     .controlSize(.regular)
             }
             PhotosPicker(
@@ -150,17 +150,18 @@ struct ContentView: View {
         }
     }
 
-    private func pickFolder() {
+    private func pickSpace() {
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Add Folder"
-        panel.message = "Choose any folder — only images inside will be used"
-        NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK, let url = panel.url {
-            manager.addFolder(url)
-            onMenuUpdate?()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Add Space"
+        panel.message = "Choose multiple images to display as a rotating space"
+
+        if panel.runModal() == .OK {
+            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
+            manager.addSpace(images: images)
         }
     }
 
@@ -319,7 +320,7 @@ struct PhotoRowView: View {
         HStack(spacing: 3) {
             if item.isLocked { iconBadge("lock.fill", .orange) }
             if item.isFloating { iconBadge("arrow.up.square", .blue) }
-            if item.folderPath != nil { iconBadge("folder.fill", .green) }
+            if !item.spaceImageFilenames.isEmpty { iconBadge("folder.fill", .green) }
         }
     }
 
@@ -332,7 +333,7 @@ struct PhotoRowView: View {
     // MARK: - Status (collapsed)
 
     private var collapsedStatus: String {
-        if let _ = item.folderPath {
+        if !item.spaceImageFilenames.isEmpty {
             let count = manager.folderImageCount(item.id)
             return "Folder · \(count) images · Showing \(item.folderImageIndex + 1)"
         }
@@ -374,14 +375,6 @@ struct PhotoRowView: View {
                     set: { manager.setFloating(item.id, $0); onMenuUpdate?() }
                 ))
 
-                if item.isFloating {
-                    compactToggle("Click-Through (⌥ to interact)", isOn: Binding(
-                        get: { item.isClickThrough },
-                        set: { _ in manager.toggleClickThrough(item.id); onMenuUpdate?() }
-                    ))
-                    .padding(.leading, 12)
-                }
-
                 sliderRow("Opacity", value: Binding(
                     get: { item.opacity },
                     set: { manager.setOpacity(item.id, $0) }
@@ -419,7 +412,7 @@ struct PhotoRowView: View {
             }
 
             // Folder
-            if item.folderPath != nil {
+            if !item.spaceImageFilenames.isEmpty {
                 separator
                 settingsGroup("SMART CANVAS") {
                     folderControls
@@ -482,6 +475,13 @@ struct PhotoRowView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
         }
+
+        Button("Add More Photos to Space...") {
+            appendPhotos()
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .trailing)
 
         // Navigation
         HStack {
@@ -572,7 +572,7 @@ struct PhotoRowView: View {
                 }
             }
 
-            if item.folderPath == nil {
+            if item.spaceImageFilenames.isEmpty {
                 actionLink("Replace…") {
                     let panel = NSOpenPanel()
                     panel.allowedContentTypes = [.image, .png, .jpeg, .heic, .tiff]
@@ -647,11 +647,29 @@ struct PhotoRowView: View {
     }
 
     private func revealInFinder() {
-        if let path = item.folderPath {
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+        let filename: String
+        if !item.spaceImageFilenames.isEmpty {
+            let idx = min(item.folderImageIndex, item.spaceImageFilenames.count - 1)
+            filename = item.spaceImageFilenames[idx]
         } else {
-            let url = manager.storageDir.appendingPathComponent(item.filename)
-            NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
+            filename = item.filename
+        }
+        let url = manager.storageDir.appendingPathComponent(filename)
+        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
+    }
+    private func appendPhotos() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Add to Space"
+        panel.message = "Choose multiple images to append to this rotating space"
+
+        if panel.runModal() == .OK {
+            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
+            manager.appendPhotosToSpace(item.id, images: images)
+            onMenuUpdate?()
         }
     }
 }

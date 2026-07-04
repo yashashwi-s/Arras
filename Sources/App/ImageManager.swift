@@ -10,9 +10,8 @@ class PhotoManager: ObservableObject {
 
     private var windows: [UUID: DesktopPhotoWindow] = [:]
 
-    // v1.4 — Folder watchers and rotation timers
-    private var folderWatchers: [UUID: FolderWatcher] = [:]
-    private var folderImages: [UUID: [URL]] = [:]
+    // v1.4 — Spaces (Internal rotation timers)
+    private var spaceImages: [UUID: [URL]] = [:]
     private var rotationTimers: [UUID: DispatchSourceTimer] = [:]
 
     var storageDir: URL {
@@ -64,21 +63,18 @@ class PhotoManager: ObservableObject {
         photos = items
 
         for item in photos where item.isVisible {
-            if let folderPath = item.folderPath {
-                // Smart Canvas — load from folder
-                let folderURL = URL(fileURLWithPath: folderPath)
-                let watcher = FolderWatcher(folderURL: folderURL)
-                let images = watcher.scanImages()
-                folderImages[item.id] = images
+            if !item.spaceImageFilenames.isEmpty {
+                // Smart Canvas (Spaces)
+                let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+                spaceImages[item.id] = urls
 
-                if let imageURL = images[safe: item.folderImageIndex],
+                if let imageURL = urls[safe: item.folderImageIndex],
                    let image = NSImage(contentsOf: imageURL) {
                     createWindow(for: item, image: image)
-                } else if let first = images.first, let image = NSImage(contentsOf: first) {
+                } else if let first = urls.first, let image = NSImage(contentsOf: first) {
                     createWindow(for: item, image: image)
                 }
 
-                setupFolderWatcher(for: item.id, folderURL: folderURL)
                 setupRotationTimer(for: item)
             } else {
                 // Single image
@@ -107,10 +103,10 @@ class PhotoManager: ObservableObject {
         photos[index].frameString = NSStringFromRect(frame)
         photos[index].widgetWidth = frame.width
 
-        // Also save per-image config for folder photos if in dynamic mode
-        if photos[index].folderPath != nil,
+        // Also save per-image config for space photos if in dynamic mode
+        if !photos[index].spaceImageFilenames.isEmpty,
            photos[index].folderSizeMode == "dynamic",
-           let images = folderImages[id] {
+           let images = spaceImages[id] {
             let currentImage = images[safe: photos[index].folderImageIndex]
             if let key = currentImage?.lastPathComponent {
                 photos[index].folderImageConfigs[key] = FolderImageConfig(
@@ -141,36 +137,73 @@ class PhotoManager: ObservableObject {
         persist()
     }
 
-    func addFolder(_ folderURL: URL) {
-        let watcher = FolderWatcher(folderURL: folderURL)
-        let images = watcher.scanImages()
+    func addSpace(images: [NSImage]) {
+        guard !images.isEmpty else { return }
 
-        // Folder can contain anything — we just filter for images
-        if images.isEmpty {
-            let alert = NSAlert()
-            alert.messageText = "No Images Found"
-            alert.informativeText = "The folder \"\(folderURL.lastPathComponent)\" doesn't contain any supported image files (JPEG, PNG, HEIC, TIFF, GIF, WebP, BMP)."
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-            return
+        // Save all images to disk and collect filenames
+        var filenames: [String] = []
+        for image in images {
+            if let tiffData = image.tiffRepresentation,
+               let bitmapRep = NSBitmapImageRep(data: tiffData),
+               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) {
+                let filename = UUID().uuidString + ".jpg"
+                let url = storageDir.appendingPathComponent(filename)
+                do {
+                    try jpegData.write(to: url)
+                    filenames.append(filename)
+                } catch {
+                    print("Failed to save image: \(error)")
+                }
+            }
         }
+        guard !filenames.isEmpty else { return }
 
-        guard let firstImage = NSImage(contentsOf: images[0]) else { return }
-
-        let folderName = folderURL.lastPathComponent
-
+        // Create one PhotoItem to represent the Space
         var item = PhotoItem(filename: "")
-        item.customName = folderName
-        item.folderPath = folderURL.path
-        item.folderImageIndex = 0
-        item.rotationInterval = "click"
-
+        item.customName = "Space"
+        item.spaceImageFilenames = filenames
+        item.rotationInterval = "30s"
+        item.folderSizeMode = "dynamic" // Ensure default size mode is set
         photos.append(item)
-        folderImages[item.id] = images
 
-        createWindow(for: item, image: firstImage)
-        setupFolderWatcher(for: item.id, folderURL: folderURL)
+        let urls = filenames.map { storageDir.appendingPathComponent($0) }
+        spaceImages[item.id] = urls
+
+        // Display the first image
+        if let firstURL = urls.first, let firstImage = NSImage(contentsOf: firstURL) {
+            createWindow(for: item, image: firstImage)
+            setupRotationTimer(for: item)
+        }
+    }
+
+    func appendPhotosToSpace(_ id: UUID, images: [NSImage]) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        guard !images.isEmpty else { return }
+
+        var newFilenames: [String] = []
+        for image in images {
+            if let tiffData = image.tiffRepresentation,
+               let bitmapRep = NSBitmapImageRep(data: tiffData),
+               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) {
+                let filename = UUID().uuidString + ".jpg"
+                let url = storageDir.appendingPathComponent(filename)
+                do {
+                    try jpegData.write(to: url)
+                    newFilenames.append(filename)
+                } catch {
+                    print("Failed to save image: \(error)")
+                }
+            }
+        }
+        guard !newFilenames.isEmpty else { return }
+
+        photos[index].spaceImageFilenames.append(contentsOf: newFilenames)
+        
+        let newUrls = newFilenames.map { storageDir.appendingPathComponent($0) }
+        var currentUrls = spaceImages[id] ?? []
+        currentUrls.append(contentsOf: newUrls)
+        spaceImages[id] = currentUrls
+        
         persist()
     }
 
@@ -181,17 +214,19 @@ class PhotoManager: ObservableObject {
         windows[id]?.hidePhoto()
         windows.removeValue(forKey: id)
 
-        // Clean up folder watcher
-        folderWatchers[id]?.stop()
-        folderWatchers.removeValue(forKey: id)
-        folderImages.removeValue(forKey: id)
+        spaceImages.removeValue(forKey: id)
         rotationTimers[id]?.cancel()
         rotationTimers.removeValue(forKey: id)
 
-        // Only delete the file if it's a single-image (not folder) photo
-        if item.folderPath == nil {
+        // Delete all files
+        if !item.spaceImageFilenames.isEmpty {
+            for filename in item.spaceImageFilenames {
+                try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(filename))
+            }
+        } else {
             try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(item.filename))
         }
+        
         photos.remove(at: index)
         persist()
     }
@@ -211,7 +246,7 @@ class PhotoManager: ObservableObject {
 
         // Restore saved position
         var targetFrame: NSRect? = nil
-        if item.folderSizeMode == "dynamic", item.folderPath != nil, let images = folderImages[item.id] {
+        if item.folderSizeMode == "dynamic", !item.spaceImageFilenames.isEmpty, let images = spaceImages[item.id] {
             let currentImage = images[safe: item.folderImageIndex]
             if let key = currentImage?.lastPathComponent, let cfg = item.folderImageConfigs[key] {
                 targetFrame = NSRectFromString(cfg.frameString)
@@ -244,7 +279,7 @@ class PhotoManager: ObservableObject {
         window.onClickAdvance = { [weak self] in
             guard let self else { return }
             if let idx = self.photos.firstIndex(where: { $0.id == item.id }),
-               self.photos[idx].folderPath != nil,
+               !self.photos[idx].spaceImageFilenames.isEmpty,
                self.photos[idx].rotationInterval == "click" {
                 self.nextFolderImage(item.id)
             }
@@ -263,17 +298,8 @@ class PhotoManager: ObservableObject {
         windows[id]?.setFloating(floating)
         
         if !floating {
-            photos[index].isClickThrough = false
-            windows[id]?.setClickThrough(false)
         }
         
-        persist()
-    }
-
-    func toggleClickThrough(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].isClickThrough.toggle()
-        windows[id]?.setClickThrough(photos[index].isClickThrough)
         persist()
     }
 
@@ -300,15 +326,13 @@ class PhotoManager: ObservableObject {
 
         if photos[index].isVisible {
             let item = photos[index]
-            if let folderPath = item.folderPath {
-                let folderURL = URL(fileURLWithPath: folderPath)
-                let images = FolderWatcher(folderURL: folderURL).scanImages()
-                folderImages[item.id] = images
-                if let imageURL = images[safe: item.folderImageIndex],
+            if !item.spaceImageFilenames.isEmpty {
+                let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+                spaceImages[item.id] = urls
+                if let imageURL = urls[safe: item.folderImageIndex],
                    let image = NSImage(contentsOf: imageURL) {
                     createWindow(for: item, image: image)
                 }
-                setupFolderWatcher(for: item.id, folderURL: folderURL)
                 setupRotationTimer(for: item)
             } else if let image = NSImage(contentsOf: storageDir.appendingPathComponent(item.filename)) {
                 createWindow(for: item, image: image)
@@ -316,9 +340,7 @@ class PhotoManager: ObservableObject {
         } else {
             windows[id]?.hidePhoto()
             windows.removeValue(forKey: id)
-            folderWatchers[id]?.stop()
-            folderWatchers.removeValue(forKey: id)
-            rotationTimers[id]?.cancel()
+                        rotationTimers[id]?.cancel()
             rotationTimers.removeValue(forKey: id)
         }
         persist()
@@ -344,7 +366,7 @@ class PhotoManager: ObservableObject {
         let item = photos[index]
 
         // Only replace file for single-image photos
-        if item.folderPath == nil {
+        if item.spaceImageFilenames.isEmpty {
             guard let tiffData = newImage.tiffRepresentation,
                   let bitmapRep = NSBitmapImageRep(data: tiffData),
                   let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else { return }
@@ -360,11 +382,11 @@ class PhotoManager: ObservableObject {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         let original = photos[index]
 
-        if original.folderPath != nil {
+        if !original.spaceImageFilenames.isEmpty {
             // Duplicate folder photo — just copy the settings
             var newItem = PhotoItem(filename: "")
             newItem.customName = (original.customName ?? "Photo") + " (Copy)"
-            newItem.folderPath = original.folderPath
+            newItem.spaceImageFilenames = original.spaceImageFilenames
             newItem.rotationInterval = original.rotationInterval
             newItem.folderImageIndex = original.folderImageIndex
             newItem.widgetWidth = original.widgetWidth
@@ -380,15 +402,12 @@ class PhotoManager: ObservableObject {
 
             photos.append(newItem)
 
-            if let images = folderImages[original.id],
+            if let images = spaceImages[original.id],
                let imageURL = images[safe: newItem.folderImageIndex],
                let image = NSImage(contentsOf: imageURL) {
-                folderImages[newItem.id] = images
+                spaceImages[newItem.id] = images
                 createWindow(for: newItem, image: image)
-                if let folderPath = newItem.folderPath {
-                    setupFolderWatcher(for: newItem.id, folderURL: URL(fileURLWithPath: folderPath))
-                    setupRotationTimer(for: newItem)
-                }
+                setupRotationTimer(for: newItem)
             }
         } else {
             // Copy the file
@@ -430,7 +449,6 @@ class PhotoManager: ObservableObject {
 
     private func copyAppearanceSettings(from src: PhotoItem, to dst: inout PhotoItem) {
         dst.isFloating = src.isFloating
-        dst.isClickThrough = src.isClickThrough
         dst.opacity = src.opacity
         dst.cornerRadius = src.cornerRadius
         dst.shadowEnabled = src.shadowEnabled
@@ -481,41 +499,14 @@ class PhotoManager: ObservableObject {
 
     // MARK: - v1.4 Smart Canvas
 
-    func setFolder(_ id: UUID, folderURL: URL) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].folderPath = folderURL.path
-        photos[index].folderImageIndex = 0
-        photos[index].customName = photos[index].customName ?? folderURL.lastPathComponent
 
-        let watcher = FolderWatcher(folderURL: folderURL)
-        let images = watcher.scanImages()
-        folderImages[id] = images
 
-        if let firstURL = images.first, let image = NSImage(contentsOf: firstURL) {
-            windows[id]?.swapImage(image, animate: true)
-        }
 
-        setupFolderWatcher(for: id, folderURL: folderURL)
-        setupRotationTimer(for: photos[index])
-        persist()
-    }
-
-    func removeFolder(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].folderPath = nil
-        photos[index].folderImageIndex = 0
-        folderWatchers[id]?.stop()
-        folderWatchers.removeValue(forKey: id)
-        folderImages.removeValue(forKey: id)
-        rotationTimers[id]?.cancel()
-        rotationTimers.removeValue(forKey: id)
-        persist()
-    }
 
     func nextFolderImage(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }),
               photos[index].isVisible,
-              let images = folderImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return }
 
         let item = photos[index]
 
@@ -537,7 +528,7 @@ class PhotoManager: ObservableObject {
 
     func prevFolderImage(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }),
-              let images = folderImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return }
 
         let item = photos[index]
 
@@ -593,7 +584,7 @@ class PhotoManager: ObservableObject {
         }
 
         // Trigger an immediate swap so the window resizes or adapts to the new mode
-        if let images = folderImages[id], !images.isEmpty {
+        if let images = spaceImages[id], !images.isEmpty {
             let imageURL = images[photos[index].folderImageIndex]
             if let image = NSImage(contentsOf: imageURL) {
                 let key = imageURL.lastPathComponent
@@ -605,21 +596,10 @@ class PhotoManager: ObservableObject {
     }
 
     func folderImageCount(_ id: UUID) -> Int {
-        folderImages[id]?.count ?? 0
+        spaceImages[id]?.count ?? 0
     }
 
-    private func setupFolderWatcher(for id: UUID, folderURL: URL) {
-        folderWatchers[id]?.stop()
-        let watcher = FolderWatcher(folderURL: folderURL)
-        watcher.onChange = { [weak self] urls in
-            guard let self else { return }
-            Task { @MainActor in
-                self.folderImages[id] = urls
-            }
-        }
-        watcher.start()
-        folderWatchers[id] = watcher
-    }
+
 
     private func setupRotationTimer(for item: PhotoItem) {
         let interval: TimeInterval?
@@ -646,7 +626,7 @@ class PhotoManager: ObservableObject {
     /// Save the current window position/size for the currently displayed folder image.
     private func saveFolderImageConfig(for id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }),
-              let images = folderImages[id],
+              let images = spaceImages[id],
               let window = windows[id] else { return }
         let currentImage = images[safe: photos[index].folderImageIndex]
         if let key = currentImage?.lastPathComponent {
@@ -672,9 +652,8 @@ class PhotoManager: ObservableObject {
     /// Returns a small thumbnail for UI display.
     func thumbnail(for item: PhotoItem, size: CGFloat = 48) -> NSImage? {
         let image: NSImage?
-        if let folderPath = item.folderPath {
-            let folderURL = URL(fileURLWithPath: folderPath)
-            let images = folderImages[item.id] ?? FolderWatcher(folderURL: folderURL).scanImages()
+        if !item.spaceImageFilenames.isEmpty {
+            let images = spaceImages[item.id] ?? item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
             if let imageURL = images[safe: item.folderImageIndex] {
                 image = NSImage(contentsOf: imageURL)
             } else {

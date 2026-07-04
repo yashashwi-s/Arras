@@ -27,8 +27,8 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Tableau"
         GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 2
-        MARKETING_VERSION: 2.0.0
+        CURRENT_PROJECT_VERSION: 3
+        MARKETING_VERSION: 2.0.2
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Tableau needs access to your Photos library so you can pick images to display on your desktop."
         INFOPLIST_KEY_NSDesktopFolderUsageDescription: "Tableau needs access to your Desktop to place photo widgets."

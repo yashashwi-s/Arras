@@ -23,7 +23,6 @@ struct PhotoItem: Identifiable, Codable {
 
     // v1.1 — Floating Mode
     var isFloating: Bool
-    var isClickThrough: Bool
     var opacity: CGFloat
 
     // v1.2 — Naming
@@ -38,8 +37,8 @@ struct PhotoItem: Identifiable, Codable {
     var borderColorHex: String
     var vignetteEnabled: Bool
 
-    // v1.4 — Smart Canvas
-    var folderPath: String?
+    // v1.4 — Smart Canvas (Spaces)
+    var spaceImageFilenames: [String]
     var folderSizeMode: String         // "dynamic" or "fixed"
     var rotationInterval: String       // "click", "30s", "5m", "hourly", "daily", "custom"
     var folderImageIndex: Int
@@ -56,7 +55,6 @@ struct PhotoItem: Identifiable, Codable {
 
         // v1.1 defaults
         self.isFloating = false
-        self.isClickThrough = false
         self.opacity = 1.0
 
         // v1.2 defaults
@@ -72,7 +70,7 @@ struct PhotoItem: Identifiable, Codable {
         self.vignetteEnabled = false
 
         // v1.4 defaults
-        self.folderPath = nil
+        self.spaceImageFilenames = []
         self.folderSizeMode = "dynamic"
         self.rotationInterval = "click"
         self.folderImageIndex = 0
@@ -84,11 +82,11 @@ struct PhotoItem: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, filename, frameString, widgetWidth, isLocked, isVisible
-        case isFloating, isClickThrough, opacity
+        case isFloating, opacity
         case customName
         case cornerRadius, shadowEnabled, shadowBlur, shadowOpacity
         case borderWidth, borderColorHex, vignetteEnabled
-        case folderPath, folderSizeMode, rotationInterval, folderImageIndex
+        case spaceImageFilenames, folderSizeMode, rotationInterval, folderImageIndex
         case customRotationSeconds, folderImageConfigs
     }
 
@@ -102,7 +100,6 @@ struct PhotoItem: Identifiable, Codable {
         isVisible = try c.decode(Bool.self, forKey: .isVisible)
 
         isFloating = try c.decodeIfPresent(Bool.self, forKey: .isFloating) ?? false
-        isClickThrough = try c.decodeIfPresent(Bool.self, forKey: .isClickThrough) ?? false
         opacity = try c.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 1.0
 
         customName = try c.decodeIfPresent(String.self, forKey: .customName)
@@ -115,7 +112,8 @@ struct PhotoItem: Identifiable, Codable {
         borderColorHex = try c.decodeIfPresent(String.self, forKey: .borderColorHex) ?? "#FFFFFF"
         vignetteEnabled = try c.decodeIfPresent(Bool.self, forKey: .vignetteEnabled) ?? false
 
-        folderPath = try c.decodeIfPresent(String.self, forKey: .folderPath)
+        spaceImageFilenames = try c.decodeIfPresent([String].self, forKey: .spaceImageFilenames) ?? []
+        // Migration: If they had a folderPath, we just ignore it since it's broken in Sandbox anyway
         folderSizeMode = try c.decodeIfPresent(String.self, forKey: .folderSizeMode) ?? "dynamic"
         rotationInterval = try c.decodeIfPresent(String.self, forKey: .rotationInterval) ?? "click"
         folderImageIndex = try c.decodeIfPresent(Int.self, forKey: .folderImageIndex) ?? 0

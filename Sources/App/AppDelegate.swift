@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 /// AppDelegate manages the menu bar status item and the settings window.
 @MainActor
@@ -10,6 +11,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+
+        // Request local notification permissions (for Sandbox warning)
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            if granted {
+                // Send Sandbox warning notification
+                let content = UNMutableNotificationContent()
+                content.title = "Sandbox Mode Active"
+                content.body = "You are using the sandboxed App Store version. Download the unrestricted version at yashashwi.me for more features."
+                content.sound = .default
+                
+                let request = UNNotificationRequest(identifier: "sandbox_warning", content: content, trigger: nil)
+                UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+            }
+        }
 
         // If first launch (no photos yet), show settings
         if manager.photos.isEmpty {
@@ -77,10 +92,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addItem.target = self
         menu.addItem(addItem)
 
-        // Add Folder
-        let addFolderItem = NSMenuItem(title: "Add Folder…", action: #selector(addFolder), keyEquivalent: "")
-        addFolderItem.target = self
-        menu.addItem(addFolderItem)
+        // Add Space
+        let addSpaceItem = NSMenuItem(title: "Add Space…", action: #selector(addSpace), keyEquivalent: "")
+        addSpaceItem.target = self
+        menu.addItem(addSpaceItem)
 
         // Settings
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
@@ -105,14 +120,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
                 // Click-through toggle
                 if item.isFloating {
-                    let clickThroughItem = NSMenuItem(
-                        title: item.isClickThrough ? "Disable Click-Through" : "Enable Click-Through",
-                        action: #selector(toggleClickThrough(_:)),
-                        keyEquivalent: ""
-                    )
-                    clickThroughItem.target = self
-                    clickThroughItem.tag = index
-                    submenu.addItem(clickThroughItem)
                 }
 
                 submenu.addItem(.separator())
@@ -146,7 +153,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 submenu.addItem(renameItem)
 
                 // Replace (only for single images)
-                if item.folderPath == nil {
+                if item.spaceImageFilenames.isEmpty {
                     let replaceItem = NSMenuItem(title: "Replace Image…", action: #selector(replacePhoto(_:)), keyEquivalent: "")
                     replaceItem.target = self
                     replaceItem.tag = index
@@ -160,7 +167,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 submenu.addItem(dupItem)
 
                 // Folder navigation
-                if item.folderPath != nil {
+                if !item.spaceImageFilenames.isEmpty {
                     submenu.addItem(.separator())
                     let count = manager.folderImageCount(item.id)
                     let posLabel = NSMenuItem(title: "\(item.folderImageIndex + 1) of \(count) images", action: nil, keyEquivalent: "")
@@ -176,6 +183,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     nextItem.target = self
                     nextItem.tag = index
                     submenu.addItem(nextItem)
+                    
+                    submenu.addItem(.separator())
+                    
+                    let appendItem = NSMenuItem(title: "Add Photos to Space...", action: #selector(appendPhotosToSpaceMenu(_:)), keyEquivalent: "")
+                    appendItem.target = self
+                    appendItem.tag = index
+                    submenu.addItem(appendItem)
                 }
 
                 submenu.addItem(.separator())
@@ -200,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if !item.isVisible { badges.append("hidden") }
                 if item.isLocked { badges.append("locked") }
                 if item.isFloating { badges.append("floating") }
-                if item.folderPath != nil { badges.append("folder") }
+                if !item.spaceImageFilenames.isEmpty { badges.append("folder") }
 
                 photoItem.title = badges.isEmpty ? title : "\(title) — \(badges.joined(separator: ", "))"
 
@@ -286,17 +300,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc func addFolder() {
+    @objc func addSpace() {
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Add Folder"
-        panel.message = "Choose a folder of images to display as a rotating widget"
-        NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK, let url = panel.url {
-            manager.addFolder(url)
-            rebuildMenu()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Add Images to Space"
+        panel.message = "Choose multiple images to display as a rotating Space"
+
+        if panel.runModal() == .OK {
+            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
+            manager.addSpace(images: images)
         }
     }
 
@@ -317,12 +332,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard index < manager.photos.count else { return }
         let current = manager.photos[index].isFloating
         manager.setFloating(manager.photos[index].id, !current)
-    }
-
-    @objc func toggleClickThrough(_ sender: NSMenuItem) {
-        let index = sender.tag
-        guard index < manager.photos.count else { return }
-        manager.toggleClickThrough(manager.photos[index].id)
     }
 
     @objc func renamePhoto(_ sender: NSMenuItem) {
@@ -379,6 +388,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let index = sender.tag
         guard index < manager.photos.count else { return }
         manager.prevFolderImage(manager.photos[index].id)
+    }
+
+    @objc func appendPhotosToSpaceMenu(_ sender: NSMenuItem) {
+        let index = sender.tag
+        guard index < manager.photos.count else { return }
+        let id = manager.photos[index].id
+        
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Add to Space"
+        panel.message = "Choose multiple images to append to this rotating space"
+
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK {
+            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
+            manager.appendPhotosToSpace(id, images: images)
+        }
     }
 
     @objc func removePhotoMenu(_ sender: NSMenuItem) {

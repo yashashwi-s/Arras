@@ -11,10 +11,6 @@ class DesktopPhotoWindow: NSWindow {
     var onOpacityChanged: ((CGFloat) -> Void)?
     var onClickAdvance: (() -> Void)?
 
-    private var flagsMonitorLocal: Any?
-    private var flagsMonitorGlobal: Any?
-    private var isClickThroughActive = false
-
     private static let desktopLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
     private static let floatingLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)) + 1)
 
@@ -67,7 +63,6 @@ class DesktopPhotoWindow: NSWindow {
         // Apply settings
         if let s = settings {
             setFloating(s.isFloating)
-            setClickThrough(s.isClickThrough)
             setPhotoOpacity(s.opacity)
             applyShadowSettings(enabled: s.shadowEnabled, blur: s.shadowBlur, opacity: s.shadowOpacity)
         }
@@ -76,7 +71,7 @@ class DesktopPhotoWindow: NSWindow {
     }
 
     func hidePhoto() {
-        teardownFlagsMonitor()
+        
         // Strip any in-flight CATransition animations to prevent stale callbacks
         if let container = contentView as? DraggablePhotoView {
             container.layer?.removeAllAnimations()
@@ -107,17 +102,6 @@ class DesktopPhotoWindow: NSWindow {
         hidesOnDeactivate = false
     }
 
-    func setClickThrough(_ enabled: Bool) {
-        isClickThroughActive = enabled
-        ignoresMouseEvents = enabled
-
-        if enabled {
-            setupFlagsMonitor()
-        } else {
-            teardownFlagsMonitor()
-        }
-    }
-
     func setPhotoOpacity(_ value: CGFloat) {
         contentView?.alphaValue = max(0.1, min(1.0, value))
     }
@@ -137,34 +121,6 @@ class DesktopPhotoWindow: NSWindow {
     }
 
     // MARK: - Modifier Key Monitor (Option key overrides click-through)
-
-    private func setupFlagsMonitor() {
-        teardownFlagsMonitor()
-        flagsMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-            return event
-        }
-        flagsMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-        }
-    }
-
-    private func teardownFlagsMonitor() {
-        if let local = flagsMonitorLocal {
-            NSEvent.removeMonitor(local)
-            flagsMonitorLocal = nil
-        }
-        if let global = flagsMonitorGlobal {
-            NSEvent.removeMonitor(global)
-            flagsMonitorGlobal = nil
-        }
-    }
-
-    private func handleFlagsChanged(_ event: NSEvent) {
-        guard isClickThroughActive else { return }
-        let optionDown = event.modifierFlags.contains(.option)
-        ignoresMouseEvents = !optionDown
-    }
 
     // MARK: - Smooth image swap (CATransition crossfade + dynamic frame)
 
