@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
-		21505C7CE328148D544A6A0A /* FolderWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016BB413C28F8D55A1D1DFAB /* FolderWatcher.swift */; };
+		237F976B2546C76C87A36355 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871038931F2825DED9F16B0B /* UpdateChecker.swift */; };
 		3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
 		3EB0B5142A23A2C55F5DCB3A /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475CF76E321700D3B0FE411B /* Constants.swift */; };
 		524280D26FA49B69D4C57B5D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8541A1636A4B5B3C5F5C767B /* Assets.xcassets */; };
@@ -19,13 +19,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		016BB413C28F8D55A1D1DFAB /* FolderWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderWatcher.swift; sourceTree = "<group>"; };
 		24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPhotoWindow.swift; sourceTree = "<group>"; };
 		28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoItem.swift; sourceTree = "<group>"; };
 		2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoWidgetOSXApp.swift; sourceTree = "<group>"; };
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		8541A1636A4B5B3C5F5C767B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		871038931F2825DED9F16B0B /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		877C01CDA67795DE4EF40F70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E7207FDCA56B8315D7261617 /* Tableau.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tableau.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -56,10 +56,10 @@
 				475CF76E321700D3B0FE411B /* Constants.swift */,
 				877C01CDA67795DE4EF40F70 /* ContentView.swift */,
 				24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */,
-				016BB413C28F8D55A1D1DFAB /* FolderWatcher.swift */,
 				3159880EA2D19188C7F9D214 /* ImageManager.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
+				871038931F2825DED9F16B0B /* UpdateChecker.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -147,10 +147,10 @@
 				3EB0B5142A23A2C55F5DCB3A /* Constants.swift in Sources */,
 				3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */,
 				8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */,
-				21505C7CE328148D544A6A0A /* FolderWatcher.swift in Sources */,
 				9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
+				237F976B2546C76C87A36355 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -165,7 +165,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -179,7 +179,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Tableau;
 				SDKROOT = macosx;
@@ -311,9 +311,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PhotoWidgetOSX.entitlements;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -327,7 +328,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Tableau;
 				SDKROOT = macosx;

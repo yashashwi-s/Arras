@@ -22,32 +22,27 @@ Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and c
 
 ## Installation
 
-Since Tableau is free and open source (not distributed through the App Store), macOS Gatekeeper will show a security warning on first launch. This is normal for any app downloaded outside the App Store.
+Since Tableau is free and open source (not distributed through the App Store), macOS Gatekeeper blocks it on first launch. This is normal for any app downloaded outside the App Store.
 
-### Method 1: Right-click to Open (easiest)
+**On macOS 15 Sequoia and later you must use the Terminal step below.** Tableau is ad-hoc signed, so macOS reports it as *"damaged and can't be opened"* rather than offering an **Open Anyway** button. The app is not damaged — the message is what Gatekeeper shows for any app without a paid Developer ID certificate.
+
+### Install
 
 1. Download and unzip `Tableau.zip` from the [latest release](https://github.com/yashashwi-s/Tableau/releases/latest)
 2. Drag `Tableau.app` to your **Applications** folder
-3. **Right-click** (or Control-click) the app → click **Open**
-4. Click **Open** again in the dialog that appears
-5. You only need to do this once — after that it opens normally
+3. Open Terminal and run:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Tableau.app
+   ```
+4. Double-click the app — it opens normally from now on
 
-### Method 2: Terminal (one command)
+Tableau is a menu bar app with no Dock icon, so on first launch look for the 📷 icon in your **menu bar** (top right), not in the Dock.
 
-If right-click doesn't work, open Terminal and run:
-```bash
-xattr -cr /Applications/Tableau.app
-```
-Then double-click the app to open it normally.
+### On macOS 14 Sonoma and earlier
 
-### Method 3: System Settings
+Right-click (or Control-click) the app → **Open** → **Open** again. Apple removed this shortcut in macOS 15, which is why newer versions need the Terminal command.
 
-1. Try to open the app normally (it will be blocked)
-2. Go to **System Settings → Privacy & Security**
-3. Scroll down — you'll see a message about Tableau being blocked
-4. Click **Open Anyway**
-
-> **Why does this happen?** Apple charges $99/year for a Developer ID certificate to sign apps. Since Tableau is free and open source, we use ad-hoc signing instead. The app is fully open source — you can audit every line of code and [build it yourself](#building-from-source) if you prefer.
+> **Why does this happen?** Apple charges $99/year for a Developer ID certificate, and notarizing an app requires one. Since Tableau is free and open source, we use ad-hoc signing instead. The app is fully open source — you can audit every line of code and [build it yourself](#building-from-source) if you prefer.
 
 ## Quick Start
 
@@ -156,6 +151,34 @@ xcodegen generate
 # Open in Xcode and hit ⌘R
 open Tableau.xcodeproj
 ```
+
+### Pushing a notification to all users
+
+Tableau checks [`appcast.json`](appcast.json) on this branch at launch and every 6 hours. Editing that file on `main` is what notifies everyone — no server, no App Store review.
+
+**To announce a new version**, bump `latestVersion` after publishing the release:
+
+```json
+{
+  "latestVersion": "2.1.0",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/latest",
+  "releaseNotes": "Adds per-photo rotation intervals.",
+  "announcement": null
+}
+```
+
+**To broadcast any other message**, fill in `announcement`. Change the `id` every time — each `id` notifies a given user exactly once, so reusing one means nobody sees it:
+
+```json
+"announcement": {
+  "id": "2026-08-migration",
+  "title": "Heads up",
+  "body": "Tableau has moved to a new download page.",
+  "url": "https://yashashwi.me"
+}
+```
+
+Clicking the notification opens `url`. Both fields work together — a release bump and an announcement can go out in the same edit. Users who have denied notification permission still see updates via **Check for Updates…** in the menu bar.
 
 ## License
 

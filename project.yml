@@ -27,8 +27,8 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Tableau"
         GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 3
-        MARKETING_VERSION: 2.0.2
+        CURRENT_PROJECT_VERSION: 4
+        MARKETING_VERSION: 2.0.3
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Tableau needs access to your Photos library so you can pick images to display on your desktop."
         INFOPLIST_KEY_NSDesktopFolderUsageDescription: "Tableau needs access to your Desktop to place photo widgets."
@@ -38,3 +38,8 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_ENTITLEMENTS: Sources/App/PhotoWidgetOSX.entitlements
         DEVELOPMENT_TEAM: ""
+      configs:
+        # Xcode injects get-task-allow (a debug entitlement) unless told not to.
+        # Notarization rejects any binary that carries it.
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO

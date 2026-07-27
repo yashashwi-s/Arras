@@ -1,0 +1,7 @@
+{
+  "latestVersion": "2.0.3",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/latest",
+  "releaseNotes": "Adds update notifications and fixes Gatekeeper launch issues.",
+  "minimumOSVersion": "14.0",
+  "announcement": null
+}

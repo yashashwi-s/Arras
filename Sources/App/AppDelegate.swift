@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UserNotifications
 
 /// AppDelegate manages the menu bar status item and the settings window.
 @MainActor
@@ -12,19 +11,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
 
-        // Request local notification permissions (for Sandbox warning)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            if granted {
-                // Send Sandbox warning notification
-                let content = UNMutableNotificationContent()
-                content.title = "Sandbox Mode Active"
-                content.body = "You are using the sandboxed App Store version. Download the unrestricted version at yashashwi.me for more features."
-                content.sound = .default
-                
-                let request = UNNotificationRequest(identifier: "sandbox_warning", content: content, trigger: nil)
-                UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-            }
-        }
+        // Asks for notification permission, then polls the appcast on launch and
+        // every few hours so updates and announcements reach existing users.
+        UpdateChecker.shared.start()
 
         // If first launch (no photos yet), show settings
         if manager.photos.isEmpty {
@@ -241,11 +230,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hideItem.target = self
         menu.addItem(hideItem)
 
+        // Check for Updates
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit \(Constants.appName)", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
+    }
+
+    // MARK: - Updates
+
+    @objc func checkForUpdates() {
+        Task { await UpdateChecker.shared.check(userInitiated: true) }
     }
 
     // MARK: - Settings Window
