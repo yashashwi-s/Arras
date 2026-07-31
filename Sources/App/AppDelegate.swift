@@ -352,6 +352,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.state = manager.launchAtLogin ? .on : .off
         menu.addItem(loginItem)
 
+        menu.addItem(privacyMenuItem())
+
         // Dock / app switcher presence. Both come from one activation policy, so
         // the title names both rather than implying they can differ.
         let dockItem = NSMenuItem(
@@ -587,6 +589,71 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let newState = sender.state == .off
         manager.setLaunchAtLogin(newState)
+    }
+
+    /// Privacy submenu. These are app-wide rather than per-photo, so they live in
+    /// the menu bar next to the other global switches.
+    private func privacyMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Privacy", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let exclude = NSMenuItem(
+            title: "Hide from Screen Sharing & Recording",
+            action: #selector(toggleExcludeFromScreenCapture),
+            keyEquivalent: ""
+        )
+        exclude.target = self
+        exclude.state = manager.excludeFromScreenCapture ? .on : .off
+        // Worth stating plainly: this one is a real guarantee, not a guess.
+        exclude.toolTip = "Photos stay visible to you but are excluded from screen shares and recordings. Does not cover AirPlay or HDMI mirroring."
+        submenu.addItem(exclude)
+
+        let conferencing = NSMenuItem(
+            title: "Auto-Hide During Calls",
+            action: #selector(toggleAutoHideForConferencing),
+            keyEquivalent: ""
+        )
+        conferencing.target = self
+        conferencing.state = manager.autoHideForConferencingApps ? .on : .off
+        conferencing.toolTip = "Best effort: hides photos while Zoom, Teams, QuickTime, OBS or Screenshot are running. A running app isn't proof of an active share, and browser calls aren't detectable."
+        submenu.addItem(conferencing)
+
+        if manager.isConferencingAppDetected {
+            let detected = NSMenuItem(title: "  Call app detected", action: nil, keyEquivalent: "")
+            detected.isEnabled = false
+            submenu.addItem(detected)
+        }
+
+        submenu.addItem(.separator())
+
+        let fullscreen = NSMenuItem(
+            title: "Hide Behind Fullscreen Apps",
+            action: #selector(toggleHideWhenFullscreen),
+            keyEquivalent: ""
+        )
+        fullscreen.target = self
+        fullscreen.state = manager.hideWhenFullscreenActive ? .on : .off
+        fullscreen.toolTip = "Photos are invisible behind a fullscreen app anyway; hiding them frees memory and stops rotation timers."
+        submenu.addItem(fullscreen)
+
+        item.submenu = submenu
+        return item
+    }
+
+    @objc func toggleExcludeFromScreenCapture() {
+        manager.setExcludeFromScreenCapture(!manager.excludeFromScreenCapture)
+        rebuildMenu()
+    }
+
+    @objc func toggleAutoHideForConferencing() {
+        manager.setAutoHideForConferencingApps(!manager.autoHideForConferencingApps)
+        rebuildMenu()
+    }
+
+    @objc func toggleHideWhenFullscreen() {
+        manager.setHideWhenFullscreenActive(!manager.hideWhenFullscreenActive)
+        rebuildMenu()
     }
 
     @objc func captureRegion() {
