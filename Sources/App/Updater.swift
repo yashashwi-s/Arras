@@ -285,7 +285,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
         // Downloaded bundles arrive quarantined; left in place, the swapped-in
         // app is refused at launch and the user is stranded with nothing running.
-        try? run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", app.path])
+        _ = try? run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", app.path])
 
         return app
     }

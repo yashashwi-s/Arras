@@ -56,8 +56,13 @@ class DesktopPhotoWindow: NSWindow {
         contentView = container
         setContentSize(NSSize(width: w, height: h))
 
-        // Force layout synchronously before display to prevent snap flicker
-        self.disableScreenUpdatesUntilFlush()
+        // Lay out synchronously before the window is ordered in, so the first frame
+        // drawn is already the right size rather than snapping into place.
+        //
+        // This used to also call disableScreenUpdatesUntilFlush(), which Apple
+        // deprecated in macOS 15 and documents as doing nothing at all. Keeping it
+        // implied a guarantee that has not held for two releases; the synchronous
+        // layout below is what actually prevents the flicker.
         container.updateLayout(NSSize(width: w, height: h))
 
         // Apply settings
@@ -160,7 +165,6 @@ class DesktopPhotoWindow: NSWindow {
         }
 
         if animate {
-            self.disableScreenUpdatesUntilFlush()
             // GPU-accelerated crossfade via Core Animation
             let transition = CATransition()
             transition.type = .fade

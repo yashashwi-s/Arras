@@ -312,7 +312,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 photoItem.title = label   // plain text still backs VoiceOver and menu search
 
                 // The thumbnail rides in the title as a text attachment rather than
-                // going through `NSMenuItem.image`, which macOS 26 no longer draws in a
+                // going through `NSMenuItem.image`, which macOS 27 no longer draws in a
                 // status bar menu — verified by setting a plain SF Symbol on several
                 // items and getting nothing. Text rendering still works, and this keeps
                 // native highlight and submenu behaviour that a custom item view

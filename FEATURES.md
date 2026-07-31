@@ -111,19 +111,34 @@ in-app updater and an App Store target that weren't on the list at all.
 
 ## Later
 
-### Carried over from the original roadmap
+### Carried over from the original roadmap — reassessed
 
-- [ ] **Apple Shortcuts support** — expose actions (add photo, toggle visibility, set opacity) to the Shortcuts app via App Intents
-- [ ] **URL scheme** — `tableau://add?path=...` for integration with other apps
-- [ ] **CLI interface** — `tableau add ~/path/to/image.jpg --floating --opacity 0.5`
-- [ ] **Live web preview** — embed a `WKWebView` to display a live webpage as a desktop widget
-- [ ] **PDF pages** — display a specific page from a PDF
-- [ ] **Grid builder** — see the dedicated section below
-- [ ] **Wallpaper-aware placement** — detect wallpaper's dominant colours and suggest positions that don't clash
-- [ ] **iCloud sync** — sync widgets across your Macs (opt-in per photo)
-- [ ] **AppleScript dictionary** — full scriptability: add/remove photos, set properties, query state
-- [ ] **Raycast extension** — search, toggle, and manage photos directly from Raycast
-- [ ] **System accent color integration** — apply the user's macOS accent colour to UI elements
+These were written before the app had users or a clear identity. Re-reading them
+against what Tableau actually is (a desktop photo widget you set up once and then
+mostly look at), several are weaker than they first appeared. Honest triage:
+
+**Worth building**
+
+- [ ] **Grid builder** — see Living Collage below. The one genuinely transformative item on the list
+- [ ] **Apple Shortcuts support** (App Intents) — the modern, supported automation surface. Also the only one on this list Apple actively invests in, and it composes with Focus modes and Automations, which fits the privacy/presence ideas below
+- [ ] **PDF pages** — small, and there's a real use case: pinning a page of reference material. PDFKit does the work
+
+**Probably worth it, with reservations**
+
+- [ ] **System accent colour integration** — trivially cheap (`NSColor.controlAccentColor`), but the settings panel is the only place it would show, so the payoff is small. Do it when touching that UI anyway, not as a task
+- [ ] **Live web preview** (`WKWebView`) — genuinely useful for a dashboard or a clock, but it changes the app's threat model completely: arbitrary remote code, network access, and a much bigger privacy surface for something called a *photo* widget. Would want it sandboxed, opt-in, and clearly separated
+- [ ] **Wallpaper-aware placement** — lovely in principle. In practice, sandbox-free wallpaper access is fine but "suggest a position" is a hard recommendation problem, and users move widgets where they want anyway. The *colour extraction* half is more valuable than the placement half — reuse it for the colour-matched glow instead
+
+**Reconsidered — low value for the cost**
+
+- [ ] ~~**URL scheme**~~ — `tableau://add?path=...` sounds useful but nothing would call it. Shortcuts covers scripted adding, and drag-and-drop plus ⌘V already cover manual adding. Ship only if something concrete needs it
+- [ ] ~~**CLI interface**~~ — a GUI desktop-decoration app has essentially no CLI audience, and installing a binary outside the bundle is exactly the kind of thing that breaks on update and trips Gatekeeper. Hard to justify
+- [ ] ~~**AppleScript dictionary**~~ — largely superseded by App Intents. Meaningful work (an `sdef`, an Apple Event surface to maintain) for a shrinking user base. Do Shortcuts instead
+- [ ] ~~**Raycast extension**~~ — not this repo's job. It's a separate project in a different language, and it can be built by anyone once Shortcuts or a URL scheme exists. Better as a community contribution than a roadmap item
+- [ ] ~~**iCloud sync**~~ — the *appealing* version (widgets follow you across Macs) collides with per-display and per-Space bindings, which are inherently machine-specific: syncing them faithfully would be wrong, and stripping them makes the sync half-useless. It also needs a paid account and CloudKit containers. The `.tableau` bundle already solves the real need — moving a setup once — at a fraction of the cost. Revisit only if people ask for continuous sync specifically
+
+**Verdict:** of the eleven, three are worth building, three are conditional, and
+five should probably be dropped rather than left to imply they are planned.
 
 ### Layout bundles (`.tableau`)
 
@@ -290,6 +305,39 @@ so they are new layers rather than new architecture.
 - [ ] **Signed updates** — verify the downloaded bundle's Team ID against the running app. The current SHA-256 check catches a corrupted or tampered download but **cannot** detect a compromised repo. This is the most important item on this list and needs a paid Apple Developer account
 - [ ] **Delta updates** — ship only what changed instead of a full 3MB bundle
 - [ ] **Release notes in-app** — show what changed before the user commits to updating
+
+---
+
+## macOS 27 audit
+
+Built and run against macOS 27.0 (SDK 27.0, deployment target 14.0).
+
+**Found and fixed**
+
+- **`NSMenuItem.image` is no longer drawn in a status bar menu.** The per-photo
+  thumbnails silently vanished. Confirmed by instrumenting the build (image valid
+  and assigned) and by setting a plain SF Symbol on items with and without
+  submenus — none rendered. Thumbnails now ride in the title as an
+  `NSTextAttachment`, which still renders and keeps native highlight and submenu
+  behaviour. **Assume `NSMenuItem.image` is dead here** and reach for the
+  attributed-title approach for any future menu iconography.
+- **`disableScreenUpdatesUntilFlush()` removed.** Deprecated in macOS 15 and
+  documented as doing nothing; two call sites implied a flicker guarantee that
+  had not held for two releases. The synchronous layout that follows is what
+  actually does the work.
+
+**Checked and clear**
+
+- No private APIs. `CGWindowLevelForKey(.desktopIconWindow)` and
+  `collectionBehavior` still behave as expected; desktop-level widgets, Mission
+  Control participation and Spaces handling are unaffected
+- Carbon `RegisterEventHotKey` still works without the Accessibility permission
+- `SMAppService` login items, `PhotosPicker`, `UNUserNotificationCenter`,
+  `NSStatusItem` drag targets and `CAKeyframeAnimation` GIF playback all fine
+- A clean build emits no deprecation warnings — though note that with a 14.0
+  deployment target the compiler stays silent about anything deprecated in 15+,
+  so **compiler warnings alone are not an audit**. Both findings above came from
+  SourceKit against the current SDK, not from the build
 
 ---
 

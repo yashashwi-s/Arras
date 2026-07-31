@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.1.0",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.1.0/Tableau.app.zip",
-  "sha256": "bc0da2e399d849e60e21dd1ec793d8428042289c5c620638d93ff885e1f4fefd",
-  "releaseNotes": "Snap to edges, animated GIFs, global hotkey, clipboard paste, per-display memory, layout export, and one-click updates.",
+  "latestVersion": "2.2.0",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.2.0/Tableau.app.zip",
+  "sha256": "e00a0a236cdab08cf03927b0b60bfe7a51ac6d217323d19a68e8f5c5c887d1eb",
+  "releaseNotes": "Portable layout bundles, a redesigned update banner, and macOS 27 fixes including the missing menu bar thumbnails.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
