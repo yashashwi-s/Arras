@@ -106,28 +106,32 @@ class PhotoManager: ObservableObject {
         // A photo that was auto-hidden because its display was disconnected stays invisible
         // on relaunch until that display reconnects (window presence == isVisible && !isHiddenForDisplay).
         for item in photos where item.isVisible && !item.isHiddenForDisplay {
-            guard let image = loadDisplayImage(for: item) else { continue }
-            createWindow(for: item, image: image)
+            guard let content = loadDisplayContent(for: item) else { continue }
+            createWindow(for: item, content: content)
             if !item.spaceImageFilenames.isEmpty {
                 setupRotationTimer(for: item)
             }
         }
     }
 
-    /// Resolves the image currently due to be shown for `item` (single photo or the active
+    /// Resolves what is currently due to be shown for `item` (single photo or the active
     /// frame of a Space), registering Space image URLs as a side effect. Shared by every path
     /// that brings a hidden photo back on screen: manual visibility toggle, load-on-launch, and
     /// display reconnect.
-    private func loadDisplayImage(for item: PhotoItem) -> NSImage? {
+    ///
+    /// Returns `PhotoContent` rather than `NSImage` so an animated widget keeps animating
+    /// through all three of those paths, not just the initial add.
+    private func loadDisplayContent(for item: PhotoItem) -> PhotoContent? {
         if !item.spaceImageFilenames.isEmpty {
             let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
             spaceImages[item.id] = urls
-            if let imageURL = urls[safe: item.folderImageIndex], let image = NSImage(contentsOf: imageURL) {
-                return image
+            if let imageURL = urls[safe: item.folderImageIndex],
+               let content = PhotoContent.load(from: imageURL) {
+                return content
             }
-            return urls.first.flatMap { NSImage(contentsOf: $0) }
+            return urls.first.flatMap { PhotoContent.load(from: $0) }
         } else {
-            return NSImage(contentsOf: storageDir.appendingPathComponent(item.filename))
+            return PhotoContent.load(from: storageDir.appendingPathComponent(item.filename))
         }
     }
 
@@ -177,19 +181,50 @@ class PhotoManager: ObservableObject {
 
     // MARK: - Add / Remove
 
-    func addPhoto(_ image: NSImage) {
+    /// Saves `image` to the photo store, preserving animation when present.
+    ///
+    /// Animated GIFs/APNGs are detected via `AnimatedImageIO.extractFrames`
+    /// and re-encoded to a standalone `.gif` (see AnimatedImage.swift for
+    /// why re-muxing to GIF, rather than the JPEG transcode below, is the
+    /// right call for those). Everything else keeps the app's original
+    /// behavior of flattening to JPEG unchanged, so ordinary photo storage
+    /// size/quality doesn't regress.
+    private func saveImportedImage(_ image: NSImage) -> (filename: String, url: URL)? {
+        if let frames = AnimatedImageIO.extractFrames(from: image) {
+            let filename = UUID().uuidString + ".gif"
+            let url = storageDir.appendingPathComponent(filename)
+            if AnimatedImageIO.writeGIF(frames, to: url) {
+                return (filename, url)
+            }
+            // Encoding failed for some reason (disk full, etc.) -- fall
+            // through and try to save a still instead rather than losing
+            // the import entirely.
+        }
+
         guard let tiffData = image.tiffRepresentation,
               let bitmapRep = NSBitmapImageRep(data: tiffData),
               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
-            return
+            return nil
         }
-
         let filename = UUID().uuidString + ".jpg"
-        try? jpegData.write(to: storageDir.appendingPathComponent(filename))
+        let url = storageDir.appendingPathComponent(filename)
+        do {
+            try jpegData.write(to: url)
+            return (filename, url)
+        } catch {
+            print("Failed to save image: \(error)")
+            return nil
+        }
+    }
+
+    func addPhoto(_ image: NSImage) {
+        guard let (filename, url) = saveImportedImage(image) else { return }
 
         let item = PhotoItem(filename: filename)
         photos.append(item)
-        createWindow(for: item, image: image)
+        if let content = PhotoContent.load(from: url) {
+            createWindow(for: item, content: content)
+        }
         persist()
     }
 
@@ -199,17 +234,8 @@ class PhotoManager: ObservableObject {
         // Save all images to disk and collect filenames
         var filenames: [String] = []
         for image in images {
-            if let tiffData = image.tiffRepresentation,
-               let bitmapRep = NSBitmapImageRep(data: tiffData),
-               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) {
-                let filename = UUID().uuidString + ".jpg"
-                let url = storageDir.appendingPathComponent(filename)
-                do {
-                    try jpegData.write(to: url)
-                    filenames.append(filename)
-                } catch {
-                    print("Failed to save image: \(error)")
-                }
+            if let (filename, _) = saveImportedImage(image) {
+                filenames.append(filename)
             }
         }
         guard !filenames.isEmpty else { return }
@@ -226,8 +252,8 @@ class PhotoManager: ObservableObject {
         spaceImages[item.id] = urls
 
         // Display the first image
-        if let firstURL = urls.first, let firstImage = NSImage(contentsOf: firstURL) {
-            createWindow(for: item, image: firstImage)
+        if let firstURL = urls.first, let content = PhotoContent.load(from: firstURL) {
+            createWindow(for: item, content: content)
             setupRotationTimer(for: item)
         }
     }
@@ -238,28 +264,19 @@ class PhotoManager: ObservableObject {
 
         var newFilenames: [String] = []
         for image in images {
-            if let tiffData = image.tiffRepresentation,
-               let bitmapRep = NSBitmapImageRep(data: tiffData),
-               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) {
-                let filename = UUID().uuidString + ".jpg"
-                let url = storageDir.appendingPathComponent(filename)
-                do {
-                    try jpegData.write(to: url)
-                    newFilenames.append(filename)
-                } catch {
-                    print("Failed to save image: \(error)")
-                }
+            if let (filename, _) = saveImportedImage(image) {
+                newFilenames.append(filename)
             }
         }
         guard !newFilenames.isEmpty else { return }
 
         photos[index].spaceImageFilenames.append(contentsOf: newFilenames)
-        
+
         let newUrls = newFilenames.map { storageDir.appendingPathComponent($0) }
         var currentUrls = spaceImages[id] ?? []
         currentUrls.append(contentsOf: newUrls)
         spaceImages[id] = currentUrls
-        
+
         persist()
     }
 
@@ -319,27 +336,24 @@ class PhotoManager: ObservableObject {
         photos.append(item)
         guard item.isVisible else { persist(); return }
 
+        // Goes through the shared loader so an imported animated widget arrives
+        // animating, rather than as a frozen first frame.
+        if let content = loadDisplayContent(for: item) {
+            createWindow(for: item, content: content)
+        }
         if !item.spaceImageFilenames.isEmpty {
-            let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-            spaceImages[item.id] = urls
-            if let imageURL = urls[safe: item.folderImageIndex] ?? urls.first,
-               let image = NSImage(contentsOf: imageURL) {
-                createWindow(for: item, image: image)
-            }
             setupRotationTimer(for: item)
-        } else if let image = NSImage(contentsOf: storageDir.appendingPathComponent(item.filename)) {
-            createWindow(for: item, image: image)
         }
         persist()
     }
 
     // MARK: - Window Creation
 
-    private func createWindow(for item: PhotoItem, image: NSImage) {
+    private func createWindow(for item: PhotoItem, content: PhotoContent) {
         let window = DesktopPhotoWindow()
         window.isReleasedWhenClosed = false
         window.photoId = item.id
-        window.showPhoto(image, baseWidth: item.widgetWidth, locked: item.isLocked, settings: item)
+        window.showPhoto(content, baseWidth: item.widgetWidth, locked: item.isLocked, settings: item)
 
         // Restore saved position
         var targetFrame: NSRect? = nil
@@ -444,8 +458,8 @@ class PhotoManager: ObservableObject {
             // photo whose monitor never comes back would be permanently unreachable from the UI.
             photos[index].isHiddenForDisplay = false
             let item = photos[index]
-            if let image = loadDisplayImage(for: item) {
-                createWindow(for: item, image: image)
+            if let content = loadDisplayContent(for: item) {
+                createWindow(for: item, content: content)
             }
             if !item.spaceImageFilenames.isEmpty {
                 setupRotationTimer(for: item)
@@ -480,14 +494,27 @@ class PhotoManager: ObservableObject {
 
         // Only replace file for single-image photos
         if item.spaceImageFilenames.isEmpty {
-            guard let tiffData = newImage.tiffRepresentation,
-                  let bitmapRep = NSBitmapImageRep(data: tiffData),
-                  let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else { return }
-            try? jpegData.write(to: storageDir.appendingPathComponent(item.filename))
-        }
+            let oldURL = storageDir.appendingPathComponent(item.filename)
+            guard let (filename, url) = saveImportedImage(newImage) else { return }
+            // The extension may change (still <-> animated), so this isn't
+            // always an in-place overwrite of the old file.
+            if filename != item.filename {
+                try? FileManager.default.removeItem(at: oldURL)
+            }
+            photos[index].filename = filename
 
-        // Refresh window with crossfade
-        windows[id]?.swapImage(newImage, animate: true)
+            if let content = PhotoContent.load(from: url) {
+                windows[id]?.swapImage(content, animate: true)
+            }
+        } else {
+            // Space photos: this branch has never persisted the
+            // replacement to a slot on disk, only swapped what's currently
+            // on screen -- preserved as-is, just extended to animate when
+            // the picked image happens to be animated.
+            let content = AnimatedImageIO.extractFrames(from: newImage)
+                .map { PhotoContent.animated($0, representative: newImage) } ?? .still(newImage)
+            windows[id]?.swapImage(content, animate: true)
+        }
         persist()
     }
 
@@ -517,14 +544,18 @@ class PhotoManager: ObservableObject {
 
             if let images = spaceImages[original.id],
                let imageURL = images[safe: newItem.folderImageIndex],
-               let image = NSImage(contentsOf: imageURL) {
+               let content = PhotoContent.load(from: imageURL) {
                 spaceImages[newItem.id] = images
-                createWindow(for: newItem, image: image)
+                createWindow(for: newItem, content: content)
                 setupRotationTimer(for: newItem)
             }
         } else {
-            // Copy the file
-            let newFilename = UUID().uuidString + ".jpg"
+            // Copy the file, preserving its extension -- an animated photo
+            // is stored as `.gif`, and renaming the copy to `.jpg` while
+            // keeping GIF bytes would make PhotoContent.load misidentify it
+            // as a still on the next load.
+            let ext = (original.filename as NSString).pathExtension
+            let newFilename = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
             let srcURL = storageDir.appendingPathComponent(original.filename)
             let dstURL = storageDir.appendingPathComponent(newFilename)
             try? FileManager.default.copyItem(at: srcURL, to: dstURL)
@@ -543,8 +574,8 @@ class PhotoManager: ObservableObject {
 
             photos.append(newItem)
 
-            if let image = NSImage(contentsOf: dstURL) {
-                createWindow(for: newItem, image: image)
+            if let content = PhotoContent.load(from: dstURL) {
+                createWindow(for: newItem, content: content)
             }
         }
 
@@ -636,10 +667,10 @@ class PhotoManager: ObservableObject {
         photos[index].folderImageIndex = (photos[index].folderImageIndex + 1) % images.count
         let imageURL = images[photos[index].folderImageIndex]
 
-        if let image = NSImage(contentsOf: imageURL) {
+        if let content = PhotoContent.load(from: imageURL) {
             let key = imageURL.lastPathComponent
             let targetFrame = item.folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-            windows[id]?.swapImage(image, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
+            windows[id]?.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
         }
         persist()
     }
@@ -659,10 +690,10 @@ class PhotoManager: ObservableObject {
         photos[index].folderImageIndex = currentIndex > 0 ? currentIndex - 1 : images.count - 1
         let imageURL = images[photos[index].folderImageIndex]
 
-        if let image = NSImage(contentsOf: imageURL) {
+        if let content = PhotoContent.load(from: imageURL) {
             let key = imageURL.lastPathComponent
             let targetFrame = item.folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-            windows[id]?.swapImage(image, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
+            windows[id]?.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
         }
         persist()
     }
@@ -704,10 +735,10 @@ class PhotoManager: ObservableObject {
         // Trigger an immediate swap so the window resizes or adapts to the new mode
         if let images = spaceImages[id], !images.isEmpty {
             let imageURL = images[photos[index].folderImageIndex]
-            if let image = NSImage(contentsOf: imageURL) {
+            if let content = PhotoContent.load(from: imageURL) {
                 let key = imageURL.lastPathComponent
                 let targetFrame = photos[index].folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-                windows[id]?.swapImage(image, targetFrame: targetFrame, mode: mode, animate: true)
+                windows[id]?.swapImage(content, targetFrame: targetFrame, mode: mode, animate: true)
             }
         }
         persist()
@@ -808,8 +839,8 @@ class PhotoManager: ObservableObject {
                 }
 
                 let item = photos[index]
-                guard let image = loadDisplayImage(for: item) else { continue }
-                createWindow(for: item, image: image)
+                guard let content = loadDisplayContent(for: item) else { continue }
+                createWindow(for: item, content: content)
                 if !item.spaceImageFilenames.isEmpty {
                     setupRotationTimer(for: item)
                 }
