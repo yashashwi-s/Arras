@@ -1,7 +1,3 @@
-// The Mac App Store delivers its own updates, and Review Guideline 2.4.5(iv)
-// forbids an app shipping a second update path. The MAS target compiles this out.
-#if !MAS
-
 import AppKit
 import CryptoKit
 import UserNotifications
@@ -29,9 +25,8 @@ struct Appcast: Decodable {
 
 /// Checks for, downloads, and installs updates in place.
 ///
-/// This is the reason the Developer ID build is not sandboxed: replacing
-/// `Tableau.app` and spawning a helper that outlives the process are both
-/// blocked under the sandbox.
+/// This is why the app is not sandboxed: replacing `Tableau.app` and spawning a
+/// helper that outlives the process are both blocked under the sandbox.
 @MainActor
 final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
 
@@ -51,6 +46,8 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         case available(version: String, notes: String?)
         case downloading(progress: Double)
         case installing
+        /// Shown once on the first launch after a successful update.
+        case installed(version: String)
         case failed(String)
     }
 
@@ -64,6 +61,9 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     private var pending: Appcast?
     private var timer: Timer?
+
+    /// Set just before the swap; the relaunched copy consumes it to confirm the update.
+    static let justUpdatedKey = "justUpdatedToVersion"
 
     private let lastCheckKey = "lastUpdateCheck"
     private let latestVersionKey = "latestKnownVersion"
@@ -103,6 +103,12 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// DMG. Bail out rather than take the whole launch down with us.
     private var notificationsAvailable: Bool {
         Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app"
+    }
+
+    /// Reports a completed update in the settings footer, where the version number the
+    /// user is checking already lives.
+    func announceInstalled(version: String) {
+        phase = .installed(version: version)
     }
 
     // MARK: - Check
@@ -219,6 +225,11 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             try verify(archive, matches: expectedHash)
 
             let staged = try unpack(archive, expecting: appcast.latestVersion)
+
+            // Leave a breadcrumb the relaunched copy reads on startup, so the update
+            // visibly lands instead of the app appearing to just close and reopen.
+            UserDefaults.standard.set(appcast.latestVersion, forKey: Self.justUpdatedKey)
+
             try launchSwapHelper(replacing: Bundle.main.bundleURL, with: staged)
 
             // The helper waits for this process to exit before swapping.
@@ -446,4 +457,3 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     }
 }
 
-#endif

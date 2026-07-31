@@ -89,7 +89,7 @@
 
 ### Content & Portability
 - [x] **Animated GIF playback** — GIFs and APNGs animate natively, driven by a `CAKeyframeAnimation` on the render server so idle CPU stays at zero
-- [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import
+- [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import. Positions are stored **relative to the screen**, so a layout keeps its shape on a Mac with different displays. Optionally carries app settings (shortcut, snapping, launch at login), off by default on export and opt-in on import so a shared layout can never silently rebind someone's system-wide shortcut. Display bindings are deliberately dropped on import — they fingerprint the exporting Mac's monitors and would otherwise arrive as an unresolvable hidden state
 - [x] **Automatic theme adaptation** — opt-in per photo. In Dark Mode it dims the photo to ~80% so a bright image doesn't glare at night, deepens the shadow, and lends a hairline edge to photos that have no border of their own so they don't melt into a dark wallpaper. Adjustments are computed live and never overwrite your stored values, so switching back to Light Mode restores exactly what you configured
 
 ### Updates & Accessibility
@@ -118,12 +118,22 @@ in-app updater and an App Store target that weren't on the list at all.
 - [ ] **CLI interface** — `tableau add ~/path/to/image.jpg --floating --opacity 0.5`
 - [ ] **Live web preview** — embed a `WKWebView` to display a live webpage as a desktop widget
 - [ ] **PDF pages** — display a specific page from a PDF
-- [ ] **Grid builder** — define rows/columns, drag photos into cells; the whole grid moves as one object
+- [ ] **Grid builder** — see the dedicated section below
 - [ ] **Wallpaper-aware placement** — detect wallpaper's dominant colours and suggest positions that don't clash
 - [ ] **iCloud sync** — sync widgets across your Macs (opt-in per photo)
 - [ ] **AppleScript dictionary** — full scriptability: add/remove photos, set properties, query state
 - [ ] **Raycast extension** — search, toggle, and manage photos directly from Raycast
 - [ ] **System accent color integration** — apply the user's macOS accent colour to UI elements
+
+### Layout bundles (`.tableau`)
+
+Relative positions, app settings, and provenance shipped; these are what's left.
+
+- [ ] **Store originals** — images are the app's re-encoded 90% JPEGs (and re-encoded GIFs), so export → import → export compounds the loss. A `.tableau` is a layout backup, not a photo archive. Offer "archive quality" vs "layout only" so it can be either
+- [ ] **Per-widget export** — share one photo or one Space, instead of all-or-nothing
+- [ ] **Registered UTI + document icon** — so a `.tableau` is identifiable in Finder and double-clicking it opens Tableau
+- [ ] **Thumbnail contact sheet in the manifest** — preview a bundle's contents without importing
+- [ ] **Preflight item selection** — the import dialog now reports widget count, source version and export date, but is still all-or-nothing; let the user deselect individual widgets before committing
 
 ### Privacy & presence
 
@@ -152,6 +162,65 @@ The features most likely to be missed once you've had them.
 - [ ] **Photos album sync** — point a Space at a Photos smart album so it follows the album as you add to it, rather than being a one-time copy
 - [ ] **Window mirror** — show a live miniature of another app's window (a chart, a log, a build) pinned to the desktop
 - [ ] **Caption overlay** — optional text on a photo: a label, a date, a countdown
+
+### Living Collage — dynamic grids
+
+The single biggest feature left, and the one that would most change what Tableau
+*is*: instead of N independent photos, one widget that holds many images in a
+composed arrangement and quietly rotates them. A photo wall that's alive rather
+than a slideshow.
+
+**The architectural break.** Every widget today is its own `NSWindow` with one
+image. A collage must be **one window containing many cells**, each an
+independent `CALayer`, so the whole thing drags, resizes, snaps and layers as a
+single object. That is a genuine change to the `DesktopPhotoWindow` /
+`DraggablePhotoView` model, not a setting — worth doing deliberately rather than
+bolting cells onto the existing single-image view. `PhotoItem` would gain a
+`collage` variant alongside single-image and Space.
+
+#### Layout engines
+
+Different source photos want different arrangements, so this needs more than a
+rows × columns box:
+
+- [ ] **Fixed grid** — literal R×C cells, everything crops to fill. Predictable, best for uniform sets
+- [ ] **Hero + satellites** — one large cell with smaller ones around it. This is the "centrepiece" arrangement and should be the flagship default; it has a visual focus instead of reading as wallpaper
+- [ ] **Masonry** — fixed column count, variable cell heights following each photo's true ratio. No cropping, so portraits stay portraits
+- [ ] **Justified rows** — fill each row to the full width by scaling images to a common height, then break the row (the Flickr/Google Photos algorithm). Gives clean edges with zero cropping, and handles mixed orientations best of any option
+- [ ] **Templates** — hand-designed arrangements (3-up strip, 2×2 with offset, polaroid scatter) for people who want a result rather than a layout engine
+
+Shared controls: gutter width, outer padding, per-cell corner radius, and an
+overall aspect lock so the collage resizes as one composition.
+
+#### Making it live
+
+The rotation behaviour is where this earns "dynamic", and the details are what
+separate it from a screensaver:
+
+- [ ] **Independent per-cell rotation** — each cell draws from a shared pool on its own schedule
+- [ ] **Staggered timing** — the essential detail. If every cell changes together it reads as a slideshow; offsetting each cell by a random fraction of the interval makes the wall feel alive and never busy. Stagger should be the default, simultaneous the option
+- [ ] **No-duplicates invariant** — with a pool barely larger than the cell count, naive random selection shows the same photo twice at once, which instantly looks broken. Selection must exclude what's already on screen, and degrade gracefully when pool size approaches cell count
+- [ ] **Recency weighting** — avoid re-showing something that just left a cell
+- [ ] **Hero promotion** — periodically move a photo from a satellite cell into the centre and demote the current hero, so the focal image changes without the layout changing
+- [ ] **Click to promote** — click any cell to make it the hero immediately
+- [ ] **Pinned cells** — lock one cell to a specific photo while the rest rotate
+
+#### Motion
+
+- [ ] **Per-cell crossfade** — the existing `CATransition` approach, applied per layer
+- [ ] **Swap animation** — two cells exchanging photos along a curved path, rather than both crossfading in place. The signature move if it's done well
+- [ ] **Hero transition** — promoting a photo should scale and translate it into the centre cell while the outgoing hero retreats, not cut
+- [ ] **Ken Burns per cell** — slow pan/zoom within a cell so even a static collage breathes
+- [ ] **Entrance stagger** — cells fade in sequentially when the collage first appears
+- [ ] **Reduce Motion** — honour the accessibility setting by falling back to plain crossfades. Easy to forget, and this feature is exactly the kind that becomes unusable without it
+
+#### Hard parts worth planning for
+
+- **Performance.** A 12-cell collage with Ken Burns is 12 simultaneous animations. Everything must stay on the render server (`CAKeyframeAnimation` / `CABasicAnimation`, as the GIF work already does) — an app-side timer per cell would destroy the near-zero-CPU idle that is currently a selling point. Cells should also stop animating entirely while hidden or behind a fullscreen app
+- **Memory.** Full-resolution decodes for every cell is the obvious way to blow the ~20MB footprint. Cells need downsampled decodes sized to the cell, via `CGImageSourceCreateThumbnailAtIndex`, re-decoded on resize
+- **Focal point.** Crop-to-fill cuts heads off. A per-image focal point (default centre, adjustable by dragging, or auto via `VNDetectFaceRectangles`) is what makes automatic cropping acceptable
+- **Resize semantics.** Does resizing the collage rescale cells or reflow the layout? Masonry and justified rows want reflow; fixed grid and templates want rescale. Should follow the engine rather than be a global setting
+- **Per-cell vs whole settings.** Border, shadow and corner radius could apply per cell or to the collage as a whole. Both are legitimate; the UI needs to make clear which level is being edited, or it becomes confusing fast
 
 ### Borders, frames & depth
 
@@ -226,24 +295,31 @@ so they are new layers rather than new architecture.
 
 ## Distribution
 
-Two targets build from identical sources:
+Ships as a Developer ID / direct-download build only, and is **not sandboxed**.
 
-| | `Tableau` (Developer ID) | `Tableau-MAS` (App Store) |
-|---|---|---|
-| Sandbox | off | on |
-| Self-updater | yes | compiled out (`#if !MAS`) |
-| Build | `./build.sh` | `./build.sh --mas` |
+That is forced rather than chosen: replacing `Tableau.app` and spawning a helper
+that outlives the process are both forbidden under App Sandbox, so an app cannot
+both update itself and be sandboxed. Notarization does not require the sandbox,
+so nothing else is affected — it only rules out the App Store, which also
+separately forbids a second update path (Review Guideline 2.4.5(iv)).
 
-**These are mutually exclusive by design.** Replacing `Tableau.app` and spawning a
-helper that outlives the process are both forbidden under App Sandbox, so an app
-cannot both update itself and be sandboxed. Notarization does not require the
-sandbox, so the Developer ID build is unaffected; the MAS target exists for
-whenever a paid Apple Developer account is available, and App Store Review
-Guideline 2.4.5(iv) is why it drops the updater.
+A sandboxed `Tableau-MAS` target existed briefly and was removed; without a paid
+Apple Developer account it could not be signed or submitted, so it was dead code.
+Reinstating it means restoring the `#if !MAS` guards around `Updater`,
+`DownloadTask`, and `UpdateStatusView`, plus a sandboxed entitlements file.
 
 Dropping the sandbox moves Application Support out of `~/Library/Containers`;
 `StorageMigration.swift` carries existing widgets across, and refuses to
 overwrite a destination that already holds a layout.
+
+### Publishing an update
+
+1. `./build.sh --release` — prints the SHA-256 and the exact `appcast.json` fields
+2. Upload `dist/Tableau.app.zip` to a GitHub Release tagged `vX.Y.Z`
+3. Paste the printed fields into `appcast.json` and push to `main`
+
+The updater refuses any download whose checksum isn't declared, so step 3 is not
+optional.
 
 ---
 

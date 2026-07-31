@@ -16,15 +16,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupGlobalHotKey()
         setupPasteMonitor()
 
-        #if !MAS
         // Asks for notification permission, then polls the appcast on launch and
-        // every few hours so updates and announcements reach existing users.
-        // Absent on the App Store build, which updates through the Store.
+        // weekly, so updates and announcements reach existing users.
         Updater.shared.start()
-        #endif
 
-        // If first launch (no photos yet), show settings
-        if manager.photos.isEmpty {
+        // Show settings after an update landed, so the new version is visible rather
+        // than the app appearing to have closed and reopened for no reason.
+        if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
+            UserDefaults.standard.removeObject(forKey: Updater.justUpdatedKey)
+            showSettingsWindow()
+            Updater.shared.announceInstalled(version: installed)
+        } else if manager.photos.isEmpty {
+            // First launch — there is nothing on the desktop yet to explain the app.
             showSettingsWindow()
         }
     }
@@ -334,12 +337,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hideItem.target = self
         menu.addItem(hideItem)
 
-        #if !MAS
         // Check for Updates
         let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
-        #endif
 
         menu.addItem(.separator())
 
@@ -350,14 +351,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Updates
 
-    #if !MAS
     /// Opens Settings and runs a check there, so the result lands in the same
     /// place the user would look for it rather than in a modal they dismiss.
     @objc func checkForUpdates() {
         showSettingsWindow()
         Task { await Updater.shared.check(userInitiated: true) }
     }
-    #endif
 
     // MARK: - Settings Window
 

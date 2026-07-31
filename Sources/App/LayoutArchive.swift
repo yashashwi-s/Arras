@@ -22,12 +22,102 @@ import AppKit
 /// `PhotoItem`, which already tolerates missing keys) can detect and adapt to older
 /// bundles instead of failing to decode them silently.
 struct LayoutManifest: Codable {
-    static let currentFormatVersion = 1
+    /// v2 adds `preferences`, `relativeFrames`, and `itemCount`. Every added field is
+    /// optional so a v1 bundle still decodes, and a v1 app reading a v2 bundle simply
+    /// ignores what it doesn't know.
+    static let currentFormatVersion = 2
 
     let formatVersion: Int
     let appVersion: String
     let exportedAt: Date
     let photos: [PhotoItem]
+
+    /// Number of widgets, so a bundle can be described without unpacking it.
+    let itemCount: Int?
+
+    /// App-wide settings, absent unless the user chose to include them.
+    let preferences: ExportedPreferences?
+
+    /// Screen-independent positions, keyed by `PhotoItem.id` string.
+    let relativeFrames: [String: RelativeFrame]?
+
+    /// Screen-independent positions for per-image Space frames:
+    /// photo id -> image filename -> position.
+    let relativeImageFrames: [String: [String: RelativeFrame]]?
+}
+
+/// A window position expressed as fractions of the screen's `visibleFrame` rather than
+/// in absolute points.
+///
+/// Absolute coordinates are meaningless on a Mac with a different display: a widget
+/// parked in the bottom-right of a 1440-wide laptop screen lands somewhere near the
+/// middle of a 5K display. Storing the centre as a fraction keeps a layout's *shape*
+/// intact across machines, which is what "move my setup to another Mac" actually means.
+struct RelativeFrame: Codable {
+    /// Centre of the widget, 0...1 across the screen's visible area.
+    var centerX: Double
+    var centerY: Double
+    /// Width as a fraction of screen width, so a widget keeps its visual weight
+    /// rather than shrinking to a stamp on a much larger display.
+    var widthFraction: Double
+
+    init(frame: NSRect, in visibleFrame: NSRect) {
+        let w = max(visibleFrame.width, 1)
+        let h = max(visibleFrame.height, 1)
+        centerX = Double((frame.midX - visibleFrame.minX) / w)
+        centerY = Double((frame.midY - visibleFrame.minY) / h)
+        widthFraction = Double(frame.width / w)
+    }
+
+    /// Rebuilds an absolute frame on the target screen, preserving the source aspect
+    /// ratio. Sizes are clamped so a bad or extreme fraction can't produce a widget
+    /// too small to grab or larger than the screen.
+    func absoluteFrame(in visibleFrame: NSRect, aspectRatio: CGFloat) -> NSRect {
+        let width = min(
+            max(CGFloat(widthFraction) * visibleFrame.width, 80),
+            visibleFrame.width
+        )
+        let height = aspectRatio > 0 ? width / aspectRatio : width
+        let cx = visibleFrame.minX + CGFloat(centerX) * visibleFrame.width
+        let cy = visibleFrame.minY + CGFloat(centerY) * visibleFrame.height
+        return NSRect(x: cx - width / 2, y: cy - height / 2, width: width, height: height)
+    }
+}
+
+/// App-wide settings that live in `UserDefaults` rather than in `photos.json`.
+///
+/// Without these a `.tableau` only carries half a setup — the widgets arrive but the
+/// hotkey, snapping, and login behaviour don't. Import is opt-in precisely because
+/// these are global: a layout someone shares should never silently rebind the
+/// recipient's system-wide shortcut or change what launches at login.
+struct ExportedPreferences: Codable {
+    var launchAtLogin: Bool?
+    var globalHotKeyEnabled: Bool?
+    var globalHotKeyShortcut: Shortcut?
+    var snapToEdgesEnabled: Bool?
+    var hideMenuBarIcon: Bool?
+
+    /// Snapshot of the current app settings.
+    @MainActor
+    static func current(launchAtLogin: Bool) -> ExportedPreferences {
+        ExportedPreferences(
+            launchAtLogin: launchAtLogin,
+            globalHotKeyEnabled: HotKeyManager.shared.isEnabled,
+            globalHotKeyShortcut: HotKeyManager.shared.shortcut,
+            snapToEdgesEnabled: SnapEngine.shared.isEnabled,
+            hideMenuBarIcon: UserDefaults.standard.bool(forKey: "hideMenuBarIcon")
+        )
+    }
+
+    /// A short human-readable list, so the import dialog can say what it is about to change.
+    var summary: String {
+        var parts: [String] = []
+        if launchAtLogin != nil { parts.append("launch at login") }
+        if globalHotKeyEnabled != nil || globalHotKeyShortcut != nil { parts.append("global shortcut") }
+        if snapToEdgesEnabled != nil { parts.append("snapping") }
+        if hideMenuBarIcon != nil { parts.append("menu bar icon") }
+        return parts.isEmpty ? "none" : parts.joined(separator: ", ")
+    }
 }
 
 enum LayoutArchiveError: LocalizedError {
@@ -55,7 +145,7 @@ extension PhotoManager {
     /// Writes every current photo (single images and Spaces) plus their positions and
     /// aesthetic settings into a `.tableau` bundle at `url`. `url` must come from an
     /// `NSSavePanel` — the sandbox only grants write access to user-chosen paths.
-    func exportLayout(to url: URL) throws {
+    func exportLayout(to url: URL, includePreferences: Bool = false) throws {
         guard !photos.isEmpty else { throw LayoutArchiveError.emptyLayout }
 
         var writer = SimpleZipWriter()
@@ -70,11 +160,33 @@ extension PhotoManager {
             }
         }
 
+        // Record every frame as a fraction of the screen it currently sits on, so the
+        // layout can be rebuilt in proportion on a Mac with different displays.
+        var relativeFrames: [String: RelativeFrame] = [:]
+        var relativeImageFrames: [String: [String: RelativeFrame]] = [:]
+        for item in photos {
+            let key = item.id.uuidString
+            if let relative = Self.relativeFrame(for: item.frameString) {
+                relativeFrames[key] = relative
+            }
+            var perImage: [String: RelativeFrame] = [:]
+            for (filename, config) in item.folderImageConfigs {
+                if let relative = Self.relativeFrame(for: config.frameString) {
+                    perImage[filename] = relative
+                }
+            }
+            if !perImage.isEmpty { relativeImageFrames[key] = perImage }
+        }
+
         let manifest = LayoutManifest(
             formatVersion: LayoutManifest.currentFormatVersion,
             appVersion: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown",
             exportedAt: Date(),
-            photos: photos
+            photos: photos,
+            itemCount: photos.count,
+            preferences: includePreferences ? .current(launchAtLogin: launchAtLogin) : nil,
+            relativeFrames: relativeFrames.isEmpty ? nil : relativeFrames,
+            relativeImageFrames: relativeImageFrames.isEmpty ? nil : relativeImageFrames
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -141,12 +253,40 @@ extension PhotoManager {
             }
 
             var newItem = remapped(sourceItem, filenameMap: filenameMap)
-            newItem.frameString = Self.clampFrameString(newItem.frameString, toFit: visibleFrame)
-            for (key, config) in newItem.folderImageConfigs {
-                newItem.folderImageConfigs[key] = FolderImageConfig(
-                    frameString: Self.clampFrameString(config.frameString, toFit: visibleFrame),
-                    widgetWidth: config.widgetWidth
+
+            // Prefer the screen-independent position when the bundle carries one; fall
+            // back to the absolute frame (clamped on-screen) for v1 bundles.
+            let sourceKey = sourceItem.id.uuidString
+            if let relative = manifest.relativeFrames?[sourceKey] {
+                let aspect = Self.aspectRatio(ofFrameString: sourceItem.frameString)
+                newItem.frameString = NSStringFromRect(
+                    relative.absoluteFrame(in: visibleFrame, aspectRatio: aspect)
                 )
+                newItem.widgetWidth = NSRectFromString(newItem.frameString).width
+            } else {
+                newItem.frameString = Self.clampFrameString(newItem.frameString, toFit: visibleFrame)
+            }
+
+            let relativePerImage = manifest.relativeImageFrames?[sourceKey]
+            for (key, config) in newItem.folderImageConfigs {
+                // folderImageConfigs was already re-keyed to the new filenames, but the
+                // manifest's relative entries are still keyed by the original ones.
+                let originalName = filenameMap.first(where: { $0.value == key })?.key ?? key
+                if let relative = relativePerImage?[originalName] {
+                    let frame = relative.absoluteFrame(
+                        in: visibleFrame,
+                        aspectRatio: Self.aspectRatio(ofFrameString: config.frameString)
+                    )
+                    newItem.folderImageConfigs[key] = FolderImageConfig(
+                        frameString: NSStringFromRect(frame),
+                        widgetWidth: frame.width
+                    )
+                } else {
+                    newItem.folderImageConfigs[key] = FolderImageConfig(
+                        frameString: Self.clampFrameString(config.frameString, toFit: visibleFrame),
+                        widgetWidth: config.widgetWidth
+                    )
+                }
             }
 
             addImportedItem(newItem)
@@ -154,6 +294,43 @@ extension PhotoManager {
         }
 
         return importedCount
+    }
+
+    /// Applies preferences carried by a bundle. Separate from `importLayout` and never
+    /// implicit, because these are system-wide settings the recipient did not choose.
+    func applyImportedPreferences(_ preferences: ExportedPreferences) {
+        if let enabled = preferences.globalHotKeyEnabled {
+            HotKeyManager.shared.isEnabled = enabled
+        }
+        if let shortcut = preferences.globalHotKeyShortcut {
+            HotKeyManager.shared.shortcut = shortcut
+        }
+        if let snap = preferences.snapToEdgesEnabled {
+            SnapEngine.shared.isEnabled = snap
+        }
+        if let hide = preferences.hideMenuBarIcon {
+            UserDefaults.standard.set(hide, forKey: "hideMenuBarIcon")
+        }
+        // Left last: it can present system UI, and it is the one setting with an
+        // effect outside the app.
+        if let launch = preferences.launchAtLogin, launch != launchAtLogin {
+            setLaunchAtLogin(launch)
+        }
+    }
+
+    /// Reads a bundle's manifest without importing anything, so the UI can describe
+    /// what is inside before the user commits.
+    static func inspect(_ url: URL) throws -> LayoutManifest {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+
+        let reader = try SimpleZipReader(data: try Data(contentsOf: url))
+        guard let manifestData = reader.entryData(named: "manifest.json") else {
+            throw LayoutArchiveError.missingManifest
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(LayoutManifest.self, from: manifestData)
     }
 
     // MARK: - Helpers
@@ -198,7 +375,42 @@ extension PhotoManager {
         }
         item.folderImageConfigs = remappedConfigs
 
+        // Portable per-photo preferences: these describe intent, not hardware, so they
+        // travel.
+        item.isSpaceBound = source.isSpaceBound
+        item.themeAdaptive = source.themeAdaptive
+
+        // Display bindings deliberately do NOT travel.
+        //
+        // displayIdentifier and savedDisplayFrames are fingerprints of the *exporting*
+        // Mac's monitors. On any other machine they can never match, so per-display
+        // restore would silently do nothing — and isHiddenForDisplay could arrive true,
+        // leaving a widget permanently invisible with no way to reason about why.
+        // PhotoItem's initialiser already defaults these; stating it explicitly keeps a
+        // later "copy every field" refactor from quietly reintroducing the bug.
+        item.displayIdentifier = nil
+        item.savedDisplayFrames = [:]
+        item.isHiddenForDisplay = false
+
         return item
+    }
+
+    /// Aspect ratio of a saved frame, used to rebuild a proportional frame on import.
+    private static func aspectRatio(ofFrameString frameString: String) -> CGFloat {
+        let rect = NSRectFromString(frameString)
+        guard rect.width > 0, rect.height > 0 else { return 1 }
+        return rect.width / rect.height
+    }
+
+    /// Expresses a saved frame relative to whichever screen currently contains it.
+    private static func relativeFrame(for frameString: String) -> RelativeFrame? {
+        guard !frameString.isEmpty else { return nil }
+        let rect = NSRectFromString(frameString)
+        guard rect.width > 0, rect.height > 0 else { return nil }
+
+        let screen = NSScreen.screens.first { $0.frame.intersects(rect) } ?? NSScreen.main
+        guard let visibleFrame = screen?.visibleFrame else { return nil }
+        return RelativeFrame(frame: rect, in: visibleFrame)
     }
 
     /// If `frameString` decodes to a rect that doesn't overlap any connected screen

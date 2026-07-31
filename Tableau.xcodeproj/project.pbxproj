@@ -7,48 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		04040C14C8643B019680B7C7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8541A1636A4B5B3C5F5C767B /* Assets.xcassets */; };
 		0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */; };
 		148EA20191B9FD9D1D5DA2CA /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = F83FE7808355A305F1FBCBF5 /* Updater.swift */; };
-		1515413BF73FD58F2C40F8BC /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7002D7D7A0D350E3425F497 /* DisplayManager.swift */; };
-		16A04141D960857518EF88D3 /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
 		19613B0E7D954A489A92335F /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */; };
-		1B1BDD11791A336394D9755F /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
 		1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
-		21BF92A496326017DAF982C3 /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */; };
-		29399CA5C85858A82109754D /* DownloadTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD8235ABA05B3CF358C833A /* DownloadTask.swift */; };
 		2D7B0D529EBC3DCC16F13C8B /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */; };
 		3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
 		3EB0B5142A23A2C55F5DCB3A /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475CF76E321700D3B0FE411B /* Constants.swift */; };
-		400D8D56443E915E8248ED97 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
-		44293FA6953371CBE157D59B /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
-		45DBD229F38CCEC9C2593A29 /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */; };
 		4B432C5D637D74287BB85C92 /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */; };
 		524280D26FA49B69D4C57B5D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8541A1636A4B5B3C5F5C767B /* Assets.xcassets */; };
-		52E6E35C0A456B90E6BEDC3B /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
 		54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD8235ABA05B3CF358C833A /* DownloadTask.swift */; };
-		79BF320FC7EEF2D7D9CFFBE4 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
-		82D5D9743DE9D70E4669DD94 /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */; };
 		82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
-		851873BD118DE3046444461D /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
-		8F4301142981C95D6812BE22 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
 		9B1094CED44B95FC355FDDF7 /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7002D7D7A0D350E3425F497 /* DisplayManager.swift */; };
 		9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
 		9F3E1582B4271830960B8864 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */; };
 		A345F09CD4A2E93BEA74FFBB /* UpdateStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */; };
 		A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
-		BBBBD66BD99CDD58511689DF /* UpdateStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */; };
 		C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
-		C4865C0539AB64B629ADD31E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
 		C8D666ACD5D6E42B2CB6FEA1 /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
-		D1589FAE9A086973753EB4E4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */; };
 		D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
-		DACC762F16945E4ED0DB0A62 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
-		DE64CB544BED92571250B90C /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = F83FE7808355A305F1FBCBF5 /* Updater.swift */; };
-		E6A284AD7E34C04FA5590C2F /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */; };
-		E9B5AE9E12FACAA2A1830037 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475CF76E321700D3B0FE411B /* Constants.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,7 +41,6 @@
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
 		35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
-		4DEFCF39A43331E6BDA1EED9 /* Tableau-MAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tableau-MAS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5243BF4CF6AD56596BCC051F /* SnapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapEngine.swift; sourceTree = "<group>"; };
 		5F46A9971A32BECF3D655474 /* PhotoImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImport.swift; sourceTree = "<group>"; };
 		6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
@@ -89,7 +67,6 @@
 		A0701387CC5F06B548169493 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4DEFCF39A43331E6BDA1EED9 /* Tableau-MAS.app */,
 				E7207FDCA56B8315D7261617 /* Tableau.app */,
 			);
 			name = Products;
@@ -134,24 +111,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		BBDB07D090B95B668B931518 /* Tableau-MAS */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 182F2F5C4A7FE0244E91A242 /* Build configuration list for PBXNativeTarget "Tableau-MAS" */;
-			buildPhases = (
-				76026649D44997FA1FD57B14 /* Sources */,
-				870BA19780187FB59DDA5EB0 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = "Tableau-MAS";
-			packageProductDependencies = (
-			);
-			productName = "Tableau-MAS";
-			productReference = 4DEFCF39A43331E6BDA1EED9 /* Tableau-MAS.app */;
-			productType = "com.apple.product-type.application";
-		};
 		E962C211A597EF2857DF3BBD /* Tableau */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F2BCC6277CA734CABF02AC33 /* Build configuration list for PBXNativeTarget "Tableau" */;
@@ -179,10 +138,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					BBDB07D090B95B668B931518 = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Manual;
-					};
 					E962C211A597EF2857DF3BBD = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
@@ -204,7 +159,6 @@
 			projectRoot = "";
 			targets = (
 				E962C211A597EF2857DF3BBD /* Tableau */,
-				BBDB07D090B95B668B931518 /* Tableau-MAS */,
 			);
 		};
 /* End PBXProject section */
@@ -215,14 +169,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				524280D26FA49B69D4C57B5D /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		870BA19780187FB59DDA5EB0 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				04040C14C8643B019680B7C7 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,33 +202,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		76026649D44997FA1FD57B14 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				16A04141D960857518EF88D3 /* AnimatedImage.swift in Sources */,
-				D1589FAE9A086973753EB4E4 /* AppDelegate.swift in Sources */,
-				E9B5AE9E12FACAA2A1830037 /* Constants.swift in Sources */,
-				C4865C0539AB64B629ADD31E /* ContentView.swift in Sources */,
-				79BF320FC7EEF2D7D9CFFBE4 /* DesktopPhotoWindow.swift in Sources */,
-				1515413BF73FD58F2C40F8BC /* DisplayManager.swift in Sources */,
-				29399CA5C85858A82109754D /* DownloadTask.swift in Sources */,
-				44293FA6953371CBE157D59B /* HotKeyManager.swift in Sources */,
-				400D8D56443E915E8248ED97 /* ImageManager.swift in Sources */,
-				21BF92A496326017DAF982C3 /* LayoutArchive.swift in Sources */,
-				52E6E35C0A456B90E6BEDC3B /* PhotoImport.swift in Sources */,
-				DACC762F16945E4ED0DB0A62 /* PhotoItem.swift in Sources */,
-				1B1BDD11791A336394D9755F /* PhotoWidgetOSXApp.swift in Sources */,
-				82D5D9743DE9D70E4669DD94 /* ShortcutRecorder.swift in Sources */,
-				8F4301142981C95D6812BE22 /* SnapEngine.swift in Sources */,
-				E6A284AD7E34C04FA5590C2F /* SnapGuideOverlay.swift in Sources */,
-				45DBD229F38CCEC9C2593A29 /* StatusItemDropView.swift in Sources */,
-				851873BD118DE3046444461D /* StorageMigration.swift in Sources */,
-				BBBBD66BD99CDD58511689DF /* UpdateStatusView.swift in Sources */,
-				DE64CB544BED92571250B90C /* Updater.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -312,35 +231,6 @@
 				SDKROOT = macosx;
 			};
 			name = Debug;
-		};
-		143727F70BCBFF7FB4C03765 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "Sources/App/Tableau-MAS.entitlements";
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Tableau;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tableau needs access to your Photos library so you can pick images to display on your desktop.";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MARKETING_VERSION = 2.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
-				PRODUCT_NAME = Tableau;
-				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = MAS;
-			};
-			name = Release;
 		};
 		27F10BD2759D7E7B886AEA44 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -397,34 +287,6 @@
 				SWIFT_VERSION = 5.9;
 			};
 			name = Release;
-		};
-		6B799124A840C4E1ABA20DDC /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "Sources/App/Tableau-MAS.entitlements";
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Tableau;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tableau needs access to your Photos library so you can pick images to display on your desktop.";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MARKETING_VERSION = 2.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
-				PRODUCT_NAME = Tableau;
-				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = MAS;
-			};
-			name = Debug;
 		};
 		87D8F076FBC4E43BE629FE90 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -520,15 +382,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		182F2F5C4A7FE0244E91A242 /* Build configuration list for PBXNativeTarget "Tableau-MAS" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				6B799124A840C4E1ABA20DDC /* Debug */,
-				143727F70BCBFF7FB4C03765 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
 		F2BCC6277CA734CABF02AC33 /* Build configuration list for PBXNativeTarget "Tableau" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

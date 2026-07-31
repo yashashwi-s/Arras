@@ -12,9 +12,6 @@ settings:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 
-# Both distribution channels build the exact same sources. They differ only in
-# entitlements and in whether the self-updater is compiled in — App Store Review
-# Guideline 2.4.5(iv) requires App Store builds to update via the App Store.
 targetTemplates:
   TableauApp:
     type: application
@@ -36,7 +33,6 @@ targetTemplates:
         ENABLE_HARDENED_RUNTIME: YES
 
 targets:
-  # Developer ID / direct download build. Includes the appcast update checker.
   Tableau:
     templates: [TableauApp]
     settings:
@@ -52,21 +48,3 @@ targets:
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
-  # Mac App Store build. Same features minus the self-updater.
-  Tableau-MAS:
-    templates: [TableauApp]
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau
-        CODE_SIGN_ENTITLEMENTS: Sources/App/Tableau-MAS.entitlements
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: MAS
-        # Switch to "3rd Party Mac Developer Application" and set DEVELOPMENT_TEAM
-        # once a paid account is attached; ad-hoc keeps local builds working.
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "-"
-        DEVELOPMENT_TEAM: ""
-      configs:
-        # get-task-allow is a debug entitlement; App Store submission rejects any
-        # binary carrying it, exactly as notarization does for Developer ID.
-        Release:
-          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO

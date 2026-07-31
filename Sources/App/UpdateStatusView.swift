@@ -1,11 +1,9 @@
-#if !MAS
-
 import SwiftUI
 
 /// The version label and update control that sit at the bottom of Settings.
 ///
-/// Lives in its own file so the App Store target, which has no updater at all,
-/// simply drops it rather than threading `#if` through the settings layout.
+/// Kept out of ContentView so the settings layout stays readable; this owns every
+/// state the updater can be in.
 struct UpdateStatusView: View {
     @ObservedObject private var updater = Updater.shared
     @State private var showingNotes = false
@@ -55,6 +53,16 @@ struct UpdateStatusView: View {
             Text("Installing…")
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
+
+        case .installed(let version):
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                Text("Updated to v\(version)")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
+            }
 
         case .failed(let reason):
             Text(reason)
@@ -109,4 +117,3 @@ struct UpdateStatusView: View {
     }
 }
 
-#endif

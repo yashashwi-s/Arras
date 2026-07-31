@@ -145,14 +145,7 @@ struct ContentView: View {
 
                 Spacer()
 
-                #if MAS
-                // The App Store handles updates; there is nothing to check.
-                Text("v\(Constants.version)")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.quaternary)
-                #else
                 UpdateStatusView()
-                #endif
             }
         }
         .padding(.horizontal, 16)
@@ -251,10 +244,18 @@ struct ContentView: View {
         panel.nameFieldStringValue = "My Desktop.tableau"
         panel.prompt = "Export"
         panel.message = "Save all photos, positions, and settings into a single file"
+
+        // Off by default: a bundle meant for sharing shouldn't carry the author's
+        // login and shortcut settings unless they say so.
+        let includePrefs = NSButton(checkboxWithTitle: "Include app settings (shortcut, snapping, launch at login)", target: nil, action: nil)
+        includePrefs.state = .off
+        includePrefs.toolTip = "Positions are always stored relative to the screen, so the layout transfers to a Mac with different displays"
+        panel.accessoryView = includePrefs
+
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try manager.exportLayout(to: url)
+            try manager.exportLayout(to: url, includePreferences: includePrefs.state == .on)
         } catch {
             presentAlert(title: "Couldn't Export Layout", message: error.localizedDescription, style: .warning)
         }
@@ -270,12 +271,42 @@ struct ContentView: View {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        // Read the manifest first so the dialog can describe what's actually inside,
+        // rather than asking the user to commit to an opaque file.
+        let manifest = try? PhotoManager.inspect(url)
+
         // Never silently destroy the user's current widgets — always ask first.
         let choice = NSAlert()
         choice.messageText = "Import Layout"
-        choice.informativeText = manager.photos.isEmpty
+
+        var details: [String] = []
+        if let manifest {
+            let count = manifest.itemCount ?? manifest.photos.count
+            details.append("\(count) widget\(count == 1 ? "" : "s")")
+            details.append("exported from Tableau \(manifest.appVersion)")
+            details.append(manifest.exportedAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        let provenance = details.isEmpty ? "" : details.joined(separator: " · ") + "\n\n"
+
+        choice.informativeText = provenance + (manager.photos.isEmpty
             ? "Add the photos from this bundle to your desktop."
-            : "Add these photos to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone."
+            : "Add these photos to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone.")
+
+        // Only offer the preferences toggle when the bundle actually carries them, and
+        // leave it off — importing a shared layout must not silently rebind this Mac's
+        // global shortcut or change what launches at login.
+        var prefsCheckbox: NSButton?
+        if let preferences = manifest?.preferences {
+            let box = NSButton(
+                checkboxWithTitle: "Also apply app settings (\(preferences.summary))",
+                target: nil,
+                action: nil
+            )
+            box.state = .off
+            choice.accessoryView = box
+            prefsCheckbox = box
+        }
+
         choice.addButton(withTitle: "Merge")
         choice.addButton(withTitle: "Replace Everything")
         choice.addButton(withTitle: "Cancel")
@@ -291,6 +322,9 @@ struct ContentView: View {
 
         do {
             let count = try manager.importLayout(from: url, mode: mode)
+            if prefsCheckbox?.state == .on, let preferences = manifest?.preferences {
+                manager.applyImportedPreferences(preferences)
+            }
             onMenuUpdate?()
             if count == 0 {
                 presentAlert(title: "Nothing to Import", message: "That bundle didn't contain any photos with valid images.", style: .informational)

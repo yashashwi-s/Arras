@@ -1,5 +1,3 @@
-#if !MAS
-
 import Foundation
 
 /// A one-shot file download that reports progress.
@@ -92,4 +90,3 @@ final class DownloadTask: NSObject, URLSessionDownloadDelegate, @unchecked Senda
     }
 }
 
-#endif
