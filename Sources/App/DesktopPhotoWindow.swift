@@ -34,8 +34,8 @@ class DesktopPhotoWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    func showPhoto(_ image: NSImage, baseWidth: CGFloat = 300, locked: Bool = false, settings: PhotoItem? = nil) {
-        let imageSize = image.size
+    func showPhoto(_ content: PhotoContent, baseWidth: CGFloat = 300, locked: Bool = false, settings: PhotoItem? = nil) {
+        let imageSize = content.size
         guard imageSize.width > 0, imageSize.height > 0 else { return }
 
         let aspectRatio = imageSize.width / imageSize.height
@@ -44,7 +44,7 @@ class DesktopPhotoWindow: NSWindow {
 
         let container = DraggablePhotoView(
             frame: NSRect(x: 0, y: 0, width: w, height: h),
-            image: image,
+            content: content,
             locked: locked,
             settings: settings
         )
@@ -71,11 +71,17 @@ class DesktopPhotoWindow: NSWindow {
     }
 
     func hidePhoto() {
-        
+
         // Strip any in-flight CATransition animations to prevent stale callbacks
         if let container = contentView as? DraggablePhotoView {
             container.layer?.removeAllAnimations()
             container.imageView.layer?.removeAllAnimations()
+            // Also tear down GIF playback explicitly rather than relying on
+            // removeAllAnimations() alone -- it clears the render-server
+            // side, but stopAnimating() also drops our tracked frame data
+            // so a stray delayed "start playback" block (see swapImage)
+            // can't resurrect it on a view that's going away.
+            container.imageView.stopAnimating()
         }
         close()
     }
@@ -87,6 +93,9 @@ class DesktopPhotoWindow: NSWindow {
     func resizeTo(width: CGFloat) {
         guard let container = contentView as? DraggablePhotoView,
               let image = container.photoImage else { return }
+        // photoImage is always a representative still (even for animated
+        // content -- see AspectFillImageView.image), so aspect-ratio math
+        // here needs no animated-specific branch.
         let ar = image.size.width / image.size.height
         let h = width / ar
         let newFrame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: h)
@@ -124,10 +133,13 @@ class DesktopPhotoWindow: NSWindow {
 
     // MARK: - Smooth image swap (CATransition crossfade + dynamic frame)
 
-    func swapImage(_ newImage: NSImage, targetFrame: NSRect? = nil, mode: String = "dynamic", animate: Bool = true) {
+    private static let crossfadeDuration: TimeInterval = 0.35
+
+    func swapImage(_ content: PhotoContent, targetFrame: NSRect? = nil, mode: String = "dynamic", animate: Bool = true) {
         guard let container = contentView as? DraggablePhotoView else { return }
-        let newAR = newImage.size.width / newImage.size.height
-        
+        let newSize = content.size
+        let newAR = newSize.width / newSize.height
+
         if mode == "dynamic" {
             container.aspectRatio = newAR
         }
@@ -152,17 +164,26 @@ class DesktopPhotoWindow: NSWindow {
             // GPU-accelerated crossfade via Core Animation
             let transition = CATransition()
             transition.type = .fade
-            transition.duration = 0.35
+            transition.duration = Self.crossfadeDuration
             transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             container.imageView.layer?.add(transition, forKey: kCATransition)
         }
 
-        // Set the new image (the CATransition handles the crossfade)
-        container.imageView.image = newImage
+        // Hand off the new content (the CATransition above handles the
+        // crossfade of whatever `contents` ends up being). For animated
+        // content, GIF playback is deliberately deferred until the
+        // crossfade finishes rather than started immediately: a
+        // CAKeyframeAnimation on "contents" installed in the same
+        // transaction as the CATransition would fight the transition for
+        // that same property, since the transition crosses-fades toward
+        // whatever `contents` is at each instant rather than a single fixed
+        // end state. Landing on frame 0 first keeps the crossfade correct
+        // and simple; playback then picks up smoothly right after.
+        container.imageView.apply(content, animationStartDelay: animate ? Self.crossfadeDuration : 0)
 
         if animate {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.35
+                ctx.duration = Self.crossfadeDuration
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 ctx.allowsImplicitAnimation = true
                 self.animator().setFrame(newFrame, display: true)
@@ -186,11 +207,24 @@ private enum DragMode {
 // MARK: - Aspect Fill Image View
 
 class AspectFillImageView: NSView {
-    var image: NSImage? {
-        didSet {
-            layer?.contents = image
-        }
-    }
+    private static let gifAnimationKey = "gifPlayback"
+
+    /// A representative still (first frame, for animated content) kept in
+    /// sync at all times so aspect-ratio/size math elsewhere (resizeTo,
+    /// DraggablePhotoView.photoImage) doesn't need to know or care whether
+    /// playback is currently animated.
+    private(set) var image: NSImage?
+
+    /// Non-nil while a GIF-style animation is actively driving
+    /// `layer.contents`.
+    private(set) var animatedFrames: AnimatedImageFrames?
+
+    /// Bumped on every `apply(_:)` call. A deferred playback-start closure
+    /// captures the generation it was scheduled under and checks it before
+    /// installing the CAKeyframeAnimation, so a rapid-fire Space rotation
+    /// (swap A, then swap B before A's crossfade finishes) can't let A's
+    /// delayed animation clobber B's content after the fact.
+    private var generation = 0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -199,6 +233,61 @@ class AspectFillImageView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Displays `content`, stopping any in-progress animation first.
+    /// `animationStartDelay` lets callers (the crossfade in
+    /// DesktopPhotoWindow.swapImage) land on the first frame immediately
+    /// while deferring the start of looped playback until after a
+    /// transition finishes, so the two animations never compete for the
+    /// same `contents` property at once.
+    func apply(_ content: PhotoContent, animationStartDelay: TimeInterval = 0) {
+        switch content {
+        case .still(let stillImage):
+            setStill(stillImage)
+        case .animated(let frames, let representative):
+            setAnimated(frames, representativeImage: representative, startDelay: animationStartDelay)
+        }
+    }
+
+    private func setStill(_ newImage: NSImage?) {
+        stopAnimating()
+        image = newImage
+        layer?.contents = newImage
+    }
+
+    private func setAnimated(_ frames: AnimatedImageFrames, representativeImage: NSImage, startDelay: TimeInterval) {
+        stopAnimating()
+        image = representativeImage
+        // Show frame 0 right away so there's always something on screen,
+        // even before (or if) the keyframe animation below installs.
+        layer?.contents = frames.images.first
+        guard frames.images.count > 1 else { return }
+        animatedFrames = frames
+
+        generation += 1
+        let expectedGeneration = generation
+        let install: () -> Void = { [weak self] in
+            // Bail if a newer `apply(_:)` call superseded us while this was
+            // pending -- see the stale-callback discipline documented on
+            // hidePhoto().
+            guard let self, self.generation == expectedGeneration else { return }
+            self.layer?.add(frames.makeContentsAnimation(), forKey: Self.gifAnimationKey)
+        }
+        if startDelay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay, execute: install)
+        } else {
+            install()
+        }
+    }
+
+    /// Stops GIF playback and drops the tracked frame data. Cheap and safe
+    /// to call even when nothing is animating.
+    func stopAnimating() {
+        generation += 1
+        guard animatedFrames != nil else { return }
+        layer?.removeAnimation(forKey: Self.gifAnimationKey)
+        animatedFrames = nil
+    }
 }
 
 // MARK: - Draggable Photo View
@@ -227,9 +316,9 @@ class DraggablePhotoView: NSView {
     private var borderLayer: CAShapeLayer?
     private var vignetteLayer: CAGradientLayer?
 
-    init(frame: NSRect, image: NSImage, locked: Bool, settings: PhotoItem? = nil) {
+    init(frame: NSRect, content: PhotoContent, locked: Bool, settings: PhotoItem? = nil) {
         imageView = AspectFillImageView(frame: NSRect(origin: .zero, size: frame.size))
-        imageView.image = image
+        imageView.apply(content)
         imageView.wantsLayer = true
 
         let cr = settings?.cornerRadius ?? 16
@@ -239,7 +328,7 @@ class DraggablePhotoView: NSView {
         imageView.layer?.cornerCurve = .continuous
 
         self.isLocked = locked
-        self.aspectRatio = image.size.width / image.size.height
+        self.aspectRatio = content.size.width / content.size.height
 
         super.init(frame: frame)
 

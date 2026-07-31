@@ -16,6 +16,7 @@
 		9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
 		9F3E1582B4271830960B8864 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */; };
 		C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
+		D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		8541A1636A4B5B3C5F5C767B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		871038931F2825DED9F16B0B /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		877C01CDA67795DE4EF40F70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedImage.swift; sourceTree = "<group>"; };
 		E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E7207FDCA56B8315D7261617 /* Tableau.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tableau.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -51,6 +53,7 @@
 		B4252C76D371378E48CACC0A /* App */ = {
 			isa = PBXGroup;
 			children = (
+				CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */,
 				E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */,
 				8541A1636A4B5B3C5F5C767B /* Assets.xcassets */,
 				475CF76E321700D3B0FE411B /* Constants.swift */,
@@ -143,6 +146,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */,
 				9F3E1582B4271830960B8864 /* AppDelegate.swift in Sources */,
 				3EB0B5142A23A2C55F5DCB3A /* Constants.swift in Sources */,
 				3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */,
