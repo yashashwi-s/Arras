@@ -1,3 +1,8 @@
+// The Mac App Store delivers updates itself, and Review Guideline 2.4.5(iv)
+// forbids an app shipping its own update mechanism. The MAS target compiles this
+// entire file out and drops the network.client entitlement along with it.
+#if !MAS
+
 import Foundation
 import AppKit
 import UserNotifications
@@ -213,3 +218,5 @@ final class UpdateChecker: NSObject, UNUserNotificationCenterDelegate {
         return false
     }
 }
+
+#endif

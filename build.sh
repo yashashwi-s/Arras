@@ -4,6 +4,7 @@
 #   ./build.sh           # Just build
 #   ./build.sh --run     # Build + install to /Applications + launch
 #   ./build.sh --release # Build + create .zip and .dmg in dist/
+#   ./build.sh --mas     # Build the Mac App Store variant (no self-updater)
 
 set -euo pipefail
 
@@ -11,6 +12,13 @@ APP_NAME="Tableau"
 SCHEME="Tableau"
 BUILD_DIR="build"
 OUTPUT_DIR="dist"
+
+# The MAS target strips the appcast updater and the network entitlement, so it
+# gets its own build dir to avoid clobbering the Developer ID artifact.
+if [ "${1:-}" = "--mas" ]; then
+    SCHEME="Tableau-MAS"
+    BUILD_DIR="build/mas"
+fi
 
 # Auto-detect Xcode path
 if [ -d "/Applications/Xcode.app" ]; then
@@ -29,7 +37,7 @@ echo "⚙️  Generating Xcode project..."
 xcodegen generate 2>&1 | tail -1
 
 # Build
-echo "🏗️  Building $APP_NAME (Release)..."
+echo "🏗️  Building $SCHEME (Release)..."
 xcodebuild \
   -project "$APP_NAME.xcodeproj" \
   -scheme "$SCHEME" \

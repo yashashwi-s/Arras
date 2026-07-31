@@ -6,6 +6,7 @@ struct ContentView: View {
     @ObservedObject var manager: PhotoManager
     var onMenuUpdate: (() -> Void)?
     @State private var selectedPhotosItems: [PhotosPickerItem] = []
+    @ObservedObject private var hotKeys = HotKeyManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,22 +65,58 @@ struct ContentView: View {
     // MARK: - Footer
 
     private var footerBar: some View {
-        HStack(spacing: 12) {
-            Toggle("Launch at Login", isOn: Binding(
-                get: { manager.launchAtLogin },
-                set: {
-                    manager.setLaunchAtLogin($0)
-                    onMenuUpdate?()
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { manager.launchAtLogin },
+                    set: {
+                        manager.setLaunchAtLogin($0)
+                        onMenuUpdate?()
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Toggle("Show/Hide All", isOn: Binding(
+                    get: { hotKeys.isEnabled },
+                    set: {
+                        hotKeys.isEnabled = $0
+                        onMenuUpdate?()
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+                .help("A system-wide shortcut that hides every photo, then brings them back")
+
+                ShortcutRecorder(
+                    shortcut: Binding(
+                        get: { hotKeys.shortcut },
+                        set: {
+                            hotKeys.shortcut = $0
+                            onMenuUpdate?()
+                        }
+                    ),
+                    isEnabled: hotKeys.isEnabled
+                )
+
+                // Registration fails when another app already owns the combination.
+                if hotKeys.isEnabled && !hotKeys.isRegistered {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .help("Another app is already using this shortcut. Pick a different one.")
                 }
-            ))
-            .toggleStyle(.checkbox)
-            .font(.system(size: 11))
 
-            Spacer()
+                Spacer()
 
-            Text("v2.0.0")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.quaternary)
+                Text("v\(Constants.version)")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.quaternary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

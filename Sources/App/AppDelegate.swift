@@ -8,12 +8,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var settingsWindow: NSWindow?
     let manager = PhotoManager()
 
+    private var dropView: StatusItemDropView?
+    private var pasteMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+        setupGlobalHotKey()
+        setupPasteMonitor()
 
+        #if !MAS
         // Asks for notification permission, then polls the appcast on launch and
         // every few hours so updates and announcements reach existing users.
+        // Absent on the App Store build, which updates through the Store.
         UpdateChecker.shared.start()
+        #endif
 
         // If first launch (no photos yet), show settings
         if manager.photos.isEmpty {
@@ -44,14 +52,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem?.autosaveName = "TableauStatusItem"
         statusItem?.button?.image = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: Constants.appName)
-        statusItem?.button?.toolTip = Constants.appName
+        statusItem?.button?.toolTip = "\(Constants.appName) — drop images here to add them"
         statusItem?.button?.image?.size = NSSize(width: 18, height: 18)
+
+        attachDropTarget()
 
         UserDefaults.standard.set(false, forKey: "hideMenuBarIcon")
 
         // Create the menu with a delegate so it rebuilds every time it opens
         let menu = NSMenu()
         menu.delegate = self
+        // We decide enablement ourselves (e.g. Paste depends on the clipboard);
+        // AppKit's automatic pass would just re-enable anything with a target.
+        menu.autoenablesItems = false
         statusItem?.menu = menu
         rebuildMenu()
     }
@@ -59,7 +72,77 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func hideStatusItem() {
         statusItem?.statusBar?.removeStatusItem(statusItem!)
         statusItem = nil
+        dropView = nil
         UserDefaults.standard.set(true, forKey: "hideMenuBarIcon")
+    }
+
+    // MARK: - Drag & Drop onto the menu bar icon
+
+    /// Overlays the status button with a drop target sized to track it.
+    private func attachDropTarget() {
+        guard let button = statusItem?.button else { return }
+
+        let view = StatusItemDropView(frame: button.bounds)
+        view.autoresizingMask = [.width, .height]
+        view.onDrop = { [weak self] urls in
+            guard let self else { return }
+            let added = self.manager.addImages(from: urls)
+            if added > 0 { self.rebuildMenu() }
+        }
+        button.addSubview(view)
+        dropView = view
+    }
+
+    // MARK: - Global Hotkey
+
+    private func setupGlobalHotKey() {
+        HotKeyManager.shared.onTrigger = { [weak self] in
+            guard let self else { return }
+            self.manager.toggleAllVisibility()
+            self.rebuildMenu()
+        }
+        HotKeyManager.shared.start()
+    }
+
+    // MARK: - Paste (⌘V)
+
+    /// A menu bar agent has no main menu to hang ⌘V off, so the shortcut is
+    /// caught locally while one of our own windows is key. The status menu item
+    /// covers the case where no window is open.
+    private func setupPasteMonitor() {
+        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == .command, event.charactersIgnoringModifiers?.lowercased() == "v" else {
+                return event
+            }
+            // Don't steal ⌘V from a text field the user is typing in.
+            if self.settingsWindow?.firstResponder is NSTextView { return event }
+
+            return self.pasteFromClipboard() ? nil : event
+        }
+    }
+
+    /// - Returns: true if at least one widget was created.
+    @discardableResult
+    private func pasteFromClipboard() -> Bool {
+        let added = manager.addFromPasteboard()
+        guard added > 0 else { return false }
+        rebuildMenu()
+        return true
+    }
+
+    @objc func pasteAsWidget() {
+        guard pasteFromClipboard() else {
+            let alert = NSAlert()
+            alert.messageText = "Nothing to paste"
+            alert.informativeText = "Copy an image or an image file first, then try again."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
+        }
     }
 
     // MARK: - NSMenuDelegate — rebuild menu every time the user clicks the icon
@@ -86,12 +169,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addSpaceItem.target = self
         menu.addItem(addSpaceItem)
 
+        // Paste — greyed out unless the clipboard actually holds an image.
+        let pasteItem = NSMenuItem(title: "Paste as Widget", action: #selector(pasteAsWidget), keyEquivalent: "v")
+        pasteItem.target = self
+        pasteItem.isEnabled = manager.pasteboardHasImage
+        menu.addItem(pasteItem)
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         if !manager.photos.isEmpty {
+            menu.addItem(.separator())
+
+            // Show/Hide All — mirrors the global hotkey, and advertises it.
+            let anyVisible = manager.photos.contains { $0.isVisible }
+            let toggleAllItem = NSMenuItem(
+                title: anyVisible ? "Hide All Photos" : "Show All Photos",
+                action: #selector(toggleAllVisibility),
+                keyEquivalent: ""
+            )
+            toggleAllItem.target = self
+            if HotKeyManager.shared.isEnabled {
+                toggleAllItem.toolTip = "Global shortcut: \(HotKeyManager.shared.shortcut.displayString)"
+            }
+            menu.addItem(toggleAllItem)
+
             menu.addItem(.separator())
 
             for (index, item) in manager.photos.enumerated() {
@@ -230,10 +334,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hideItem.target = self
         menu.addItem(hideItem)
 
+        #if !MAS
         // Check for Updates
         let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
+        #endif
 
         menu.addItem(.separator())
 
@@ -244,9 +350,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Updates
 
+    #if !MAS
     @objc func checkForUpdates() {
         Task { await UpdateChecker.shared.check(userInitiated: true) }
     }
+    #endif
 
     // MARK: - Settings Window
 
@@ -418,6 +526,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func removeAllPhotos() {
         manager.removeAllPhotos()
+    }
+
+    @objc func toggleAllVisibility() {
+        manager.toggleAllVisibility()
+        rebuildMenu()
     }
 
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Mac App Store entitlements.
+
+	  Deliberately narrower than the Developer ID set: no network.client, because
+	  the only networked code (UpdateChecker) is compiled out of this build —
+	  App Store Review Guideline 2.4.5(iv) requires updates come from the Store.
+	  Fewer entitlements also means a smaller privacy nutrition label.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.personal-information.photos-library</key>
+	<true/>
+</dict>
+</plist>

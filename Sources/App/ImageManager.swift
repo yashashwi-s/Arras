@@ -236,6 +236,24 @@ class PhotoManager: ObservableObject {
         for id in ids { removePhoto(id) }
     }
 
+    /// Shows every photo, or hides every photo if any are currently showing.
+    ///
+    /// Biased toward hiding so the global hotkey behaves like a "get out of the
+    /// way" key: one press always clears the desktop, the next restores it.
+    /// - Returns: true if photos are visible after the toggle.
+    @discardableResult
+    func toggleAllVisibility() -> Bool {
+        guard !photos.isEmpty else { return false }
+
+        let anyVisible = photos.contains { $0.isVisible }
+        let target = !anyVisible
+
+        for photo in photos where photo.isVisible != target {
+            toggleVisibility(photo.id)
+        }
+        return target
+    }
+
     // MARK: - Window Creation
 
     private func createWindow(for item: PhotoItem, image: NSImage) {
