@@ -661,9 +661,25 @@ class PhotoManager: ObservableObject {
         dst.vignetteEnabled = src.vignetteEnabled
         dst.isSpaceBound = src.isSpaceBound
         dst.themeAdaptive = src.themeAdaptive
+
+        // v2.2 frame styling. Duplicating a photo is almost always "give me
+        // another one of these", so a copy that silently lost its mat, shape and
+        // tilt would be the wrong answer.
+        dst.matWidth = src.matWidth
+        dst.matColorHex = src.matColorHex
+        dst.shapeMask = src.shapeMask
+        dst.borderStyle = src.borderStyle
+        dst.borderGradientEnabled = src.borderGradientEnabled
+        dst.borderGradientColorHex = src.borderGradientColorHex
+        dst.tiltDegrees = src.tiltDegrees
+        dst.stylePreset = src.stylePreset
+
         // displayIdentifier / savedDisplayFrames / isHiddenForDisplay intentionally not copied —
         // the duplicate gets its own window and should pick up its own home display from
         // wherever createWindow actually places it.
+        //
+        // Presence suppression is likewise recomputed rather than inherited: it
+        // describes the current moment, not the photo.
     }
 
     // MARK: - v1.3 Aesthetic Controls
