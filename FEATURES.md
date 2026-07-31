@@ -98,19 +98,83 @@
 
 ---
 
+## Roadmap Status
+
+The original "Later" list had 22 items. **11 are done**, 11 remain — plus an
+in-app updater and an App Store target that weren't on the list at all.
+
+| Done | Remaining |
+|---|---|
+| Per-display profiles · Space binding · Snap to edges · Alignment guides · Global hotkey · Animated GIF playback · Paste from clipboard · Drag & drop onto menu bar · Theme adaptation · Export/import layout · VoiceOver | Apple Shortcuts · URL scheme · CLI · Live web preview · PDF pages · Grid builder · Wallpaper-aware placement · iCloud sync · AppleScript · Raycast extension · Accent color |
+
+---
+
 ## Later
 
-- [ ] **Apple Shortcuts support** — expose actions (add photo, toggle visibility, set opacity) to the Shortcuts app
+### Carried over from the original roadmap
+
+- [ ] **Apple Shortcuts support** — expose actions (add photo, toggle visibility, set opacity) to the Shortcuts app via App Intents
 - [ ] **URL scheme** — `tableau://add?path=...` for integration with other apps
 - [ ] **CLI interface** — `tableau add ~/path/to/image.jpg --floating --opacity 0.5`
 - [ ] **Live web preview** — embed a `WKWebView` to display a live webpage as a desktop widget
 - [ ] **PDF pages** — display a specific page from a PDF
 - [ ] **Grid builder** — define rows/columns, drag photos into cells; the whole grid moves as one object
-- [ ] **Wallpaper-aware placement** — detect wallpaper's dominant colors and suggest positions to avoid clashing
+- [ ] **Wallpaper-aware placement** — detect wallpaper's dominant colours and suggest positions that don't clash
 - [ ] **iCloud sync** — sync widgets across your Macs (opt-in per photo)
 - [ ] **AppleScript dictionary** — full scriptability: add/remove photos, set properties, query state
 - [ ] **Raycast extension** — search, toggle, and manage photos directly from Raycast
-- [ ] **System accent color integration** — apply the user's macOS accent color to UI elements
+- [ ] **System accent color integration** — apply the user's macOS accent colour to UI elements
+
+### Privacy & presence
+
+The features most likely to be missed once you've had them.
+
+- [ ] **Hide while screen sharing or recording** — personal photos should not join a work call. Detectable publicly on modern macOS via `CGDisplayStreamCreate` activity or `NSWorkspace` running-app checks for Zoom/Teams/QuickTime
+- [ ] **Hide when a fullscreen app is frontmost** — desktop widgets are invisible behind fullscreen apps anyway; tearing them down reclaims the memory and stops rotation timers
+- [ ] **Focus filter integration** — tie visibility to macOS Focus modes, so Work hides the holiday photos and Personal brings them back
+- [ ] **Schedule** — show a widget only between certain hours, or only on certain weekdays
+- [ ] **Peek on hover** — keep a photo at low opacity and fade it to full when the pointer rests on it, so it can live somewhere busy without being noise
+
+### Layout & editing
+
+- [ ] **Scenes** — named layouts (Work, Weekend, Presentation) switchable from the menu bar or a hotkey. A natural extension of the `.tableau` export that already exists
+- [ ] **Multi-select + align/distribute** — select several photos and align edges or distribute spacing evenly, the way a design tool does
+- [ ] **Snap to grid** — an optional fixed grid in addition to the existing edge snapping, for deliberately tidy arrangements
+- [ ] **Keyboard nudge** — arrow keys move the selected photo 1pt, ⇧arrow 10pt. Far more precise than dragging
+- [ ] **Appearance presets** — save a look (corner radius, shadow, border, fade) and apply it to other photos in one click, instead of re-dialling every slider
+- [ ] **Copy/paste style** — ⌥⌘C / ⌥⌘V between photos
+- [ ] **Rotation / tilt** — a few degrees of tilt makes a scattered photo-pile look natural rather than gridded
+- [ ] **Search & filter in settings** — matters once a user has 20+ widgets
+
+### Content sources
+
+- [ ] **Screenshot region to widget** — drag a region of the screen and pin it as a persistent reference. Probably the single most useful non-photo use case
+- [ ] **Muted video / Live Photo loops** — the animation pipeline built for GIFs generalises to short silent video
+- [ ] **Photos album sync** — point a Space at a Photos smart album so it follows the album as you add to it, rather than being a one-time copy
+- [ ] **Window mirror** — show a live miniature of another app's window (a chart, a log, a build) pinned to the desktop
+- [ ] **Caption overlay** — optional text on a photo: a label, a date, a countdown
+
+### Smart Canvas
+
+- [ ] **Shuffle** — random order rather than sequential, with no immediate repeats
+- [ ] **Ken Burns effect** — slow pan and zoom across each image instead of a static hold
+- [ ] **Transition styles** — slide, push, or zoom alongside the existing crossfade
+- [ ] **Synchronised rotation** — several Spaces advancing together on one clock, so a wall of photos changes as a set
+- [ ] **Favourites weighting** — show starred images more often
+
+### System behaviour
+
+- [ ] **Pause on battery** — stop rotation timers and GIF playback on battery or in Low Power Mode. Currently a many-widget setup costs the same either way
+- [ ] **Menu bar quick peek** — a popover with thumbnails and per-photo toggles, so common actions don't require opening Settings
+- [ ] **Automatic layout backup** — keep the last few `photos.json` revisions so a mistaken "Remove All" is recoverable
+- [ ] **Mirror to all displays** — duplicate one widget across every connected monitor in a single action
+- [ ] **Sleep/wake hygiene** — tear down animations on sleep and restore on wake, rather than leaving the render server looping
+
+### Distribution & trust
+
+- [ ] **Signed updates** — verify the downloaded bundle's Team ID against the running app. The current SHA-256 check catches a corrupted or tampered download but **cannot** detect a compromised repo. This is the most important item on this list and needs a paid Apple Developer account
+- [ ] **Delta updates** — ship only what changed instead of a full 3MB bundle
+- [ ] **Release notes in-app** — show what changed before the user commits to updating
 
 ---
 
