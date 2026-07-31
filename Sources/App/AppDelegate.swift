@@ -20,7 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Asks for notification permission, then polls the appcast on launch and
         // every few hours so updates and announcements reach existing users.
         // Absent on the App Store build, which updates through the Store.
-        UpdateChecker.shared.start()
+        Updater.shared.start()
         #endif
 
         // If first launch (no photos yet), show settings
@@ -351,8 +351,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Updates
 
     #if !MAS
+    /// Opens Settings and runs a check there, so the result lands in the same
+    /// place the user would look for it rather than in a modal they dismiss.
     @objc func checkForUpdates() {
-        Task { await UpdateChecker.shared.check(userInitiated: true) }
+        showSettingsWindow()
+        Task { await Updater.shared.check(userInitiated: true) }
     }
     #endif
 

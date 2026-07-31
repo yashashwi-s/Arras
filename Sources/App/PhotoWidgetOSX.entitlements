@@ -2,13 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-	<key>com.apple.security.personal-information.photos-library</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<!--
+	  Developer ID / direct-download entitlements.
+
+	  Deliberately NOT sandboxed. The in-app updater has to replace the app
+	  bundle in /Applications and spawn a helper that outlives the process to do
+	  the swap; the sandbox forbids both, so self-updating and the sandbox are
+	  mutually exclusive. Notarization does not require sandboxing, so this is a
+	  legitimate Developer ID configuration — it only rules out the App Store,
+	  which is what the separate Tableau-MAS target (still sandboxed, updater
+	  compiled out) exists for.
+
+	  Consequence: the app's Application Support directory moves out of
+	  ~/Library/Containers. StorageMigration.swift carries existing data across.
+	-->
+	<key>com.apple.security.automation.apple-events</key>
+	<false/>
 </dict>
 </plist>

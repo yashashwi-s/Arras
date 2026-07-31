@@ -21,9 +21,20 @@ class PhotoManager: ObservableObject {
         return dir
     }
 
+    /// Whether this launch has already looked for data left in the sandbox
+    /// container. Checked once rather than on every `storageDir` access.
+    private static var didMigrateStorage = false
+
     private var dataFile: URL { storageDir.appendingPathComponent("photos.json") }
 
     init() {
+        // Must run before anything reads photos.json: dropping the sandbox moved
+        // the Application Support directory, and this carries older installs across.
+        if !Self.didMigrateStorage {
+            Self.didMigrateStorage = true
+            StorageMigration.migrateIfNeeded(to: storageDir)
+        }
+
         launchAtLogin = SMAppService.mainApp.status == .enabled
 
         // Listen for window moves

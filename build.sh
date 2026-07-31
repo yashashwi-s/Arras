@@ -96,12 +96,23 @@ if [ "${1:-}" = "--release" ]; then
     ZIP_SIZE=$(du -sm "$OUTPUT_DIR/$APP_NAME.app.zip" | cut -f1)
     DMG_SIZE=$(du -sm "$OUTPUT_DIR/$APP_NAME.dmg" | cut -f1)
 
+    # The in-app updater refuses any download whose checksum isn't declared in
+    # appcast.json, so surface it here rather than making it a manual step.
+    ZIP_SHA=$(shasum -a 256 "$OUTPUT_DIR/$APP_NAME.app.zip" | cut -d' ' -f1)
+    VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+      "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "?")
+
     echo ""
     echo "✅ Release artifacts ready!"
     echo "   Zip: $OUTPUT_DIR/$APP_NAME.app.zip (${ZIP_SIZE}MB)"
     echo "   DMG: $OUTPUT_DIR/$APP_NAME.dmg (${DMG_SIZE}MB)"
     echo ""
-    echo "Upload these to GitHub Releases."
+    echo "Upload the zip to GitHub Releases, then update appcast.json:"
+    echo ""
+    echo "  \"latestVersion\": \"$VERSION\","
+    echo "  \"downloadURL\": \"https://github.com/yashashwi-s/Tableau/releases/download/v$VERSION/$APP_NAME.app.zip\","
+    echo "  \"sha256\": \"$ZIP_SHA\","
+    echo ""
     exit 0
 fi
 

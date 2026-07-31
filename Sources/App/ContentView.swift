@@ -113,9 +113,14 @@ struct ContentView: View {
 
                 Spacer()
 
+                #if MAS
+                // The App Store handles updates; there is nothing to check.
                 Text("v\(Constants.version)")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundStyle(.quaternary)
+                #else
+                UpdateStatusView()
+                #endif
             }
         }
         .padding(.horizontal, 16)
