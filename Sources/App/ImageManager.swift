@@ -972,21 +972,53 @@ class PhotoManager: ObservableObject {
             image = NSImage(contentsOf: url)
         }
 
-        guard let sourceImage = image else { return nil }
-
-        let thumb = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            let ar = sourceImage.size.width / sourceImage.size.height
-            let drawRect: NSRect
-            if ar > 1 {
-                let h = size / ar
-                drawRect = NSRect(x: 0, y: (size - h) / 2, width: size, height: h)
-            } else {
-                let w = size * ar
-                drawRect = NSRect(x: (size - w) / 2, y: 0, width: w, height: size)
-            }
-            sourceImage.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-            return true
+        guard let sourceImage = image, sourceImage.size.width > 0, sourceImage.size.height > 0 else {
+            return nil
         }
+
+        // Render into a real bitmap rather than returning an
+        // NSImage(size:flipped:drawingHandler:).
+        //
+        // A drawing-handler image carries no representation until something asks it to
+        // draw, and NSMenuItem doesn't render one — the menu bar's per-photo thumbnails
+        // silently came out blank while the same image drew correctly in the SwiftUI
+        // settings list. Baking a bitmap also means the scale/crop maths runs once
+        // instead of on every redraw.
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let pixels = Int((size * scale).rounded())
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixels,
+            pixelsHigh: pixels,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = NSSize(width: size, height: size)   // point size, so Retina stays crisp
+
+        // Aspect-fit inside the square, centred, so nothing is cropped.
+        let aspectRatio = sourceImage.size.width / sourceImage.size.height
+        let drawRect: NSRect
+        if aspectRatio > 1 {
+            let h = size / aspectRatio
+            drawRect = NSRect(x: 0, y: (size - h) / 2, width: size, height: h)
+        } else {
+            let w = size * aspectRatio
+            drawRect = NSRect(x: (size - w) / 2, y: 0, width: w, height: size)
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        sourceImage.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+
+        let thumb = NSImage(size: NSSize(width: size, height: size))
+        thumb.addRepresentation(rep)
         return thumb
     }
 

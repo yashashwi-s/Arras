@@ -300,10 +300,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 photoItem.submenu = submenu
 
                 let title = manager.label(for: item)
-                if let thumb = manager.thumbnail(for: item, size: 20) {
-                    photoItem.image = thumb
-                    photoItem.image?.size = NSSize(width: 20, height: 20)
-                }
 
                 // Clean status badges
                 var badges: [String] = []
@@ -312,7 +308,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if item.isFloating { badges.append("floating") }
                 if !item.spaceImageFilenames.isEmpty { badges.append("folder") }
 
-                photoItem.title = badges.isEmpty ? title : "\(title) — \(badges.joined(separator: ", "))"
+                let label = badges.isEmpty ? title : "\(title) — \(badges.joined(separator: ", "))"
+                photoItem.title = label   // plain text still backs VoiceOver and menu search
+
+                // The thumbnail rides in the title as a text attachment rather than
+                // going through `NSMenuItem.image`, which macOS 26 no longer draws in a
+                // status bar menu — verified by setting a plain SF Symbol on several
+                // items and getting nothing. Text rendering still works, and this keeps
+                // native highlight and submenu behaviour that a custom item view
+                // would force us to reimplement.
+                if let thumb = manager.thumbnail(for: item, size: 16) {
+                    photoItem.attributedTitle = Self.attributedLabel(label, thumbnail: thumb)
+                }
 
                 menu.addItem(photoItem)
             }
@@ -347,6 +354,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quitItem = NSMenuItem(title: "Quit \(Constants.appName)", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
+    }
+
+    /// Builds a menu label with the photo's thumbnail inlined ahead of the text.
+    ///
+    /// The attachment is nudged below the baseline so a 16pt image sits centred on a
+    /// standard menu row instead of riding high on it.
+    private static func attributedLabel(_ text: String, thumbnail: NSImage) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        attachment.image = thumbnail
+        attachment.bounds = NSRect(x: 0, y: -4, width: 16, height: 16)
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        result.append(NSAttributedString(
+            string: "  " + text,
+            attributes: [.font: NSFont.menuFont(ofSize: 0)]
+        ))
+        return result
     }
 
     // MARK: - Updates
