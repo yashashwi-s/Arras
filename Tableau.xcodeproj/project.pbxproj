@@ -19,6 +19,7 @@
 		54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD8235ABA05B3CF358C833A /* DownloadTask.swift */; };
 		82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
+		8D9E0AB8199FAAFC3693322C /* PhotoAppearanceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B380431ACD3E561F2BC948 /* PhotoAppearanceControls.swift */; };
 		8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
 		9B1094CED44B95FC355FDDF7 /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7002D7D7A0D350E3425F497 /* DisplayManager.swift */; };
 		9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
@@ -27,11 +28,13 @@
 		A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
 		C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
 		C8D666ACD5D6E42B2CB6FEA1 /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
+		CB797FD9327BA67258E26419 /* FrameStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14666726CAC77E9EC4BEF304 /* FrameStyle.swift */; };
 		D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0DA53C8E29A1106E6841727D /* StorageMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageMigration.swift; sourceTree = "<group>"; };
+		14666726CAC77E9EC4BEF304 /* FrameStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStyle.swift; sourceTree = "<group>"; };
 		24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPhotoWindow.swift; sourceTree = "<group>"; };
 		256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemDropView.swift; sourceTree = "<group>"; };
 		27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutArchive.swift; sourceTree = "<group>"; };
@@ -40,6 +43,7 @@
 		2DD8235ABA05B3CF358C833A /* DownloadTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadTask.swift; sourceTree = "<group>"; };
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
 		35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
+		46B380431ACD3E561F2BC948 /* PhotoAppearanceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAppearanceControls.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		5243BF4CF6AD56596BCC051F /* SnapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapEngine.swift; sourceTree = "<group>"; };
 		5F46A9971A32BECF3D655474 /* PhotoImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImport.swift; sourceTree = "<group>"; };
@@ -83,9 +87,11 @@
 				24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */,
 				B7002D7D7A0D350E3425F497 /* DisplayManager.swift */,
 				2DD8235ABA05B3CF358C833A /* DownloadTask.swift */,
+				14666726CAC77E9EC4BEF304 /* FrameStyle.swift */,
 				742175918C454F8D2BB2D84F /* HotKeyManager.swift */,
 				3159880EA2D19188C7F9D214 /* ImageManager.swift */,
 				27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */,
+				46B380431ACD3E561F2BC948 /* PhotoAppearanceControls.swift */,
 				5F46A9971A32BECF3D655474 /* PhotoImport.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
@@ -186,9 +192,11 @@
 				8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */,
 				9B1094CED44B95FC355FDDF7 /* DisplayManager.swift in Sources */,
 				5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */,
+				CB797FD9327BA67258E26419 /* FrameStyle.swift in Sources */,
 				A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */,
 				9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */,
 				0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */,
+				8D9E0AB8199FAAFC3693322C /* PhotoAppearanceControls.swift in Sources */,
 				82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,

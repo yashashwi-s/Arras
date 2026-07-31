@@ -590,32 +590,74 @@ struct PhotoRowView: View {
 
             separator
 
+            // Style presets -- with this many appearance knobs, a named preset is the
+            // actual interface for most users; the fine-grained controls below stay
+            // available for anyone who wants to hand-tune from there.
+            settingsGroup("STYLE") {
+                Picker("", selection: Binding(
+                    get: { item.stylePreset.flatMap(StylePreset.init(rawValue:)) },
+                    set: { newValue in
+                        if let preset = newValue { manager.applyPreset(item.id, preset) }
+                    }
+                )) {
+                    Text("Custom").tag(StylePreset?.none)
+                    ForEach(StylePreset.allCases, id: \.self) { preset in
+                        Text(preset.displayName).tag(StylePreset?.some(preset))
+                    }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .accessibilityLabel("Style preset")
+                .accessibilityHint("Applies a bundle of matching mat, border, shape and shadow settings in one step")
+            }
+
+            separator
+
             // Appearance
             settingsGroup("APPEARANCE") {
+                shapeRow
+
                 sliderRow("Corners", value: Binding(
                     get: { item.cornerRadius },
-                    set: { manager.setCornerRadius(item.id, $0) }
+                    set: { manager.setCornerRadius(item.id, $0); manager.clearStylePreset(item.id) }
                 ), range: 0...50, step: 1) { "\(Int($0))px" }
 
                 compactToggle("Shadow", isOn: Binding(
                     get: { item.shadowEnabled },
-                    set: { manager.setShadow(item.id, enabled: $0, blur: item.shadowBlur, opacity: item.shadowOpacity) }
-                ), hint: "Adds a drop shadow behind the photo")
+                    set: {
+                        manager.setShadow(item.id, enabled: $0, blur: item.shadowBlur, opacity: item.shadowOpacity)
+                        manager.clearStylePreset(item.id)
+                    }
+                ), hint: "Adds a two-layer drop shadow -- a tight contact shadow plus a wide, soft ambient one -- for real depth instead of a flat blur")
 
                 if item.shadowEnabled {
                     sliderRow("Blur", value: Binding(
                         get: { item.shadowBlur },
-                        set: { manager.setShadow(item.id, enabled: true, blur: $0, opacity: item.shadowOpacity) }
+                        set: {
+                            manager.setShadow(item.id, enabled: true, blur: $0, opacity: item.shadowOpacity)
+                            manager.clearStylePreset(item.id)
+                        }
                     ), range: 0...30, step: 1) { "\(Int($0))" }
                     .padding(.leading, 12)
                 }
 
+                matRow
+
                 borderRow
+
+                if item.borderWidth > 0 {
+                    borderStyleRow
+                }
 
                 compactToggle("Edge Fade", isOn: Binding(
                     get: { item.vignetteEnabled },
-                    set: { manager.setVignette(item.id, enabled: $0) }
+                    set: { manager.setVignette(item.id, enabled: $0); manager.clearStylePreset(item.id) }
                 ), hint: "Fades the photo's edges to transparent")
+
+                sliderRow("Tilt", value: Binding(
+                    get: { CGFloat(item.tiltDegrees) },
+                    set: { manager.setTilt(item.id, Double($0)) }
+                ), range: -12...12, step: 1) { "\(Int($0))\u{00B0}" }
 
                 compactToggle("Adapt to Dark Mode", isOn: Binding(
                     get: { item.themeAdaptive },
@@ -638,6 +680,63 @@ struct PhotoRowView: View {
         }
     }
 
+    // MARK: - Shape
+
+    private var shapeRow: some View {
+        HStack(spacing: 6) {
+            Text("Shape")
+                .font(.system(size: 11))
+                .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
+            Picker("", selection: Binding(
+                get: { PhotoShapeMask(rawValue: item.shapeMask) ?? .roundedRect },
+                set: { manager.setShapeMask(item.id, $0); manager.clearStylePreset(item.id) }
+            )) {
+                ForEach(PhotoShapeMask.allCases, id: \.self) { shape in
+                    Text(shape.displayName).tag(shape)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .accessibilityLabel("Shape mask")
+            .accessibilityHint("Crops the photo, its mat, border and shadow to this silhouette")
+        }
+    }
+
+    // MARK: - Mat (passe-partout)
+
+    private var matRow: some View {
+        HStack(spacing: 6) {
+            Text("Mat")
+                .font(.system(size: 11))
+                .foregroundStyle(.primary)
+                .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
+            Slider(value: Binding(
+                get: { item.matWidth },
+                set: { manager.setMat(item.id, width: $0, colorHex: item.matColorHex); manager.clearStylePreset(item.id) }
+            ), in: 0...40, step: 1)
+            .controlSize(.small)
+            .accessibilityLabel("Mat width")
+            .accessibilityValue(item.matWidth > 0 ? String(format: "%.0f pixels", item.matWidth) : "Off")
+            Text(item.matWidth > 0 ? String(format: "%.0f", item.matWidth) : "Off")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, alignment: .trailing)
+                .accessibilityHidden(true)
+            if item.matWidth > 0 {
+                ColorPicker("", selection: Binding(
+                    get: { Color(nsColor: item.matColor) },
+                    set: { manager.setMat(item.id, width: item.matWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(item.id) }
+                ))
+                .labelsHidden()
+                .frame(width: 20)
+                .accessibilityLabel("Mat color")
+            }
+        }
+        .accessibilityHint("Adds a solid inset border between the frame and the photo, like a mounted print")
+    }
+
     // MARK: - Border
 
     private var borderRow: some View {
@@ -649,7 +748,7 @@ struct PhotoRowView: View {
                 .accessibilityHidden(true)
             Slider(value: Binding(
                 get: { item.borderWidth },
-                set: { manager.setBorder(item.id, width: $0, colorHex: item.borderColorHex) }
+                set: { manager.setBorder(item.id, width: $0, colorHex: item.borderColorHex); manager.clearStylePreset(item.id) }
             ), in: 0...5, step: 0.5)
             .controlSize(.small)
             .accessibilityLabel("Border width")
@@ -662,11 +761,59 @@ struct PhotoRowView: View {
             if item.borderWidth > 0 {
                 ColorPicker("", selection: Binding(
                     get: { Color(nsColor: NSColor.fromHex(item.borderColorHex) ?? .white) },
-                    set: { manager.setBorder(item.id, width: item.borderWidth, colorHex: NSColor($0).hexString) }
+                    set: { manager.setBorder(item.id, width: item.borderWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(item.id) }
                 ))
                 .labelsHidden()
                 .frame(width: 20)
                 .accessibilityLabel("Border color")
+            }
+        }
+    }
+
+    // MARK: - Border style (dashed/dotted + gradient)
+
+    private var borderStyleRow: some View {
+        HStack(spacing: 6) {
+            Text("Stroke")
+                .font(.system(size: 11))
+                .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
+            Picker("", selection: Binding(
+                get: { PhotoBorderStyle(rawValue: item.borderStyle) ?? .solid },
+                set: { manager.setBorderStyle(item.id, $0); manager.clearStylePreset(item.id) }
+            )) {
+                ForEach(PhotoBorderStyle.allCases, id: \.self) { style in
+                    Text(style.displayName).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .accessibilityLabel("Border stroke style")
+
+            Toggle("", isOn: Binding(
+                get: { item.borderGradientEnabled },
+                set: {
+                    manager.setBorderGradient(item.id, enabled: $0, colorHex: item.borderGradientColorHex)
+                    manager.clearStylePreset(item.id)
+                }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .accessibilityLabel("Gradient border")
+            .help("Sweeps from the border colour to a second colour instead of one flat colour")
+
+            if item.borderGradientEnabled {
+                ColorPicker("", selection: Binding(
+                    get: { Color(nsColor: item.borderGradientColor) },
+                    set: {
+                        manager.setBorderGradient(item.id, enabled: true, colorHex: NSColor($0).hexString)
+                        manager.clearStylePreset(item.id)
+                    }
+                ))
+                .labelsHidden()
+                .frame(width: 20)
+                .accessibilityLabel("Second border color")
             }
         }
     }
