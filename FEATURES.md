@@ -362,12 +362,19 @@ overwrite a destination that already holds a layout.
 
 ### Publishing an update
 
-1. `./build.sh --release` — prints the SHA-256 and the exact `appcast.json` fields
-2. Upload `dist/Tableau.app.zip` to a GitHub Release tagged `vX.Y.Z`
-3. Paste the printed fields into `appcast.json` and push to `main`
+1. Bump `MARKETING_VERSION` in `project.yml`, write `releaseNotes` in `appcast.json`
+2. `git tag vX.Y.Z && git push origin vX.Y.Z`
 
-The updater refuses any download whose checksum isn't declared, so step 3 is not
-optional.
+That's it. The Release workflow builds the app, attaches the artifacts, and then
+stamps `appcast.json` on `main` with the checksum of the zip **it just
+uploaded**.
+
+**Never compute the checksum locally.** Pushing the tag makes CI rebuild on its
+own runner and overwrite the release assets, so a locally computed hash
+describes a binary nobody will download — and the updater, which refuses any
+download that doesn't match, then rejects every update. This silently broke
+2.2.0 and 2.2.1 until CI took ownership of the checksum. `build.sh --release`
+deliberately no longer prints one.
 
 ---
 

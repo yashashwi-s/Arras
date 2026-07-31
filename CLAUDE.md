@@ -161,10 +161,18 @@ instead.
 
 ## 9. Releasing
 
-1. Bump `MARKETING_VERSION` in `project.yml`
-2. `./build.sh --release` — prints the SHA-256 and exact `appcast.json` fields
-3. Upload `dist/Tableau.app.zip` to a GitHub Release tagged `vX.Y.Z`
-4. Paste the printed fields into `appcast.json` and push to `main`
+1. Bump `MARKETING_VERSION` in `project.yml`, write `releaseNotes` in `appcast.json`
+2. `git tag vX.Y.Z && git push origin vX.Y.Z`
 
-The updater refuses any download whose checksum isn't declared, so step 4 is not
-optional. Publishing is outward-facing — confirm with the user before doing it.
+CI builds, attaches the artifacts, and stamps `appcast.json` with the checksum of
+the zip it uploaded.
+
+**Never put a locally computed checksum in `appcast.json`.** Pushing the tag
+makes the Release workflow rebuild on its own runner and *overwrite* the release
+assets, so a local hash describes a binary nobody downloads. The updater refuses
+any mismatch, so every update then fails with "the download didn't match" — which
+is exactly how 2.2.0 and 2.2.1 shipped broken. Verifying right after `gh release
+create` is not enough either: CI overwrites the asset a minute later, so an early
+check passes and the real state is wrong.
+
+Publishing is outward-facing — confirm with the user before doing it.

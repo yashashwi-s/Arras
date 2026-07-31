@@ -72,3 +72,39 @@ jobs:
           files: |
             build/Release/Tableau.app.zip
             build/Release/Tableau.dmg
+
+      # The checksum must come from the artifact this job just uploaded, never
+      # from a local build.
+      #
+      # This workflow rebuilds the app on its own runner and overwrites whatever
+      # was attached to the release, so a checksum computed on a developer's Mac
+      # describes a different binary. The in-app updater refuses any download
+      # that doesn't match, which silently broke every update until the appcast
+      # was stamped here instead.
+      - name: Stamp appcast with the published checksum
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA=$(shasum -a 256 build/Release/Tableau.app.zip | cut -d' ' -f1)
+          echo "Publishing $VERSION with sha256 $SHA"
+
+          git fetch origin main
+          git checkout main
+
+          python3 - "$VERSION" "$SHA" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" <<'PY'
+          import json, pathlib, sys
+          version, sha, tag, repo = sys.argv[1:5]
+          path = pathlib.Path("appcast.json")
+          data = json.loads(path.read_text())
+          data["latestVersion"] = version
+          data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Tableau.app.zip"
+          data["sha256"] = sha
+          # releaseNotes is written by a human before tagging; leave it alone.
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.json
+          git diff --staged --quiet || git commit -m "chore: appcast checksum for ${GITHUB_REF_NAME} [skip ci]"
+          git push origin main

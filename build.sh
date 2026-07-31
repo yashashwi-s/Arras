@@ -89,22 +89,22 @@ if [ "${1:-}" = "--release" ]; then
     ZIP_SIZE=$(du -sm "$OUTPUT_DIR/$APP_NAME.app.zip" | cut -f1)
     DMG_SIZE=$(du -sm "$OUTPUT_DIR/$APP_NAME.dmg" | cut -f1)
 
-    # The in-app updater refuses any download whose checksum isn't declared in
-    # appcast.json, so surface it here rather than making it a manual step.
-    ZIP_SHA=$(shasum -a 256 "$OUTPUT_DIR/$APP_NAME.app.zip" | cut -d' ' -f1)
     VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
       "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "?")
 
     echo ""
-    echo "✅ Release artifacts ready!"
+    echo "✅ Local release artifacts ready (for testing only)"
     echo "   Zip: $OUTPUT_DIR/$APP_NAME.app.zip (${ZIP_SIZE}MB)"
     echo "   DMG: $OUTPUT_DIR/$APP_NAME.dmg (${DMG_SIZE}MB)"
     echo ""
-    echo "Upload the zip to GitHub Releases, then update appcast.json:"
-    echo ""
-    echo "  \"latestVersion\": \"$VERSION\","
-    echo "  \"downloadURL\": \"https://github.com/yashashwi-s/Tableau/releases/download/v$VERSION/$APP_NAME.app.zip\","
-    echo "  \"sha256\": \"$ZIP_SHA\","
+    # Deliberately does NOT print a sha256 for appcast.json.
+    #
+    # Pushing a v* tag makes the Release workflow rebuild the app on its own
+    # runner and overwrite the release assets, so a checksum computed here
+    # describes a binary nobody will ever download. The updater then rejects
+    # every download. The workflow stamps appcast.json itself.
+    echo "To publish:  git tag v$VERSION && git push origin v$VERSION"
+    echo "CI builds, uploads, and stamps appcast.json with the real checksum."
     echo ""
     exit 0
 fi

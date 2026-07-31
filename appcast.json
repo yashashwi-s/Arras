@@ -1,7 +1,7 @@
 {
   "latestVersion": "2.2.1",
   "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.2.1/Tableau.app.zip",
-  "sha256": "256a9aa463e2c6c9af120444ed321385856bddf90c140d4a6a7a1220513f8b5b",
+  "sha256": "12cee331f7c9771d6659f27f3d19b560046d16f1b3e4709f6403d4644d703ca2",
   "releaseNotes": "The update prompt now names both versions, so the footer always shows the build you are actually running.",
   "minimumOSVersion": "14.0",
   "announcement": null
