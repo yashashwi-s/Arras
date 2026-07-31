@@ -42,6 +42,8 @@ struct ContentView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .accessibilityLabel("Add photo")
+            .accessibilityHint("Choose a photo from Finder, or create a rotating space from several photos")
 
             PhotosPicker(
                 selection: $selectedPhotosItems,
@@ -56,6 +58,22 @@ struct ContentView: View {
             .onChange(of: selectedPhotosItems) { _, newItems in
                 handlePhotosSelection(newItems)
             }
+            .accessibilityLabel("Add from Photos")
+            .accessibilityHint("Pick up to 20 photos from your Photos library")
+
+            Menu {
+                Button("Export Layout…") { exportLayout() }
+                Button("Import Layout…") { importLayout() }
+            } label: {
+                Image(systemName: "square.and.arrow.up.on.square")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 22, height: 22)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Export or import a .tableau layout bundle")
+            .accessibilityLabel("Layout")
+            .accessibilityHint("Export all photos, positions, and settings to a file, or import one from another Mac")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -74,6 +92,7 @@ struct ContentView: View {
             ))
             .toggleStyle(.checkbox)
             .font(.system(size: 11))
+            .accessibilityHint("Starts \(Constants.appName) automatically when you log in")
 
             Spacer()
 
@@ -99,8 +118,10 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 Button("Choose Photo…") { pickFile() }
                     .controlSize(.regular)
+                    .accessibilityHint("Pick an image file to place on your desktop")
                 Button("Create Space…") { pickSpace() }
                     .controlSize(.regular)
+                    .accessibilityHint("Pick several images to display as one rotating widget")
             }
             PhotosPicker(
                 selection: $selectedPhotosItems,
@@ -114,6 +135,8 @@ struct ContentView: View {
             .onChange(of: selectedPhotosItems) { _, newItems in
                 handlePhotosSelection(newItems)
             }
+            .accessibilityLabel("Add from Photos")
+            .accessibilityHint("Pick up to 20 photos from your Photos library")
             Spacer()
         }
     }
@@ -163,6 +186,72 @@ struct ContentView: View {
             let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
             manager.addSpace(images: images)
         }
+    }
+
+    // MARK: - Layout Export/Import
+
+    private func exportLayout() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
+        panel.nameFieldStringValue = "My Desktop.tableau"
+        panel.prompt = "Export"
+        panel.message = "Save all photos, positions, and settings into a single file"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try manager.exportLayout(to: url)
+        } catch {
+            presentAlert(title: "Couldn't Export Layout", message: error.localizedDescription, style: .warning)
+        }
+    }
+
+    private func importLayout() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Import"
+        panel.message = "Choose a .tableau bundle to import"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        // Never silently destroy the user's current widgets — always ask first.
+        let choice = NSAlert()
+        choice.messageText = "Import Layout"
+        choice.informativeText = manager.photos.isEmpty
+            ? "Add the photos from this bundle to your desktop."
+            : "Add these photos to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone."
+        choice.addButton(withTitle: "Merge")
+        choice.addButton(withTitle: "Replace Everything")
+        choice.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = choice.runModal()
+
+        let mode: PhotoManager.LayoutImportMode
+        switch response {
+        case .alertFirstButtonReturn: mode = .merge
+        case .alertSecondButtonReturn: mode = .replace
+        default: return
+        }
+
+        do {
+            let count = try manager.importLayout(from: url, mode: mode)
+            onMenuUpdate?()
+            if count == 0 {
+                presentAlert(title: "Nothing to Import", message: "That bundle didn't contain any photos with valid images.", style: .informational)
+            }
+        } catch {
+            presentAlert(title: "Couldn't Import Layout", message: error.localizedDescription, style: .warning)
+        }
+    }
+
+    private func presentAlert(title: String, message: String, style: NSAlert.Style) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private func handlePhotosSelection(_ items: [PhotosPickerItem]) {
@@ -239,13 +328,19 @@ struct PhotoRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(rowAccessibilityLabel)
+                .accessibilityValue(collapsedStatus)
+                .accessibilityHint(isExpanded ? "Double-tap to collapse settings" : "Double-tap to expand settings")
 
                 // Right: action buttons
                 HStack(spacing: 6) {
                     toggleButton(
                         icon: item.isVisible ? "eye.fill" : "eye.slash",
                         color: item.isVisible ? .secondary : .quaternary,
-                        tip: item.isVisible ? "Hide" : "Show"
+                        tip: item.isVisible ? "Hide" : "Show",
+                        hint: item.isVisible ? "Hides this photo from the desktop" : "Shows this photo on the desktop"
                     ) {
                         manager.toggleVisibility(item.id)
                         onMenuUpdate?()
@@ -254,7 +349,8 @@ struct PhotoRowView: View {
                     toggleButton(
                         icon: "trash",
                         color: .quaternary,
-                        tip: "Remove"
+                        tip: "Remove",
+                        hint: "Removes this photo and deletes its saved copy. This can't be undone"
                     ) {
                         manager.removePhoto(item.id)
                         onMenuUpdate?()
@@ -341,9 +437,19 @@ struct PhotoRowView: View {
         return "Opacity \(Int(item.opacity * 100))%"
     }
 
+    /// Combines name + status badges into one phrase so VoiceOver reads a single
+    /// coherent sentence for the row instead of each fragment separately.
+    private var rowAccessibilityLabel: String {
+        var parts = [manager.label(for: item)]
+        if item.isLocked { parts.append("locked") }
+        if item.isFloating { parts.append("floating") }
+        if !item.spaceImageFilenames.isEmpty { parts.append("space") }
+        return parts.joined(separator: ", ")
+    }
+
     // MARK: - Button Helper
 
-    private func toggleButton<S: ShapeStyle>(icon: String, color: S, tip: String, action: @escaping () -> Void) -> some View {
+    private func toggleButton<S: ShapeStyle>(icon: String, color: S, tip: String, hint: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11))
@@ -353,6 +459,8 @@ struct PhotoRowView: View {
         }
         .buttonStyle(.borderless)
         .help(tip)
+        .accessibilityLabel(tip)
+        .accessibilityHint(hint)
     }
 
     // MARK: - Separator
@@ -373,7 +481,7 @@ struct PhotoRowView: View {
                 compactToggle("Float Above Windows", isOn: Binding(
                     get: { item.isFloating },
                     set: { manager.setFloating(item.id, $0); onMenuUpdate?() }
-                ))
+                ), hint: "Keeps this photo above other app windows instead of on the desktop")
 
                 sliderRow("Opacity", value: Binding(
                     get: { item.opacity },
@@ -393,7 +501,7 @@ struct PhotoRowView: View {
                 compactToggle("Shadow", isOn: Binding(
                     get: { item.shadowEnabled },
                     set: { manager.setShadow(item.id, enabled: $0, blur: item.shadowBlur, opacity: item.shadowOpacity) }
-                ))
+                ), hint: "Adds a drop shadow behind the photo")
 
                 if item.shadowEnabled {
                     sliderRow("Blur", value: Binding(
@@ -408,7 +516,7 @@ struct PhotoRowView: View {
                 compactToggle("Edge Fade", isOn: Binding(
                     get: { item.vignetteEnabled },
                     set: { manager.setVignette(item.id, enabled: $0) }
-                ))
+                ), hint: "Fades the photo's edges to transparent")
             }
 
             // Folder
@@ -434,15 +542,19 @@ struct PhotoRowView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.primary)
                 .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
             Slider(value: Binding(
                 get: { item.borderWidth },
                 set: { manager.setBorder(item.id, width: $0, colorHex: item.borderColorHex) }
             ), in: 0...5, step: 0.5)
             .controlSize(.small)
+            .accessibilityLabel("Border width")
+            .accessibilityValue(item.borderWidth > 0 ? String(format: "%.1f pixels", item.borderWidth) : "Off")
             Text(item.borderWidth > 0 ? String(format: "%.1f", item.borderWidth) : "Off")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 26, alignment: .trailing)
+                .accessibilityHidden(true)
             if item.borderWidth > 0 {
                 ColorPicker("", selection: Binding(
                     get: { Color(nsColor: NSColor.fromHex(item.borderColorHex) ?? .white) },
@@ -450,6 +562,7 @@ struct PhotoRowView: View {
                 ))
                 .labelsHidden()
                 .frame(width: 20)
+                .accessibilityLabel("Border color")
             }
         }
     }
@@ -465,6 +578,7 @@ struct PhotoRowView: View {
             Text("Mode")
                 .font(.system(size: 11))
                 .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
             Picker("", selection: Binding(
                 get: { item.folderSizeMode },
                 set: { manager.setFolderSizeMode(item.id, $0) }
@@ -474,6 +588,8 @@ struct PhotoRowView: View {
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
+            .accessibilityLabel("Sizing mode")
+            .accessibilityHint("Dynamic resizes each image to fit without cropping. Fixed Frame keeps the widget size and crops images to fill it")
         }
 
         Button("Add More Photos to Space...") {
@@ -482,27 +598,37 @@ struct PhotoRowView: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityHint("Adds more images to this rotating space")
 
         // Navigation
         HStack {
             Text("Image")
                 .font(.system(size: 11))
+                .accessibilityHidden(true)
             Text("\(item.folderImageIndex + 1) of \(count)")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .accessibilityHidden(true)
             Spacer()
             Button { manager.prevFolderImage(item.id); onMenuUpdate?() }
                 label: { Image(systemName: "chevron.left").font(.system(size: 10)) }
                 .buttonStyle(.bordered).controlSize(.small)
+                .accessibilityLabel("Previous image")
+                .accessibilityHint("Shows the previous image in this space, image \(item.folderImageIndex + 1) of \(count)")
             Button { manager.nextFolderImage(item.id); onMenuUpdate?() }
                 label: { Image(systemName: "chevron.right").font(.system(size: 10)) }
                 .buttonStyle(.bordered).controlSize(.small)
+                .accessibilityLabel("Next image")
+                .accessibilityHint("Shows the next image in this space, image \(item.folderImageIndex + 1) of \(count)")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Image \(item.folderImageIndex + 1) of \(count)")
 
         // Rotation
         HStack(spacing: 6) {
             Text("Rotate")
                 .font(.system(size: 11))
                 .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
             Picker("", selection: Binding(
                 get: { item.rotationInterval },
                 set: { manager.setRotationInterval(item.id, $0) }
@@ -518,6 +644,8 @@ struct PhotoRowView: View {
             }
             .pickerStyle(.menu)
             .controlSize(.small)
+            .accessibilityLabel("Rotation interval")
+            .accessibilityHint("How often this space cycles to the next image")
         }
 
         // Custom interval
@@ -526,6 +654,7 @@ struct PhotoRowView: View {
                 Text("Every")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 TextField("", value: Binding(
                     get: { item.customRotationSeconds },
                     set: { manager.setCustomRotationSeconds(item.id, $0) }
@@ -533,9 +662,11 @@ struct PhotoRowView: View {
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .frame(width: 60)
+                .accessibilityLabel("Custom rotation interval in seconds")
                 Text("seconds")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             .padding(.leading, 12)
         }
@@ -556,7 +687,7 @@ struct PhotoRowView: View {
 
     private var actionsRow: some View {
         HStack(spacing: 12) {
-            actionLink("Rename…") {
+            actionLink("Rename…", hint: "Change this photo's display name") {
                 let alert = NSAlert()
                 alert.messageText = "Rename"
                 alert.addButton(withTitle: "OK")
@@ -573,7 +704,7 @@ struct PhotoRowView: View {
             }
 
             if item.spaceImageFilenames.isEmpty {
-                actionLink("Replace…") {
+                actionLink("Replace…", hint: "Choose a different image, keeping this photo's position and settings") {
                     let panel = NSOpenPanel()
                     panel.allowedContentTypes = [.image, .png, .jpeg, .heic, .tiff]
                     panel.allowsMultipleSelection = false; panel.prompt = "Replace"
@@ -585,7 +716,7 @@ struct PhotoRowView: View {
                 }
             }
 
-            actionLink("Duplicate") {
+            actionLink("Duplicate", hint: "Creates a copy of this photo at a slightly offset position") {
                 manager.duplicatePhoto(item.id)
                 onMenuUpdate?()
             }
@@ -606,11 +737,12 @@ struct PhotoRowView: View {
         }
     }
 
-    private func compactToggle(_ label: String, isOn: Binding<Bool>) -> some View {
+    private func compactToggle(_ label: String, isOn: Binding<Bool>, hint: String = "") -> some View {
         Toggle(label, isOn: isOn)
             .toggleStyle(.switch)
             .controlSize(.mini)
             .font(.system(size: 11))
+            .accessibilityHint(hint)
     }
 
     private func sliderRow(
@@ -624,20 +756,25 @@ struct PhotoRowView: View {
             Text(label)
                 .font(.system(size: 11))
                 .frame(width: 48, alignment: .leading)
+                .accessibilityHidden(true)
             Slider(value: value, in: range, step: step)
                 .controlSize(.small)
+                .accessibilityLabel(label)
+                .accessibilityValue(format(value.wrappedValue))
             Text(format(value.wrappedValue))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 30, alignment: .trailing)
+                .accessibilityHidden(true)
         }
     }
 
-    private func actionLink(_ title: String, action: @escaping () -> Void) -> some View {
+    private func actionLink(_ title: String, hint: String = "", action: @escaping () -> Void) -> some View {
         Button(title, action: action)
             .font(.system(size: 11))
             .buttonStyle(.borderless)
             .foregroundStyle(Color.accentColor)
+            .accessibilityHint(hint)
     }
 
     private func hintText(_ text: String) -> some View {

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */; };
 		1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
 		237F976B2546C76C87A36355 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871038931F2825DED9F16B0B /* UpdateChecker.swift */; };
 		3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
@@ -20,6 +21,7 @@
 
 /* Begin PBXFileReference section */
 		24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPhotoWindow.swift; sourceTree = "<group>"; };
+		27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutArchive.swift; sourceTree = "<group>"; };
 		28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoItem.swift; sourceTree = "<group>"; };
 		2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoWidgetOSXApp.swift; sourceTree = "<group>"; };
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
@@ -57,6 +59,7 @@
 				877C01CDA67795DE4EF40F70 /* ContentView.swift */,
 				24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */,
 				3159880EA2D19188C7F9D214 /* ImageManager.swift */,
+				27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
 				871038931F2825DED9F16B0B /* UpdateChecker.swift */,
@@ -148,6 +151,7 @@
 				3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */,
 				8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */,
 				9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */,
+				0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
 				237F976B2546C76C87A36355 /* UpdateChecker.swift in Sources */,
