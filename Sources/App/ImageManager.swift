@@ -400,7 +400,14 @@ class PhotoManager: ObservableObject {
         }
         window.onOpacityChanged = { [weak self] newOpacity in
             guard let self, let i = self.photos.firstIndex(where: { $0.id == item.id }) else { return }
-            self.photos[i].opacity = newOpacity
+            // Scrolling reports the alpha actually on screen. While a photo is
+            // dimmed for Dark Mode that is the *adapted* value, so store the
+            // undimmed equivalent — otherwise each theme switch would dim the
+            // already-dimmed value and the photo would fade away over time.
+            let adapting = self.photos[i].themeAdaptive && self.isDarkMode()
+            self.photos[i].opacity = adapting
+                ? min(1.0, newOpacity / Self.darkModeDimming)
+                : newOpacity
             self.persist()
         }
 
@@ -875,19 +882,48 @@ class PhotoManager: ObservableObject {
     /// border blended toward white; Light Mode is a no-op pass-through of the stored values.
     private func applyThemeAdaptation(_ item: PhotoItem) {
         guard item.themeAdaptive, let window = windows[item.id] else { return }
-        let dark = isDarkMode()
-        let shadowOpacity = dark ? min(item.shadowOpacity + 0.15, 0.6) : item.shadowOpacity
-        let borderColor = dark
-            ? (item.borderColor.blended(withFraction: 0.25, of: .white) ?? item.borderColor)
-            : item.borderColor
+        guard isDarkMode() else {
+            applyStoredAppearance(item)
+            return
+        }
 
-        window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: shadowOpacity)
-        (window.contentView as? DraggablePhotoView)?.applyBorder(width: item.borderWidth, color: borderColor)
+        // Dimming is what actually makes this toggle worth having. A photo
+        // tuned for a bright desktop glares at night, and adjusting only the
+        // shadow and border — as this first did — changed nothing visible for
+        // the common case, since borderWidth defaults to 0 and a slightly
+        // darker shadow is invisible against a dark wallpaper.
+        window.setPhotoOpacity(max(0.1, item.opacity * Self.darkModeDimming))
+
+        window.applyShadowSettings(
+            enabled: item.shadowEnabled,
+            blur: item.shadowBlur,
+            opacity: min(item.shadowOpacity + 0.15, 0.6)
+        )
+
+        // With no border of their own, a dark photo on a dark wallpaper loses
+        // its edges entirely, so lend it a hairline. Anyone who did pick a
+        // border keeps it, lightened for contrast.
+        let view = window.contentView as? DraggablePhotoView
+        if item.borderWidth > 0 {
+            let lightened = item.borderColor.blended(withFraction: 0.25, of: .white) ?? item.borderColor
+            view?.applyBorder(width: item.borderWidth, color: lightened)
+        } else {
+            view?.applyBorder(width: 1, color: NSColor.white.withAlphaComponent(0.15))
+        }
     }
 
+    /// How much a theme-adaptive photo dims in Dark Mode. Enough to take the
+    /// glare off a bright image at night without making it look broken.
+    private static let darkModeDimming: CGFloat = 0.8
+
     /// Reverts a window to exactly its stored (non-adapted) appearance settings.
+    ///
+    /// Must undo every adaptation, including the borrowed hairline and the
+    /// dimming — otherwise switching back to Light Mode, or turning the toggle
+    /// off, strands the photo looking permanently faded.
     private func applyStoredAppearance(_ item: PhotoItem) {
         guard let window = windows[item.id] else { return }
+        window.setPhotoOpacity(item.opacity)
         window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: item.shadowOpacity)
         (window.contentView as? DraggablePhotoView)?.applyBorder(width: item.borderWidth, color: item.borderColor)
     }

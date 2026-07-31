@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.0.3",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.0.3/Tableau.app.zip",
-  "sha256": "",
-  "releaseNotes": "Adds update notifications and fixes Gatekeeper launch issues.",
+  "latestVersion": "2.1.0",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.1.0/Tableau.app.zip",
+  "sha256": "20a0bdfad392b8a0213f99a9e271d4ee490f1914b7d1bca4d2cc57d4bf77238e",
+  "releaseNotes": "Snap to edges, animated GIFs, global hotkey, clipboard paste, per-display memory, layout export, and one-click updates.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

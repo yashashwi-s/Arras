@@ -90,7 +90,7 @@
 ### Content & Portability
 - [x] **Animated GIF playback** — GIFs and APNGs animate natively, driven by a `CAKeyframeAnimation` on the render server so idle CPU stays at zero
 - [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import
-- [x] **Automatic theme adaptation** — opt-in per photo; strengthens shadow and lightens the border when macOS switches to Dark Mode, without overwriting your configured values
+- [x] **Automatic theme adaptation** — opt-in per photo. In Dark Mode it dims the photo to ~80% so a bright image doesn't glare at night, deepens the shadow, and lends a hairline edge to photos that have no border of their own so they don't melt into a dark wallpaper. Adjustments are computed live and never overwrite your stored values, so switching back to Light Mode restores exactly what you configured
 
 ### Updates & Accessibility
 - [x] **In-app updater** — checks a GitHub appcast, verifies SHA-256, and installs + relaunches in one click. Also checks weekly in the background
@@ -130,7 +130,6 @@ in-app updater and an App Store target that weren't on the list at all.
 The features most likely to be missed once you've had them.
 
 - [ ] **Hide while screen sharing or recording** — personal photos should not join a work call. Detectable publicly on modern macOS via `CGDisplayStreamCreate` activity or `NSWorkspace` running-app checks for Zoom/Teams/QuickTime
-- [ ] **Hide when a fullscreen app is frontmost** — desktop widgets are invisible behind fullscreen apps anyway; tearing them down reclaims the memory and stops rotation timers
 - [ ] **Focus filter integration** — tie visibility to macOS Focus modes, so Work hides the holiday photos and Personal brings them back
 - [ ] **Schedule** — show a widget only between certain hours, or only on certain weekdays
 - [ ] **Peek on hover** — keep a photo at low opacity and fade it to full when the pointer rests on it, so it can live somewhere busy without being noise
@@ -153,6 +152,53 @@ The features most likely to be missed once you've had them.
 - [ ] **Photos album sync** — point a Space at a Photos smart album so it follows the album as you add to it, rather than being a one-time copy
 - [ ] **Window mirror** — show a live miniature of another app's window (a chart, a log, a build) pinned to the desktop
 - [ ] **Caption overlay** — optional text on a photo: a label, a date, a countdown
+
+### Borders, frames & depth
+
+Today's aesthetic controls are four sliders (corner radius, shadow, border width,
+edge fade). That is a solid floor, but every widget ends up looking like every
+other widget. Most of the ideas below are cheap — the rendering already goes
+through `CAShapeLayer` / `CAGradientLayer` sublayers in `DraggablePhotoView`,
+so they are new layers rather than new architecture.
+
+**Frames that look like real objects**
+- [ ] **Photo mat (passe-partout)** — an inset border of solid colour between the frame and the image, the way a mounted print works. Probably the single biggest "this looks intentional" upgrade, and it's just an inset plus a background fill
+- [ ] **Polaroid** — thick even border with a deeper bottom edge for a handwritten-style caption
+- [ ] **Film strip** — sprocket-hole edges on two sides; pairs naturally with Spaces
+- [ ] **Corner brackets** — viewfinder-style marks at the four corners instead of a continuous stroke. Very light visual weight, reads as deliberate
+- [ ] **Torn / deckled edge** — a rough paper boundary via an alpha mask rather than a stroke
+
+**Stroke work**
+- [ ] **Gradient borders** — linear or angular colour sweep along the stroke, instead of one flat colour
+- [ ] **Dashed and dotted strokes** — `CAShapeLayer.lineDashPattern` is a one-line change
+- [ ] **Double border** — two concentric strokes with a gap; a classic print/gallery look
+- [ ] **Inner stroke** — drawn inside the image edge rather than around it, so the widget's footprint doesn't grow
+- [ ] **Per-corner radius** — asymmetric rounding (e.g. only the top two), which no competitor offers
+
+**Depth**
+- [ ] **Colour-matched glow** — sample the image's dominant colour and use it for the shadow, so the photo appears to cast light onto the desktop. This is the most modern-looking item on the list and reuses whatever colour extraction wallpaper-aware placement needs
+- [ ] **Two-layer shadow** — a tight contact shadow plus a wide ambient one. Real elevation reads as two shadows, not one; a single blurred drop shadow is what makes UI look flat and dated
+- [ ] **Elevation presets** — Flat / Raised / Floating, each a tuned radius+opacity+offset pair, so users get good depth without three sliders
+- [ ] **Inner shadow** — makes a photo look inset into the desktop rather than sitting on it
+- [ ] **Hover lift** — scale up a percent and deepen the shadow while the pointer is over a photo
+
+**Surface & material**
+- [ ] **Frosted backdrop** — an `NSVisualEffectView` behind a partly transparent photo, so it picks up wallpaper colour the way native macOS surfaces do
+- [ ] **Grain / paper texture overlay** — a subtle noise layer; also masks the gradient banding that edge fade can produce on flat wallpapers
+- [ ] **Gloss sweep** — a soft specular highlight across the top, for a framed-glass impression
+
+**Shape & crop**
+- [ ] **Shape masks** — circle, squircle, hexagon, arch. An arch or circle crop instantly makes a photo feel designed rather than pasted
+- [ ] **Aspect crop presets** — 1:1, 4:5, 16:9 with a reposition handle, instead of being locked to the source ratio
+- [ ] **Tilt** — a few degrees of rotation, so a cluster reads as a scattered pile rather than a grid
+
+**Image treatment**
+- [ ] **Filters** — black & white, sepia, duotone, faded/vintage, via Core Image
+- [ ] **Brightness / contrast / saturation** — lets a busy photo sit quietly behind icons instead of competing with them
+- [ ] **Edge fade strength** — currently a bare on/off; direction and intensity should be adjustable
+
+**Applying it all**
+- [ ] **Style presets** — bundle the above into named looks (Gallery, Polaroid, Minimal, Neon) so a user gets a finished result in one click. With this many knobs, presets stop being a convenience and start being the actual interface
 
 ### Smart Canvas
 

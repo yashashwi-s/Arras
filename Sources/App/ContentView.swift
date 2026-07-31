@@ -581,7 +581,7 @@ struct PhotoRowView: View {
                 compactToggle("Adapt to Dark Mode", isOn: Binding(
                     get: { item.themeAdaptive },
                     set: { manager.setThemeAdaptive(item.id, $0) }
-                ), hint: "Strengthens the shadow and lightens the border when macOS switches to Dark Mode")
+                ), hint: "In Dark Mode: dims the photo so it doesn't glare, deepens the shadow, and adds a hairline edge so it doesn't melt into a dark wallpaper")
             }
 
             // Folder
