@@ -45,6 +45,13 @@ struct PhotoItem: Identifiable, Codable {
     var customRotationSeconds: Int     // used when rotationInterval == "custom"
     var folderImageConfigs: [String: FolderImageConfig]  // per-image position/size, keyed by filename
 
+    // v1.5 — Per-Display Profiles, Space Binding, Theme Adaptation
+    var displayIdentifier: String?              // stable ID (see DisplayManager) of the display this photo currently belongs to; nil = not yet assigned (e.g. photos saved before this feature existed)
+    var savedDisplayFrames: [String: String]    // last known frameString per displayIdentifier, so a photo restores exactly where it was when its display reconnects
+    var isHiddenForDisplay: Bool                // true when auto-hidden because displayIdentifier's screen is currently disconnected — distinct from the user-controlled isVisible
+    var isSpaceBound: Bool                      // pin to whichever Space the window is on instead of joining all Spaces (see DesktopPhotoWindow.setSpaceBound)
+    var themeAdaptive: Bool                     // opt-in: nudge border/shadow toward higher contrast when macOS switches to Dark Mode
+
     init(filename: String, width: CGFloat = 300) {
         self.id = UUID()
         self.filename = filename
@@ -76,6 +83,13 @@ struct PhotoItem: Identifiable, Codable {
         self.folderImageIndex = 0
         self.customRotationSeconds = 60
         self.folderImageConfigs = [:]
+
+        // v1.5 defaults
+        self.displayIdentifier = nil
+        self.savedDisplayFrames = [:]
+        self.isHiddenForDisplay = false
+        self.isSpaceBound = false
+        self.themeAdaptive = false
     }
 
     // MARK: - Backward-compatible decoding
@@ -88,6 +102,7 @@ struct PhotoItem: Identifiable, Codable {
         case borderWidth, borderColorHex, vignetteEnabled
         case spaceImageFilenames, folderSizeMode, rotationInterval, folderImageIndex
         case customRotationSeconds, folderImageConfigs
+        case displayIdentifier, savedDisplayFrames, isHiddenForDisplay, isSpaceBound, themeAdaptive
     }
 
     init(from decoder: Decoder) throws {
@@ -119,6 +134,12 @@ struct PhotoItem: Identifiable, Codable {
         folderImageIndex = try c.decodeIfPresent(Int.self, forKey: .folderImageIndex) ?? 0
         customRotationSeconds = try c.decodeIfPresent(Int.self, forKey: .customRotationSeconds) ?? 60
         folderImageConfigs = try c.decodeIfPresent([String: FolderImageConfig].self, forKey: .folderImageConfigs) ?? [:]
+
+        displayIdentifier = try c.decodeIfPresent(String.self, forKey: .displayIdentifier)
+        savedDisplayFrames = try c.decodeIfPresent([String: String].self, forKey: .savedDisplayFrames) ?? [:]
+        isHiddenForDisplay = try c.decodeIfPresent(Bool.self, forKey: .isHiddenForDisplay) ?? false
+        isSpaceBound = try c.decodeIfPresent(Bool.self, forKey: .isSpaceBound) ?? false
+        themeAdaptive = try c.decodeIfPresent(Bool.self, forKey: .themeAdaptive) ?? false
     }
 
     // MARK: - Helper

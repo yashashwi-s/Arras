@@ -173,6 +173,19 @@ class DesktopPhotoWindow: NSWindow {
             container.updateLayout(newFrame.size)
         }
     }
+
+    // MARK: - v1.5 Space Binding
+
+    /// AppKit has no public API to enumerate or target a specific Space by identity (that's
+    /// private CGS/SkyLight territory), so "bind to a Space" here means "stay on whichever
+    /// Space this window is already on" rather than "always Space #3" — the achievable subset
+    /// of the feature. Dropping `.canJoinAllSpaces` stops the window from following Mission
+    /// Control switches; `.moveToActiveSpace` (instead of no behavior flags) keeps it visible
+    /// immediately when the binding is turned on from whatever Space the user is currently on,
+    /// rather than requiring a manual switch away and back.
+    func setSpaceBound(_ bound: Bool) {
+        collectionBehavior = bound ? [.moveToActiveSpace, .ignoresCycle] : [.canJoinAllSpaces, .ignoresCycle]
+    }
 }
 
 // MARK: - Resize Handle

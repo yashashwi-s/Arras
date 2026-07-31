@@ -62,6 +62,30 @@ class PhotoManager: ObservableObject {
             }
         }
 
+        // v1.5 — Per-Display Profiles: hide/restore photos as monitors connect/disconnect
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleScreenParametersChanged()
+            }
+        }
+
+        // v1.5 — Theme Adaptation: AppleInterfaceThemeChangedNotification is the reliable
+        // public signal for Light/Dark switches; there is no KVO-observable AppKit property
+        // that fires at the same moment without also firing for unrelated appearance churn.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleThemeChanged()
+            }
+        }
+
         // Load saved photos immediately
         loadSaved()
     }
@@ -73,26 +97,31 @@ class PhotoManager: ObservableObject {
               let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else { return }
         photos = items
 
-        for item in photos where item.isVisible {
+        // A photo that was auto-hidden because its display was disconnected stays invisible
+        // on relaunch until that display reconnects (window presence == isVisible && !isHiddenForDisplay).
+        for item in photos where item.isVisible && !item.isHiddenForDisplay {
+            guard let image = loadDisplayImage(for: item) else { continue }
+            createWindow(for: item, image: image)
             if !item.spaceImageFilenames.isEmpty {
-                // Smart Canvas (Spaces)
-                let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-                spaceImages[item.id] = urls
-
-                if let imageURL = urls[safe: item.folderImageIndex],
-                   let image = NSImage(contentsOf: imageURL) {
-                    createWindow(for: item, image: image)
-                } else if let first = urls.first, let image = NSImage(contentsOf: first) {
-                    createWindow(for: item, image: image)
-                }
-
                 setupRotationTimer(for: item)
-            } else {
-                // Single image
-                let imageURL = storageDir.appendingPathComponent(item.filename)
-                guard let image = NSImage(contentsOf: imageURL) else { continue }
-                createWindow(for: item, image: image)
             }
+        }
+    }
+
+    /// Resolves the image currently due to be shown for `item` (single photo or the active
+    /// frame of a Space), registering Space image URLs as a side effect. Shared by every path
+    /// that brings a hidden photo back on screen: manual visibility toggle, load-on-launch, and
+    /// display reconnect.
+    private func loadDisplayImage(for item: PhotoItem) -> NSImage? {
+        if !item.spaceImageFilenames.isEmpty {
+            let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+            spaceImages[item.id] = urls
+            if let imageURL = urls[safe: item.folderImageIndex], let image = NSImage(contentsOf: imageURL) {
+                return image
+            }
+            return urls.first.flatMap { NSImage(contentsOf: $0) }
+        } else {
+            return NSImage(contentsOf: storageDir.appendingPathComponent(item.filename))
         }
     }
 
@@ -113,6 +142,16 @@ class PhotoManager: ObservableObject {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].frameString = NSStringFromRect(frame)
         photos[index].widgetWidth = frame.width
+
+        // Per-Display Profiles: whichever screen the window's center currently sits on becomes
+        // its "home" display, and we remember the exact frame for that display independently
+        // so restoring after a disconnect/reconnect doesn't depend on the (possibly stale)
+        // top-level frameString if the photo was later moved to a different monitor.
+        if let screen = windows[id]?.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(frame) }) {
+            let displayId = DisplayManager.identifier(for: screen)
+            photos[index].displayIdentifier = displayId
+            photos[index].savedDisplayFrames[displayId] = NSStringFromRect(frame)
+        }
 
         // Also save per-image config for space photos if in dynamic mode
         if !photos[index].spaceImageFilenames.isEmpty,
@@ -283,11 +322,29 @@ class PhotoManager: ObservableObject {
         }
         
         let fallbackRect = NSRectFromString(item.frameString)
-        let rectToUse = targetFrame ?? fallbackRect
-        
-        if rectToUse.width > 0 { 
-            window.setFrame(rectToUse, display: true) 
+        var rectToUse = targetFrame ?? fallbackRect
+        if rectToUse.width > 0 {
+            rectToUse = clampToVisibleScreens(rectToUse)
+        }
+
+        if rectToUse.width > 0 {
+            window.setFrame(rectToUse, display: true)
             (window.contentView as? DraggablePhotoView)?.updateLayout(rectToUse.size)
+        }
+
+        window.setSpaceBound(item.isSpaceBound)
+
+        // Per-Display Profiles: record which physical display this window landed on so it can
+        // be hidden/restored correctly if that display is unplugged later. Runs on every
+        // createWindow call (not just first-time placement) so a photo dragged onto a new
+        // monitor picks up the new "home" the next time it needs to be re-created.
+        if let idx = photos.firstIndex(where: { $0.id == item.id }),
+           let screen = window.screen ?? NSScreen.screens.first(where: { $0.frame.intersects(rectToUse) }) ?? NSScreen.main {
+            photos[idx].displayIdentifier = DisplayManager.identifier(for: screen)
+        }
+
+        if item.themeAdaptive {
+            applyThemeAdaptation(item)
         }
 
         // Callbacks
@@ -354,22 +411,20 @@ class PhotoManager: ObservableObject {
         photos[index].isVisible.toggle()
 
         if photos[index].isVisible {
+            // A manual "Show" always wins over the display-disconnect auto-hide — otherwise a
+            // photo whose monitor never comes back would be permanently unreachable from the UI.
+            photos[index].isHiddenForDisplay = false
             let item = photos[index]
-            if !item.spaceImageFilenames.isEmpty {
-                let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-                spaceImages[item.id] = urls
-                if let imageURL = urls[safe: item.folderImageIndex],
-                   let image = NSImage(contentsOf: imageURL) {
-                    createWindow(for: item, image: image)
-                }
-                setupRotationTimer(for: item)
-            } else if let image = NSImage(contentsOf: storageDir.appendingPathComponent(item.filename)) {
+            if let image = loadDisplayImage(for: item) {
                 createWindow(for: item, image: image)
+            }
+            if !item.spaceImageFilenames.isEmpty {
+                setupRotationTimer(for: item)
             }
         } else {
             windows[id]?.hidePhoto()
             windows.removeValue(forKey: id)
-                        rotationTimers[id]?.cancel()
+            rotationTimers[id]?.cancel()
             rotationTimers.removeValue(forKey: id)
         }
         persist()
@@ -486,6 +541,11 @@ class PhotoManager: ObservableObject {
         dst.borderWidth = src.borderWidth
         dst.borderColorHex = src.borderColorHex
         dst.vignetteEnabled = src.vignetteEnabled
+        dst.isSpaceBound = src.isSpaceBound
+        dst.themeAdaptive = src.themeAdaptive
+        // displayIdentifier / savedDisplayFrames / isHiddenForDisplay intentionally not copied —
+        // the duplicate gets its own window and should pick up its own home display from
+        // wherever createWindow actually places it.
     }
 
     // MARK: - v1.3 Aesthetic Controls
@@ -663,6 +723,129 @@ class PhotoManager: ObservableObject {
                 frameString: NSStringFromRect(window.frame),
                 widgetWidth: window.frame.width
             )
+        }
+    }
+
+    // MARK: - v1.5 Per-Display Profiles
+
+    /// Ensures a saved frame is still reachable. Display geometry can shift between sessions
+    /// (different arrangement, different resolution/scale), and a frame computed for a display
+    /// that's since been swapped for a different physical unit sharing the same identifier
+    /// fallback could in principle land fully off-screen — better to snap it back onto a
+    /// visible screen than let the user lose track of a widget they can't see or drag back.
+    private func clampToVisibleScreens(_ rect: NSRect) -> NSRect {
+        guard !NSScreen.screens.contains(where: { $0.frame.intersects(rect) }),
+              let target = NSScreen.main ?? NSScreen.screens.first else { return rect }
+        var clamped = rect
+        clamped.origin.x = target.frame.midX - rect.width / 2
+        clamped.origin.y = target.frame.midY - rect.height / 2
+        return clamped
+    }
+
+    private func handleScreenParametersChanged() {
+        let diff = DisplayManager.shared.diffScreens()
+        guard !diff.connected.isEmpty || !diff.disconnected.isEmpty else { return }
+
+        // Hide photos whose home display just vanished, remembering exactly where they were.
+        if !diff.disconnected.isEmpty {
+            for index in photos.indices {
+                guard photos[index].isVisible, !photos[index].isHiddenForDisplay,
+                      let displayId = photos[index].displayIdentifier,
+                      diff.disconnected.contains(displayId) else { continue }
+
+                let id = photos[index].id
+                if let window = windows[id] {
+                    photos[index].savedDisplayFrames[displayId] = NSStringFromRect(window.frame)
+                    window.hidePhoto()
+                    windows.removeValue(forKey: id)
+                }
+                rotationTimers[id]?.cancel()
+                rotationTimers.removeValue(forKey: id)
+                photos[index].isHiddenForDisplay = true
+            }
+        }
+
+        // Restore photos whose home display just reappeared.
+        if !diff.connected.isEmpty {
+            for index in photos.indices {
+                guard photos[index].isVisible, photos[index].isHiddenForDisplay,
+                      let displayId = photos[index].displayIdentifier,
+                      diff.connected.contains(displayId) else { continue }
+
+                photos[index].isHiddenForDisplay = false
+                if let savedFrame = photos[index].savedDisplayFrames[displayId] {
+                    let rect = clampToVisibleScreens(NSRectFromString(savedFrame))
+                    photos[index].frameString = NSStringFromRect(rect)
+                }
+
+                let item = photos[index]
+                guard let image = loadDisplayImage(for: item) else { continue }
+                createWindow(for: item, image: image)
+                if !item.spaceImageFilenames.isEmpty {
+                    setupRotationTimer(for: item)
+                }
+            }
+        }
+
+        persist()
+    }
+
+    // MARK: - v1.5 Space Binding
+
+    /// Space binding is best-effort: see the comment on `DesktopPhotoWindow.setSpaceBound` —
+    /// there's no public API to target a specific Space by identity, so this pins the photo to
+    /// whichever Space it's on right now rather than a persistent Space #N.
+    func setSpaceBound(_ id: UUID, _ bound: Bool) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        photos[index].isSpaceBound = bound
+        windows[id]?.setSpaceBound(bound)
+        persist()
+    }
+
+    // MARK: - v1.5 Theme Adaptation
+
+    private func isDarkMode() -> Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    /// Applies a contrast nudge on top of the photo's stored (light-mode-authored) appearance
+    /// settings without mutating them, so switching back to Light Mode — or turning theme
+    /// adaptation off — exactly restores what the user actually configured. Dark desktops tend
+    /// to swallow soft shadows and pale borders, so Dark Mode gets a stronger shadow and a
+    /// border blended toward white; Light Mode is a no-op pass-through of the stored values.
+    private func applyThemeAdaptation(_ item: PhotoItem) {
+        guard item.themeAdaptive, let window = windows[item.id] else { return }
+        let dark = isDarkMode()
+        let shadowOpacity = dark ? min(item.shadowOpacity + 0.15, 0.6) : item.shadowOpacity
+        let borderColor = dark
+            ? (item.borderColor.blended(withFraction: 0.25, of: .white) ?? item.borderColor)
+            : item.borderColor
+
+        window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: shadowOpacity)
+        (window.contentView as? DraggablePhotoView)?.applyBorder(width: item.borderWidth, color: borderColor)
+    }
+
+    /// Reverts a window to exactly its stored (non-adapted) appearance settings.
+    private func applyStoredAppearance(_ item: PhotoItem) {
+        guard let window = windows[item.id] else { return }
+        window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: item.shadowOpacity)
+        (window.contentView as? DraggablePhotoView)?.applyBorder(width: item.borderWidth, color: item.borderColor)
+    }
+
+    func setThemeAdaptive(_ id: UUID, _ enabled: Bool) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        photos[index].themeAdaptive = enabled
+        if enabled {
+            applyThemeAdaptation(photos[index])
+        } else {
+            applyStoredAppearance(photos[index])
+        }
+        persist()
+    }
+
+    private func handleThemeChanged() {
+        for item in photos where item.themeAdaptive {
+            applyThemeAdaptation(item)
         }
     }
 
