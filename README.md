@@ -66,9 +66,16 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 
 ### Floating Mode
 - 🪟 **Float above windows** — turn any photo into a floating reference (above all windows)
-- 👆 **Click-through** — photos pass mouse events through so they never steal focus
-- ⌥ **Option key override** — hold Option to interact with a click-through photo at any time
 - 🎚️ **Per-photo opacity** — scroll wheel on any photo to adjust (10%–100%)
+- 🧲 **Snap & guides** — photos snap to screen edges and to each other, with alignment guides while dragging
+- 🖥️ **Per-display memory** — a photo hides when its monitor disconnects and returns to the same spot when it reconnects
+
+### Getting Photos In
+- 📋 **Paste** — `⌘V` turns a copied image into a widget instantly
+- 🫳 **Drag onto the menu bar** — drop image files right onto the icon
+- ⌨️ **Global hotkey** — one shortcut hides every photo and brings them back (default `⌥⌘P`)
+- 🎞️ **Animated GIFs** — GIFs and APNGs play natively, with no CPU cost when idle
+- 📦 **Export/import layouts** — move your whole desktop setup to another Mac as a `.tableau` file
 
 ### Smart Canvas (Folders)
 - 📁 **Folder import** — point a widget at any folder, only images are used
@@ -95,7 +102,18 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 
 ## Why not the App Store?
 
-Apple's WidgetKit (what powers desktop widgets) only supports 4 fixed sizes. Tableau bypasses this entirely using borderless desktop windows — which Apple's sandboxing rules don't allow on the App Store. So we're free and open source instead.
+Apple's WidgetKit (what powers desktop widgets) only supports 4 fixed sizes. Tableau
+bypasses this entirely using borderless desktop windows.
+
+Contrary to a common assumption, that part is perfectly App Store legal — sandboxing
+places no restriction on window levels, and Tableau uses no private APIs. The actual
+blocker is **updates**. Tableau updates itself from GitHub, and doing that requires
+replacing its own bundle and spawning a helper process, both of which the App Sandbox
+forbids. Guideline 2.4.5(iv) also reserves updating for the App Store itself.
+
+So it's genuinely either/or: a sandboxed App Store build, or a self-updating free one.
+We chose self-updating and free. A sandboxed `Tableau-MAS` target is kept in the repo
+and builds cleanly, should that ever change.
 
 ## Competitive Landscape
 
@@ -118,8 +136,8 @@ A classic app for placing photos on your desktop.
 - **Outdated Tech:** It lacks modern GPU acceleration for transitions, doesn't support advanced SwiftUI aesthetic controls (like drop shadows and edge fades), and doesn't dynamically remember window sizes per-image inside a rotating folder.
 - **Tableau's Solution:** Tableau leverages modern Core Animation crossfades, a deeply integrated SwiftUI settings panel, and advanced per-photo spatial memory so your images always remember exactly where you placed them.
 
-### 4. Floating & Click-Through Exclusivity
-None of the competitors offer Tableau's seamless workflow integration. With Tableau, you can pin a photo above all your windows, turn on **Click-Through** so your mouse clicks pass right through the photo to the apps underneath, and then instantly re-interact with the photo just by holding the **Option (⌥)** key.
+### 4. Workflow Integration
+None of the competitors offer Tableau's workflow integration. Pin a photo above all your windows as a floating reference, snap it flush against a screen edge or another photo, and clear the whole desktop with a single global shortcut when you need the space back.
 | App | Custom Ratio | Floating | Per-Photo Controls | Free | Method |
 |-----|:---:|:---:|:---:|:---:|--------|
 | **Tableau** | ✅ Any ratio | ✅ | ✅ Full suite | ✅ Free & OSS | Desktop overlay |

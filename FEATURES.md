@@ -13,11 +13,13 @@
 - [x] Cursor feedback — crosshair near corners, open hand in center
 - [x] Right-click context menu directly on the photo overlay (Reveal in Finder)
 
-### Floating Mode & Click-Through
+### Floating Mode
 - [x] **Window level toggle** — switch between desktop level (behind everything) and floating level (above everything). Stored per photo, persisted across relaunches
-- [x] **Click-through** — `ignoresMouseEvents = true` so the photo never steals focus. Click-through is strictly bound to Floating Mode; turning off floating automatically disables click-through
-- [x] **Option (⌥) key override** — hold Option to temporarily re-enable interaction on a click-through photo, even when the app is completely inactive
 - [x] **Opacity slider** — per-photo 10%–100%. Scroll-wheel on the photo adjusts it quickly
+
+> Click-through and the Option-key override were removed in 2.0.2. They relied on
+> `ignoresMouseEvents`, which made a photo impossible to grab again once the app
+> lost focus.
 
 ### Naming & Organization
 - [x] **Custom photo names** — rename from settings panel or menu bar
@@ -74,32 +76,64 @@
 - [x] GitHub Actions CI — builds on every push and PR to `main`, validates app bundle size
 - [x] GitHub Actions Release — automatically builds, packages, and publishes to GitHub Releases on any `v*` tag push
 
+### Input & Automation
+- [x] **Paste from clipboard** — `⌘V` creates a widget from a clipboard image, or from copied image files
+- [x] **Drag & drop onto menu bar icon** — drop image files straight onto the status item
+- [x] **Global hotkey** — a system-wide shortcut hides every photo, then brings them all back. Opt-in, rebindable, defaults to `⌥⌘P`. Uses Carbon `RegisterEventHotKey`, so it needs no Accessibility permission
+
+### Placement
+- [x] **Snap to edges** — magnetic snapping to screen edges/centers and to other photos while dragging
+- [x] **Alignment guides** — temporary 1px guides appear whenever a drag lines up with something
+- [x] **Per-display profiles** — each photo remembers its display and exact frame there; it hides when that monitor disconnects and returns to the same spot when it comes back
+- [x] **Space binding** — pin a photo to the Space it currently sits on instead of joining all Spaces
+
+### Content & Portability
+- [x] **Animated GIF playback** — GIFs and APNGs animate natively, driven by a `CAKeyframeAnimation` on the render server so idle CPU stays at zero
+- [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import
+- [x] **Automatic theme adaptation** — opt-in per photo; strengthens shadow and lightens the border when macOS switches to Dark Mode, without overwriting your configured values
+
+### Updates & Accessibility
+- [x] **In-app updater** — checks a GitHub appcast, verifies SHA-256, and installs + relaunches in one click. Also checks weekly in the background
+- [x] **VoiceOver support** — labels, hints and values across the settings panel, including every icon-only button and slider
+
 ---
 
 ## Later
 
-- [ ] **Per-display profiles** — remember which photos belong to which monitor; hide/restore when display disconnects or reconnects
-- [ ] **Space binding** — pin a photo to a specific Space instead of all Spaces
-- [ ] **Snap to edges** — magnetic snapping when dragging near screen edges or other photos
-- [ ] **Alignment guides** — show temporary guides when a photo aligns with the edge or center of another
-- [ ] **Global hotkey** — toggle all photos visible/hidden with a single shortcut
 - [ ] **Apple Shortcuts support** — expose actions (add photo, toggle visibility, set opacity) to the Shortcuts app
 - [ ] **URL scheme** — `tableau://add?path=...` for integration with other apps
 - [ ] **CLI interface** — `tableau add ~/path/to/image.jpg --floating --opacity 0.5`
-- [ ] **Animated GIF playback** — render GIFs natively on the desktop
-- [ ] **Paste from clipboard** — `⌘V` to instantly create a widget from a clipboard image
-- [ ] **Drag & drop onto menu bar icon** — drop an image file directly onto the status item to add it
 - [ ] **Live web preview** — embed a `WKWebView` to display a live webpage as a desktop widget
 - [ ] **PDF pages** — display a specific page from a PDF
 - [ ] **Grid builder** — define rows/columns, drag photos into cells; the whole grid moves as one object
 - [ ] **Wallpaper-aware placement** — detect wallpaper's dominant colors and suggest positions to avoid clashing
-- [ ] **Automatic theme adaptation** — adjust border color, shadow, and opacity when macOS switches Light/Dark mode
-- [ ] **Export/import layout** — save a `.tableau` bundle of all photos, positions, and settings; import on another Mac
 - [ ] **iCloud sync** — sync widgets across your Macs (opt-in per photo)
 - [ ] **AppleScript dictionary** — full scriptability: add/remove photos, set properties, query state
 - [ ] **Raycast extension** — search, toggle, and manage photos directly from Raycast
-- [ ] **VoiceOver support** — accessibility labels for all interactive elements
 - [ ] **System accent color integration** — apply the user's macOS accent color to UI elements
+
+---
+
+## Distribution
+
+Two targets build from identical sources:
+
+| | `Tableau` (Developer ID) | `Tableau-MAS` (App Store) |
+|---|---|---|
+| Sandbox | off | on |
+| Self-updater | yes | compiled out (`#if !MAS`) |
+| Build | `./build.sh` | `./build.sh --mas` |
+
+**These are mutually exclusive by design.** Replacing `Tableau.app` and spawning a
+helper that outlives the process are both forbidden under App Sandbox, so an app
+cannot both update itself and be sandboxed. Notarization does not require the
+sandbox, so the Developer ID build is unaffected; the MAS target exists for
+whenever a paid Apple Developer account is available, and App Store Review
+Guideline 2.4.5(iv) is why it drops the updater.
+
+Dropping the sandbox moves Application Support out of `~/Library/Containers`;
+`StorageMigration.swift` carries existing widgets across, and refuses to
+overwrite a destination that already holds a layout.
 
 ---
 
@@ -110,10 +144,22 @@ Sources/App/
 ├── PhotoWidgetOSXApp.swift   # @main — delegates everything to AppDelegate
 ├── AppDelegate.swift         # NSStatusItem menu (NSMenuDelegate) + settings window lifecycle
 ├── ContentView.swift         # SwiftUI settings UI (photo list, toggles, PhotosPicker, grouped controls)
-├── DesktopPhotoWindow.swift  # Borderless NSWindow + DraggablePhotoView (drag/resize/right-click/crossfade)
+├── DesktopPhotoWindow.swift  # Borderless NSWindow + DraggablePhotoView (drag/resize/snap/crossfade)
 ├── PhotoItem.swift           # Codable model: all per-photo settings + FolderImageConfig
-├── ImageManager.swift        # PhotoManager — add/remove/persist + window creation + folder sync + rotation
-├── FolderWatcher.swift       # GCD DispatchSource folder monitor for Smart Canvas
+├── ImageManager.swift        # PhotoManager — add/remove/persist + window creation + rotation
+├── PhotoImport.swift         # Shared pasteboard / drag import path
+├── StatusItemDropView.swift  # Drop target overlaid on the menu bar button
+├── HotKeyManager.swift       # Carbon global hotkey + Shortcut model
+├── ShortcutRecorder.swift    # SwiftUI click-to-record shortcut control
+├── SnapEngine.swift          # Edge/center snapping geometry
+├── SnapGuideOverlay.swift    # Transparent window that draws alignment guides
+├── AnimatedImage.swift       # PhotoContent + GIF/APNG decode and re-encode
+├── DisplayManager.swift      # Stable display identity across reconnects
+├── LayoutArchive.swift       # .tableau export/import (zip writer/reader)
+├── Updater.swift             # Appcast check, download, verify, swap, relaunch
+├── DownloadTask.swift        # Progress-reporting download
+├── UpdateStatusView.swift    # Version + Check for Updates control
+├── StorageMigration.swift    # Carries data out of the old sandbox container
 └── Assets.xcassets/
     └── AppIcon.appiconset/   # 16px–1024px icon variants
 ```
