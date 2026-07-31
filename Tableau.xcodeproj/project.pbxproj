@@ -19,13 +19,16 @@
 		400D8D56443E915E8248ED97 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
 		44293FA6953371CBE157D59B /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
 		45DBD229F38CCEC9C2593A29 /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */; };
+		4B432C5D637D74287BB85C92 /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */; };
 		524280D26FA49B69D4C57B5D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8541A1636A4B5B3C5F5C767B /* Assets.xcassets */; };
 		52E6E35C0A456B90E6BEDC3B /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
+		54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD8235ABA05B3CF358C833A /* DownloadTask.swift */; };
 		79BF320FC7EEF2D7D9CFFBE4 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
 		82D5D9743DE9D70E4669DD94 /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */; };
 		82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
 		851873BD118DE3046444461D /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
+		8F4301142981C95D6812BE22 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
 		9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3159880EA2D19188C7F9D214 /* ImageManager.swift */; };
 		9F3E1582B4271830960B8864 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */; };
@@ -38,6 +41,7 @@
 		D1589FAE9A086973753EB4E4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */; };
 		DACC762F16945E4ED0DB0A62 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
 		DE64CB544BED92571250B90C /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = F83FE7808355A305F1FBCBF5 /* Updater.swift */; };
+		E6A284AD7E34C04FA5590C2F /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */; };
 		E9B5AE9E12FACAA2A1830037 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475CF76E321700D3B0FE411B /* Constants.swift */; };
 /* End PBXBuildFile section */
 
@@ -49,8 +53,10 @@
 		2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoWidgetOSXApp.swift; sourceTree = "<group>"; };
 		2DD8235ABA05B3CF358C833A /* DownloadTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadTask.swift; sourceTree = "<group>"; };
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
+		35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		4DEFCF39A43331E6BDA1EED9 /* Tableau-MAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tableau-MAS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5243BF4CF6AD56596BCC051F /* SnapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapEngine.swift; sourceTree = "<group>"; };
 		5F46A9971A32BECF3D655474 /* PhotoImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImport.swift; sourceTree = "<group>"; };
 		6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
 		742175918C454F8D2BB2D84F /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
@@ -95,6 +101,8 @@
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
 				6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */,
+				5243BF4CF6AD56596BCC051F /* SnapEngine.swift */,
+				35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */,
 				256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */,
 				0DA53C8E29A1106E6841727D /* StorageMigration.swift */,
 				F83FE7808355A305F1FBCBF5 /* Updater.swift */,
@@ -224,6 +232,8 @@
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
 				19613B0E7D954A489A92335F /* ShortcutRecorder.swift in Sources */,
+				54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */,
+				4B432C5D637D74287BB85C92 /* SnapGuideOverlay.swift in Sources */,
 				2D7B0D529EBC3DCC16F13C8B /* StatusItemDropView.swift in Sources */,
 				C8D666ACD5D6E42B2CB6FEA1 /* StorageMigration.swift in Sources */,
 				A345F09CD4A2E93BEA74FFBB /* UpdateStatusView.swift in Sources */,
@@ -246,6 +256,8 @@
 				DACC762F16945E4ED0DB0A62 /* PhotoItem.swift in Sources */,
 				1B1BDD11791A336394D9755F /* PhotoWidgetOSXApp.swift in Sources */,
 				82D5D9743DE9D70E4669DD94 /* ShortcutRecorder.swift in Sources */,
+				8F4301142981C95D6812BE22 /* SnapEngine.swift in Sources */,
+				E6A284AD7E34C04FA5590C2F /* SnapGuideOverlay.swift in Sources */,
 				45DBD229F38CCEC9C2593A29 /* StatusItemDropView.swift in Sources */,
 				851873BD118DE3046444461D /* StorageMigration.swift in Sources */,
 				BBBBD66BD99CDD58511689DF /* UpdateStatusView.swift in Sources */,
