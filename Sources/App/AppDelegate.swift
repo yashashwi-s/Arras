@@ -182,6 +182,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pasteItem.isEnabled = manager.pasteboardHasImage
         menu.addItem(pasteItem)
 
+        let captureItem = NSMenuItem(title: "Capture Screen Region…", action: #selector(captureRegion), keyEquivalent: "")
+        captureItem.target = self
+        captureItem.toolTip = "Drag a region of the screen and pin it as a widget"
+        menu.addItem(captureItem)
+
+        let pdfItem = NSMenuItem(title: "Add PDF Page…", action: #selector(addPDFPage), keyEquivalent: "")
+        pdfItem.target = self
+        menu.addItem(pdfItem)
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
         settingsItem.target = self
@@ -578,6 +587,73 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let newState = sender.state == .off
         manager.setLaunchAtLogin(newState)
+    }
+
+    @objc func captureRegion() {
+        // screencapture -i is interactive; the menu has already closed by the
+        // time the crosshair appears, so nothing needs to be held open here.
+        manager.captureScreenshotRegion()
+    }
+
+    @objc func addPDFPage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Choose"
+        panel.message = "Pick a PDF to place a page on your desktop"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let pageCount = manager.pdfPageCount(at: url)
+        guard pageCount > 0 else {
+            presentSimpleAlert(title: "Couldn't Read That PDF", body: "The file didn't contain any pages.")
+            return
+        }
+
+        var pageIndex = 0
+        if pageCount > 1 {
+            guard let chosen = promptForPage(max: pageCount) else { return }
+            pageIndex = chosen - 1
+        }
+
+        if manager.addPDFPage(at: url, pageIndex: pageIndex) {
+            rebuildMenu()
+        } else {
+            presentSimpleAlert(title: "Couldn't Add That Page", body: "The page couldn't be rendered.")
+        }
+    }
+
+    /// Asks which page to place. Only shown for multi-page documents.
+    private func promptForPage(max pageCount: Int) -> Int? {
+        let alert = NSAlert()
+        alert.messageText = "Which page?"
+        alert.informativeText = "This PDF has \(pageCount) pages."
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 60, height: 24))
+        field.stringValue = "1"
+        field.isEditable = true
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        alert.accessoryView = field
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+
+        // Clamp rather than reject: a typo shouldn't throw away the whole action.
+        return min(max(Int(field.stringValue) ?? 1, 1), pageCount)
+    }
+
+    private func presentSimpleAlert(title: String, body: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = body
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     @objc func toggleShowInDock() {
