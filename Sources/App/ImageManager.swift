@@ -304,6 +304,29 @@ class PhotoManager: ObservableObject {
         return target
     }
 
+    /// Appends a fully-formed item (e.g. from an imported `.tableau` layout bundle) and,
+    /// if visible, creates its window. Image/space files must already be written into
+    /// `storageDir` under the names in `item.filename` / `item.spaceImageFilenames`.
+    /// Kept separate from `addPhoto`/`addSpace` since those synthesize a brand-new item
+    /// from an `NSImage` rather than restoring one that already carries saved settings.
+    func addImportedItem(_ item: PhotoItem) {
+        photos.append(item)
+        guard item.isVisible else { persist(); return }
+
+        if !item.spaceImageFilenames.isEmpty {
+            let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+            spaceImages[item.id] = urls
+            if let imageURL = urls[safe: item.folderImageIndex] ?? urls.first,
+               let image = NSImage(contentsOf: imageURL) {
+                createWindow(for: item, image: image)
+            }
+            setupRotationTimer(for: item)
+        } else if let image = NSImage(contentsOf: storageDir.appendingPathComponent(item.filename)) {
+            createWindow(for: item, image: image)
+        }
+        persist()
+    }
+
     // MARK: - Window Creation
 
     private func createWindow(for item: PhotoItem, image: NSImage) {
