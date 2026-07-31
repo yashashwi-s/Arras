@@ -35,9 +35,47 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// Edit this file in the repo to publish an update to every user.
     private let appcastURL = URL(string: "https://raw.githubusercontent.com/yashashwi-s/Tableau/main/appcast.json")!
 
-    /// Once a week is often enough for a desktop toy, and keeps us off the
-    /// network on most launches.
-    private let automaticInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// How often the app checks on its own.
+    ///
+    /// Sparkle, the de facto standard for Mac apps outside the App Store,
+    /// defaults to daily and refuses anything under an hour. The same floor
+    /// applies here: a shorter interval would hammer GitHub without ever
+    /// finding an update sooner in practice.
+    enum CheckFrequency: TimeInterval, CaseIterable, Identifiable {
+        case hourly = 3600
+        case everySixHours = 21600
+        case daily = 86400
+        case weekly = 604800
+        case never = 0
+
+        var id: TimeInterval { rawValue }
+
+        var label: String {
+            switch self {
+            case .hourly: return "Hourly"
+            case .everySixHours: return "Every 6 Hours"
+            case .daily: return "Daily"
+            case .weekly: return "Weekly"
+            case .never: return "Never"
+            }
+        }
+    }
+
+    private let frequencyKey = "updateCheckFrequency"
+
+    /// Defaults to every six hours — frequent enough that a fix reaches people
+    /// the same day, infrequent enough to stay invisible.
+    var checkFrequency: CheckFrequency {
+        get {
+            let stored = UserDefaults.standard.object(forKey: frequencyKey) as? TimeInterval
+            return stored.flatMap(CheckFrequency.init(rawValue:)) ?? .everySixHours
+        }
+        set {
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue.rawValue, forKey: frequencyKey)
+            rescheduleTimer()
+        }
+    }
 
     enum Phase: Equatable {
         case idle
@@ -61,6 +99,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     private var pending: Appcast?
     private var timer: Timer?
+    private var idleResetTask: Task<Void, Never>?
 
     /// Set just before the swap; the relaunched copy consumes it to confirm the update.
     static let justUpdatedKey = "justUpdatedToVersion"
@@ -86,14 +125,27 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
+        let interval = checkFrequency.rawValue
+        guard interval > 0 else { return }
+
         // Only reach for the network if we haven't looked in a while.
-        let due = lastChecked.map { Date().timeIntervalSince($0) >= automaticInterval } ?? true
+        let due = lastChecked.map { Date().timeIntervalSince($0) >= interval } ?? true
         if due {
             Task { await check(userInitiated: false) }
         }
 
-        // Long-running sessions still get a weekly check.
-        timer = Timer.scheduledTimer(withTimeInterval: automaticInterval, repeats: true) { [weak self] _ in
+        rescheduleTimer()
+    }
+
+    /// Restarts the background timer for the current frequency.
+    private func rescheduleTimer() {
+        timer?.invalidate()
+        timer = nil
+
+        let interval = checkFrequency.rawValue
+        guard interval > 0 else { return }
+
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.check(userInitiated: false) }
         }
     }
@@ -109,6 +161,19 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// user is checking already lives.
     func announceInstalled(version: String) {
         phase = .installed(version: version)
+        scheduleReturnToIdle(after: 12)
+    }
+
+    /// Drops a transient result back to `.idle` so the Check for Updates control
+    /// comes back. Cancelled if the phase changes in the meantime.
+    private func scheduleReturnToIdle(after seconds: TimeInterval = 6) {
+        idleResetTask?.cancel()
+        let expected = phase
+        idleResetTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.phase == expected else { return }
+            self.phase = .idle
+        }
     }
 
     // MARK: - Check
@@ -139,6 +204,10 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         guard Self.compare(appcast.latestVersion, isNewerThan: currentVersion) else {
             pending = nil
             phase = .upToDate
+            // "Up to date" is a receipt for an action, not a lasting state. Left
+            // on screen it permanently replaces the Check for Updates button, so
+            // the only way to check again is to relaunch. Fade back to idle.
+            scheduleReturnToIdle()
             return
         }
 

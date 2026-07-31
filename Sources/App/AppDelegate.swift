@@ -12,6 +12,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pasteMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything shows UI, so the Dock icon and menu bar are correct on
+        // the first frame rather than appearing a moment later.
+        AppActivation.shared.apply()
+
         setupStatusItem()
         setupGlobalHotKey()
         setupPasteMonitor()
@@ -339,6 +343,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.state = manager.launchAtLogin ? .on : .off
         menu.addItem(loginItem)
 
+        // Dock / app switcher presence. Both come from one activation policy, so
+        // the title names both rather than implying they can differ.
+        let dockItem = NSMenuItem(
+            title: "Show in Dock & App Switcher",
+            action: #selector(toggleShowInDock),
+            keyEquivalent: ""
+        )
+        dockItem.target = self
+        dockItem.state = AppActivation.shared.showsInDock ? .on : .off
+        dockItem.toolTip = "Lets you reach Tableau with ⌘Tab. macOS ties this to the Dock icon — they cannot be separated."
+        menu.addItem(dockItem)
+
         // Hide Menu Bar Icon
         let hideItem = NSMenuItem(title: "Hide Menu Bar Icon", action: #selector(hideMenuBarIcon), keyEquivalent: "")
         hideItem.target = self
@@ -562,6 +578,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let newState = sender.state == .off
         manager.setLaunchAtLogin(newState)
+    }
+
+    @objc func toggleShowInDock() {
+        AppActivation.shared.showsInDock.toggle()
+        rebuildMenu()
+
+        // Turning both off would leave no way back into the app at all.
+        if !AppActivation.shared.showsInDock && statusItem == nil {
+            showStatusItem()
+        }
     }
 
     @objc func hideMenuBarIcon() {
