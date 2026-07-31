@@ -171,25 +171,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addItem.target = self
         menu.addItem(addItem)
 
-        // Add Space
-        let addSpaceItem = NSMenuItem(title: "Add Space…", action: #selector(addSpace), keyEquivalent: "")
-        addSpaceItem.target = self
-        menu.addItem(addSpaceItem)
+        // Optional commands are opt-in from Preferences; the menu stays short by
+        // default rather than growing a slot per feature.
+        let visible = MenuBarCustomization.shared
 
-        // Paste — greyed out unless the clipboard actually holds an image.
-        let pasteItem = NSMenuItem(title: "Paste as Widget", action: #selector(pasteAsWidget), keyEquivalent: "v")
-        pasteItem.target = self
-        pasteItem.isEnabled = manager.pasteboardHasImage
-        menu.addItem(pasteItem)
+        if visible.isVisible(.addSpace) {
+            let addSpaceItem = NSMenuItem(title: "Add Space…", action: #selector(addSpace), keyEquivalent: "")
+            addSpaceItem.target = self
+            menu.addItem(addSpaceItem)
+        }
 
-        let captureItem = NSMenuItem(title: "Capture Screen Region…", action: #selector(captureRegion), keyEquivalent: "")
-        captureItem.target = self
-        captureItem.toolTip = "Drag a region of the screen and pin it as a widget"
-        menu.addItem(captureItem)
+        if visible.isVisible(.paste) {
+            // Greyed out unless the clipboard actually holds an image.
+            let pasteItem = NSMenuItem(title: "Paste as Widget", action: #selector(pasteAsWidget), keyEquivalent: "v")
+            pasteItem.target = self
+            pasteItem.isEnabled = manager.pasteboardHasImage
+            menu.addItem(pasteItem)
+        }
 
-        let pdfItem = NSMenuItem(title: "Add PDF Page…", action: #selector(addPDFPage), keyEquivalent: "")
-        pdfItem.target = self
-        menu.addItem(pdfItem)
+        if visible.isVisible(.captureRegion) {
+            let captureItem = NSMenuItem(title: "Capture Screen Region…", action: #selector(captureRegion), keyEquivalent: "")
+            captureItem.target = self
+            menu.addItem(captureItem)
+        }
+
+        if visible.isVisible(.pdfPage) {
+            let pdfItem = NSMenuItem(title: "Add PDF Page…", action: #selector(addPDFPage), keyEquivalent: "")
+            pdfItem.target = self
+            menu.addItem(pdfItem)
+        }
 
         // Settings
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
@@ -201,6 +211,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             // Show/Hide All — mirrors the global hotkey, and advertises it.
             let anyVisible = manager.photos.contains { $0.isVisible }
+            if visible.isVisible(.toggleAll) {
             let toggleAllItem = NSMenuItem(
                 title: anyVisible ? "Hide All Photos" : "Show All Photos",
                 action: #selector(toggleAllVisibility),
@@ -211,8 +222,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 toggleAllItem.toolTip = "Global shortcut: \(HotKeyManager.shared.shortcut.displayString)"
             }
             menu.addItem(toggleAllItem)
-
             menu.addItem(.separator())
+            }
 
             for (index, item) in manager.photos.enumerated() {
                 let submenu = NSMenu()
@@ -352,19 +363,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.state = manager.launchAtLogin ? .on : .off
         menu.addItem(loginItem)
 
-        menu.addItem(privacyMenuItem())
-
-        // Dock / app switcher presence. Both come from one activation policy, so
-        // the title names both rather than implying they can differ.
-        let dockItem = NSMenuItem(
-            title: "Show in Dock & App Switcher",
-            action: #selector(toggleShowInDock),
-            keyEquivalent: ""
-        )
-        dockItem.target = self
-        dockItem.state = AppActivation.shared.showsInDock ? .on : .off
-        dockItem.toolTip = "Lets you reach Tableau with ⌘Tab. macOS ties this to the Dock icon — they cannot be separated."
-        menu.addItem(dockItem)
+        if visible.isVisible(.privacy) {
+            menu.addItem(privacyMenuItem())
+        }
 
         // Hide Menu Bar Icon
         let hideItem = NSMenuItem(title: "Hide Menu Bar Icon", action: #selector(hideMenuBarIcon), keyEquivalent: "")
@@ -422,7 +423,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        let contentView = ContentView(manager: manager, onMenuUpdate: { [weak self] in
+        let contentView = MainWindowView(manager: manager, onMenuUpdate: { [weak self] in
             self?.rebuildMenu()
         })
 

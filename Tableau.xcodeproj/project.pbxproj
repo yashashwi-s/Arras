@@ -21,6 +21,9 @@
 		524280D26FA49B69D4C57B5D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8541A1636A4B5B3C5F5C767B /* Assets.xcassets */; };
 		54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5243BF4CF6AD56596BCC051F /* SnapEngine.swift */; };
 		5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD8235ABA05B3CF358C833A /* DownloadTask.swift */; };
+		5DD68F2E1C86FF5659A7E836 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BCAA9AB9949BAC052A40EBB /* PreferencesView.swift */; };
+		6EA691E98CC92A720A5B18B4 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8645969BB6DB4FF3EFDB2B73 /* PrivacyView.swift */; };
+		72290EA206455D679467F4DD /* MenuBarCustomization.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF8A78DD3F0CBFAE1F2616DD /* MenuBarCustomization.swift */; };
 		82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F46A9971A32BECF3D655474 /* PhotoImport.swift */; };
 		8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */; };
 		9B1094CED44B95FC355FDDF7 /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7002D7D7A0D350E3425F497 /* DisplayManager.swift */; };
@@ -31,6 +34,7 @@
 		A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
 		C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
 		C8D666ACD5D6E42B2CB6FEA1 /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
+		CF623BE4F5B4BAEC790BD98A /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E43F197F2037BE8D5FB4BBD /* MainWindowView.swift */; };
 		D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
 		FE3D166DDAAF551FFD47DFEC /* TableauIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8A1287E845326A89BEA6C6 /* TableauIntents.swift */; };
 /* End PBXBuildFile section */
@@ -47,6 +51,7 @@
 		2DD8235ABA05B3CF358C833A /* DownloadTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadTask.swift; sourceTree = "<group>"; };
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
 		35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
+		3E43F197F2037BE8D5FB4BBD /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		5037EB0E1A447569185D578D /* ScreenshotCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotCapture.swift; sourceTree = "<group>"; };
 		5243BF4CF6AD56596BCC051F /* SnapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapEngine.swift; sourceTree = "<group>"; };
@@ -55,10 +60,13 @@
 		6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
 		742175918C454F8D2BB2D84F /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		8541A1636A4B5B3C5F5C767B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8645969BB6DB4FF3EFDB2B73 /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
 		877C01CDA67795DE4EF40F70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceManager.swift; sourceTree = "<group>"; };
+		8BCAA9AB9949BAC052A40EBB /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		B7002D7D7A0D350E3425F497 /* DisplayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManager.swift; sourceTree = "<group>"; };
 		B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatusView.swift; sourceTree = "<group>"; };
+		BF8A78DD3F0CBFAE1F2616DD /* MenuBarCustomization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarCustomization.swift; sourceTree = "<group>"; };
 		CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedImage.swift; sourceTree = "<group>"; };
 		E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E7207FDCA56B8315D7261617 /* Tableau.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tableau.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -97,11 +105,15 @@
 				742175918C454F8D2BB2D84F /* HotKeyManager.swift */,
 				3159880EA2D19188C7F9D214 /* ImageManager.swift */,
 				27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */,
+				3E43F197F2037BE8D5FB4BBD /* MainWindowView.swift */,
+				BF8A78DD3F0CBFAE1F2616DD /* MenuBarCustomization.swift */,
 				2D0D9488B7E9A474E2E3826D /* PDFImport.swift */,
 				5F46A9971A32BECF3D655474 /* PhotoImport.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
+				8BCAA9AB9949BAC052A40EBB /* PreferencesView.swift */,
 				89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */,
+				8645969BB6DB4FF3EFDB2B73 /* PrivacyView.swift */,
 				5037EB0E1A447569185D578D /* ScreenshotCapture.swift */,
 				6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */,
 				5243BF4CF6AD56596BCC051F /* SnapEngine.swift */,
@@ -205,11 +217,15 @@
 				A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */,
 				9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */,
 				0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */,
+				CF623BE4F5B4BAEC790BD98A /* MainWindowView.swift in Sources */,
+				72290EA206455D679467F4DD /* MenuBarCustomization.swift in Sources */,
 				1CA42CC126EE9579AA94C077 /* PDFImport.swift in Sources */,
 				82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
+				5DD68F2E1C86FF5659A7E836 /* PreferencesView.swift in Sources */,
 				1B63F3E3FCFC718AB4BD6FA4 /* PresenceManager.swift in Sources */,
+				6EA691E98CC92A720A5B18B4 /* PrivacyView.swift in Sources */,
 				4737F549D28D1D4FC6C2313E /* ScreenshotCapture.swift in Sources */,
 				19613B0E7D954A489A92335F /* ShortcutRecorder.swift in Sources */,
 				54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */,

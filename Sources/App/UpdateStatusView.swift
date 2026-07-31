@@ -165,28 +165,16 @@ struct UpdateStatusView: View {
                     .foregroundStyle(.tertiary)
 
             case .idle:
-                // A menu rather than a plain button, so the automatic cadence is
-                // discoverable from the same place people go to check manually.
-                Menu {
-                    Button("Check Now") {
-                        Task { await updater.check(userInitiated: true) }
-                    }
-                    Divider()
-                    Picker("Check Automatically", selection: Binding(
-                        get: { updater.checkFrequency },
-                        set: { updater.checkFrequency = $0 }
-                    )) {
-                        ForEach(Updater.CheckFrequency.allCases) { frequency in
-                            Text(frequency.label).tag(frequency)
-                        }
-                    }
-                } label: {
-                    Text("Check for Updates")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.accentColor)
+                // A plain button. The cadence setting lives in Preferences —
+                // burying a picker in a footer menu made a one-click action into
+                // a two-level decision for no benefit.
+                Button("Check for Updates") {
+                    Task { await updater.check(userInitiated: true) }
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+                .font(.system(size: 10))
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .foregroundStyle(Color.accentColor)
                 .help(lastCheckedDescription)
 
             // Everything actionable is already showing in the banner.

@@ -91,67 +91,18 @@ struct ContentView: View {
 
     // MARK: - Footer
 
+    /// Deliberately thin. Launch at login, snapping and the global shortcut moved
+    /// to Preferences — this tab is the photo list, and a footer full of app-wide
+    /// switches made it the home for everything else too.
     private var footerBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { manager.launchAtLogin },
-                    set: {
-                        manager.setLaunchAtLogin($0)
-                        onMenuUpdate?()
-                    }
-                ))
-                .toggleStyle(.checkbox)
-                .font(.system(size: 11))
-                .accessibilityHint("Starts \(Constants.appName) automatically when you log in")
+        HStack(spacing: 8) {
+            Text("\(manager.photos.count) photo\(manager.photos.count == 1 ? "" : "s")")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
 
-                Toggle("Snap to Edges", isOn: $snapEnabled)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 11))
-                    .onChange(of: snapEnabled) { _, newValue in
-                        SnapEngine.shared.isEnabled = newValue
-                    }
-                    .help("Photos align magnetically to screen edges and to each other while dragging")
-                    .accessibilityHint("Aligns photos to screen edges and other photos while you drag them")
+            Spacer()
 
-                Spacer()
-            }
-
-            HStack(spacing: 8) {
-                Toggle("Show/Hide All", isOn: Binding(
-                    get: { hotKeys.isEnabled },
-                    set: {
-                        hotKeys.isEnabled = $0
-                        onMenuUpdate?()
-                    }
-                ))
-                .toggleStyle(.checkbox)
-                .font(.system(size: 11))
-                .help("A system-wide shortcut that hides every photo, then brings them back")
-
-                ShortcutRecorder(
-                    shortcut: Binding(
-                        get: { hotKeys.shortcut },
-                        set: {
-                            hotKeys.shortcut = $0
-                            onMenuUpdate?()
-                        }
-                    ),
-                    isEnabled: hotKeys.isEnabled
-                )
-
-                // Registration fails when another app already owns the combination.
-                if hotKeys.isEnabled && !hotKeys.isRegistered {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.orange)
-                        .help("Another app is already using this shortcut. Pick a different one.")
-                }
-
-                Spacer()
-
-                UpdateStatusView()
-            }
+            UpdateStatusView()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
