@@ -8,11 +8,25 @@ class PhotoManager: ObservableObject {
     @Published var photos: [PhotoItem] = []
     @Published var launchAtLogin: Bool = false
 
+    // v1.6 — Presence & Privacy: mirrors of PresenceMonitor's toggles/detected state for
+    // the Settings UI. Always go through the setX methods below rather than assigning
+    // these directly -- PresenceMonitor owns the real (UserDefaults-backed) state, and
+    // these are just a read mirror kept in sync via `syncPresenceState()`.
+    @Published var excludeFromScreenCapture: Bool = false
+    @Published var autoHideForConferencingApps: Bool = false
+    @Published var hideWhenFullscreenActive: Bool = false
+    @Published var isConferencingAppDetected: Bool = false
+    @Published var isFullscreenAppDetected: Bool = false
+
     private var windows: [UUID: DesktopPhotoWindow] = [:]
 
     // v1.4 — Spaces (Internal rotation timers)
     private var spaceImages: [UUID: [URL]] = [:]
     private var rotationTimers: [UUID: DispatchSourceTimer] = [:]
+
+    // v1.6 — Presence & Privacy
+    private let presence = PresenceMonitor()
+    private var scheduleTimer: DispatchSourceTimer?
 
     var storageDir: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -92,6 +106,18 @@ class PhotoManager: ObservableObject {
             }
         }
 
+        // v1.6 — Presence & Privacy: pick up PresenceMonitor's already-computed initial
+        // state (no persist side effects -- see mirrorPresenceState()) and start reacting
+        // to future changes. Registered after the initial mirror, and before loadSaved(),
+        // so no callback can fire mid-construction: PresenceMonitor's own init() runs its
+        // detection synchronously with onChange still nil, and NSWorkspace notifications
+        // are always asynchronous, so nothing arrives until well after this initializer --
+        // and therefore after loadSaved() below -- returns.
+        mirrorPresenceState()
+        presence.onChange = { [weak self] in
+            Task { @MainActor [weak self] in self?.syncPresenceState() }
+        }
+
         // Load saved photos immediately
         loadSaved()
     }
@@ -103,15 +129,26 @@ class PhotoManager: ObservableObject {
               let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else { return }
         photos = items
 
+        // Presence suppression (schedule / fullscreen / conferencing) depends on the
+        // wall clock and on which apps happen to be running right now, neither of which
+        // survives a relaunch, so it's recomputed fresh here rather than trusting
+        // whatever was persisted last session.
+        let now = Date()
+        for index in photos.indices {
+            photos[index].isHiddenForPresence = isSuppressedForPresence(photos[index], now: now)
+        }
+
         // A photo that was auto-hidden because its display was disconnected stays invisible
         // on relaunch until that display reconnects (window presence == isVisible && !isHiddenForDisplay).
-        for item in photos where item.isVisible && !item.isHiddenForDisplay {
+        for item in photos where item.isVisible && !item.isHiddenForDisplay && !item.isHiddenForPresence {
             guard let content = loadDisplayContent(for: item) else { continue }
             createWindow(for: item, content: content)
             if !item.spaceImageFilenames.isEmpty {
                 setupRotationTimer(for: item)
             }
         }
+
+        scheduleNextSchedulerTick()
     }
 
     /// Resolves what is currently due to be shown for `item` (single photo or the active
@@ -353,6 +390,14 @@ class PhotoManager: ObservableObject {
         let window = DesktopPhotoWindow()
         window.isReleasedWhenClosed = false
         window.photoId = item.id
+
+        // v1.6 — Presence & Privacy: new windows pick up the current exclusion
+        // preference immediately; applyScreenCaptureExclusion() handles windows already
+        // on screen when the toggle itself changes. `.readOnly` is NSWindow's own
+        // documented default, so turning the toggle off restores exactly the behavior
+        // this app had before the toggle existed.
+        window.sharingType = presence.excludeFromScreenCapture ? .none : .readOnly
+
         window.showPhoto(content, baseWidth: item.widgetWidth, locked: item.isLocked, settings: item)
 
         // Restore saved position
@@ -461,9 +506,15 @@ class PhotoManager: ObservableObject {
         photos[index].isVisible.toggle()
 
         if photos[index].isVisible {
-            // A manual "Show" always wins over the display-disconnect auto-hide — otherwise a
-            // photo whose monitor never comes back would be permanently unreachable from the UI.
+            // A manual "Show" always wins over the display-disconnect and presence
+            // (schedule / fullscreen / conferencing) auto-hides — otherwise a photo could
+            // become permanently unreachable from the UI. This only wins until the next
+            // presence re-evaluation (a schedule boundary, or the fullscreen/conferencing
+            // state actually changing) re-applies the same rule from scratch — see
+            // reevaluatePresence(). That mirrors how isHiddenForDisplay already behaves:
+            // manual show wins now, not forever.
             photos[index].isHiddenForDisplay = false
+            photos[index].isHiddenForPresence = false
             let item = photos[index]
             if let content = loadDisplayContent(for: item) {
                 createWindow(for: item, content: content)
@@ -943,6 +994,148 @@ class PhotoManager: ObservableObject {
         for item in photos where item.themeAdaptive {
             applyThemeAdaptation(item)
         }
+    }
+
+    // MARK: - v1.6 Presence & Privacy
+
+    /// Copies PresenceMonitor's current values into the published mirrors, with no other
+    /// side effects. Used once at construction, before `loadSaved()` -- unlike
+    /// `syncPresenceState()`, it must never call `reevaluatePresence()`/`persist()`, since
+    /// `photos` is still empty at that point and persisting an empty array would
+    /// overwrite the user's real `photos.json` before it's even been read.
+    private func mirrorPresenceState() {
+        excludeFromScreenCapture = presence.excludeFromScreenCapture
+        autoHideForConferencingApps = presence.autoHideForConferencingApps
+        hideWhenFullscreenActive = presence.hideWhenFullscreenActive
+        isConferencingAppDetected = presence.isConferencingAppRunning
+        isFullscreenAppDetected = presence.isFullscreenActive
+    }
+
+    /// Full response to a PresenceMonitor change once the app is running: refresh the
+    /// published mirrors, push sharingType onto any already-open windows, and re-derive
+    /// which windows should currently exist.
+    private func syncPresenceState() {
+        mirrorPresenceState()
+        applyScreenCaptureExclusion()
+        reevaluatePresence()
+    }
+
+    private func applyScreenCaptureExclusion() {
+        let type: NSWindow.SharingType = presence.excludeFromScreenCapture ? .none : .readOnly
+        for window in windows.values {
+            window.sharingType = type
+        }
+    }
+
+    /// Whether `item` should currently be hidden for presence reasons -- outside its own
+    /// schedule window, or either global heuristic (fullscreen app / conferencing app)
+    /// currently tripped -- independent of the user's own `isVisible` choice.
+    private func isSuppressedForPresence(_ item: PhotoItem, now: Date = Date()) -> Bool {
+        if item.scheduleEnabled {
+            let withinSchedule = Schedule.isActive(
+                startMinutes: item.scheduleStartMinutes,
+                endMinutes: item.scheduleEndMinutes,
+                weekdayMask: item.scheduleWeekdays,
+                at: now
+            )
+            if !withinSchedule { return true }
+        }
+        return presence.shouldSuppressForPresence
+    }
+
+    /// Re-checks every visible, display-connected photo against `isSuppressedForPresence`
+    /// and creates/tears down its window to match -- exactly like the per-display
+    /// auto-hide path, `isVisible` is never touched here.
+    private func reevaluatePresence() {
+        let now = Date()
+        for index in photos.indices {
+            guard photos[index].isVisible, !photos[index].isHiddenForDisplay else { continue }
+            let shouldHide = isSuppressedForPresence(photos[index], now: now)
+            guard shouldHide != photos[index].isHiddenForPresence else { continue }
+            photos[index].isHiddenForPresence = shouldHide
+            let id = photos[index].id
+
+            if shouldHide {
+                windows[id]?.hidePhoto()
+                windows.removeValue(forKey: id)
+                rotationTimers[id]?.cancel()
+                rotationTimers.removeValue(forKey: id)
+            } else {
+                let item = photos[index]
+                if let content = loadDisplayContent(for: item) {
+                    createWindow(for: item, content: content)
+                }
+                if !item.spaceImageFilenames.isEmpty {
+                    setupRotationTimer(for: item)
+                }
+            }
+        }
+        persist()
+    }
+
+    /// Arms a single one-shot timer for the earliest moment any enabled schedule could
+    /// flip active/inactive, then re-arms itself after firing. Deliberately not a
+    /// per-minute poll: with no photos scheduled this holds no timer at all, and with
+    /// several scheduled it still costs exactly one wakeup per boundary crossing.
+    private func scheduleNextSchedulerTick() {
+        scheduleTimer?.cancel()
+        scheduleTimer = nil
+
+        let enabledItems = photos.filter { $0.scheduleEnabled }
+        guard !enabledItems.isEmpty else { return }
+
+        let now = Date()
+        let seconds = enabledItems
+            .map { Schedule.secondsUntilNextBoundary(startMinutes: $0.scheduleStartMinutes, endMinutes: $0.scheduleEndMinutes, from: now) }
+            .min() ?? 60
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + seconds)
+        timer.setEventHandler { [weak self] in
+            self?.reevaluatePresence()
+            self?.scheduleNextSchedulerTick()
+        }
+        timer.resume()
+        scheduleTimer = timer
+    }
+
+    /// Reliable: sets `NSWindow.sharingType = .none` on every photo window, which the
+    /// window server itself honors for any screen recording or video-conferencing share.
+    /// See the type-level comment on `PresenceMonitor` for exactly what this does and
+    /// does not cover.
+    func setExcludeFromScreenCapture(_ enabled: Bool) {
+        presence.setExcludeFromScreenCapture(enabled)
+    }
+
+    /// Best-effort: auto-hides every photo while a known conferencing/recording app
+    /// (Zoom, Teams, QuickTime, etc.) appears to be running. A running process is not
+    /// the same thing as an active screen share -- see `PresenceMonitor`.
+    func setAutoHideForConferencingApps(_ enabled: Bool) {
+        presence.setAutoHideForConferencingApps(enabled)
+    }
+
+    /// Best-effort: auto-hides every photo while a fullscreen app appears to be
+    /// frontmost. Desktop-level widgets are already invisible behind one; this exists to
+    /// reclaim the memory and stop rotation timers rather than to hide anything visible.
+    func setHideWhenFullscreenActive(_ enabled: Bool) {
+        presence.setHideWhenFullscreenActive(enabled)
+    }
+
+    /// Sets or updates a photo's show-only-during-this-window schedule.
+    /// - Parameters:
+    ///   - startMinutes/endMinutes: minutes after midnight; `endMinutes < startMinutes`
+    ///     is an overnight window (e.g. 22:00-06:00). Both are wrapped into `0..<1440`
+    ///     rather than validated, so a caller can't hand this an out-of-range value that
+    ///     later fails to decode -- see PhotoItem's decoding discipline.
+    ///   - weekdayMask: bitmask, bit (Calendar.weekday - 1): bit 0 = Sunday ... bit 6 = Saturday.
+    func setSchedule(_ id: UUID, enabled: Bool, startMinutes: Int, endMinutes: Int, weekdayMask: Int) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        photos[index].scheduleEnabled = enabled
+        photos[index].scheduleStartMinutes = ((startMinutes % 1440) + 1440) % 1440
+        photos[index].scheduleEndMinutes = ((endMinutes % 1440) + 1440) % 1440
+        photos[index].scheduleWeekdays = weekdayMask
+        reevaluatePresence()
+        scheduleNextSchedulerTick()
     }
 
     // MARK: - App Controls

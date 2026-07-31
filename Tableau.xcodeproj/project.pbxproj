@@ -10,6 +10,7 @@
 		0C99E6F5563CF63581B58668 /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A66B1B87243ACCBFEF23FE /* LayoutArchive.swift */; };
 		148EA20191B9FD9D1D5DA2CA /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = F83FE7808355A305F1FBCBF5 /* Updater.swift */; };
 		19613B0E7D954A489A92335F /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */; };
+		1B63F3E3FCFC718AB4BD6FA4 /* PresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */; };
 		1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
 		2D7B0D529EBC3DCC16F13C8B /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */; };
 		3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
@@ -47,6 +48,7 @@
 		742175918C454F8D2BB2D84F /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		8541A1636A4B5B3C5F5C767B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		877C01CDA67795DE4EF40F70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceManager.swift; sourceTree = "<group>"; };
 		B7002D7D7A0D350E3425F497 /* DisplayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManager.swift; sourceTree = "<group>"; };
 		B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatusView.swift; sourceTree = "<group>"; };
 		CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedImage.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				5F46A9971A32BECF3D655474 /* PhotoImport.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
+				89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */,
 				6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */,
 				5243BF4CF6AD56596BCC051F /* SnapEngine.swift */,
 				35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */,
@@ -192,6 +195,7 @@
 				82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
+				1B63F3E3FCFC718AB4BD6FA4 /* PresenceManager.swift in Sources */,
 				19613B0E7D954A489A92335F /* ShortcutRecorder.swift in Sources */,
 				54081D2CC036573FA3D76077 /* SnapEngine.swift in Sources */,
 				4B432C5D637D74287BB85C92 /* SnapGuideOverlay.swift in Sources */,

@@ -52,6 +52,15 @@ struct PhotoItem: Identifiable, Codable {
     var isSpaceBound: Bool                      // pin to whichever Space the window is on instead of joining all Spaces (see DesktopPhotoWindow.setSpaceBound)
     var themeAdaptive: Bool                     // opt-in: nudge border/shadow toward higher contrast when macOS switches to Dark Mode
 
+    // v1.6 — Schedule (see PresenceManager.Schedule for the active-window math)
+    var scheduleEnabled: Bool                   // opt-in: only show this photo during the window below
+    var scheduleStartMinutes: Int               // minutes after midnight, local time
+    var scheduleEndMinutes: Int                 // minutes after midnight; less than start means an overnight window (e.g. 22:00-06:00)
+    var scheduleWeekdays: Int                   // bitmask; bit (Calendar.weekday - 1), so bit 0 = Sunday ... bit 6 = Saturday
+
+    // v1.6 — Presence & Privacy
+    var isHiddenForPresence: Bool               // true when auto-hidden by schedule, a fullscreen app, or conferencing-app detection — distinct from isVisible, same precedent as isHiddenForDisplay
+
     init(filename: String, width: CGFloat = 300) {
         self.id = UUID()
         self.filename = filename
@@ -90,6 +99,13 @@ struct PhotoItem: Identifiable, Codable {
         self.isHiddenForDisplay = false
         self.isSpaceBound = false
         self.themeAdaptive = false
+
+        // v1.6 defaults
+        self.scheduleEnabled = false
+        self.scheduleStartMinutes = 0
+        self.scheduleEndMinutes = 1439
+        self.scheduleWeekdays = 0b111_1111  // all seven days
+        self.isHiddenForPresence = false
     }
 
     // MARK: - Backward-compatible decoding
@@ -103,6 +119,8 @@ struct PhotoItem: Identifiable, Codable {
         case spaceImageFilenames, folderSizeMode, rotationInterval, folderImageIndex
         case customRotationSeconds, folderImageConfigs
         case displayIdentifier, savedDisplayFrames, isHiddenForDisplay, isSpaceBound, themeAdaptive
+        case scheduleEnabled, scheduleStartMinutes, scheduleEndMinutes, scheduleWeekdays
+        case isHiddenForPresence
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +158,12 @@ struct PhotoItem: Identifiable, Codable {
         isHiddenForDisplay = try c.decodeIfPresent(Bool.self, forKey: .isHiddenForDisplay) ?? false
         isSpaceBound = try c.decodeIfPresent(Bool.self, forKey: .isSpaceBound) ?? false
         themeAdaptive = try c.decodeIfPresent(Bool.self, forKey: .themeAdaptive) ?? false
+
+        scheduleEnabled = try c.decodeIfPresent(Bool.self, forKey: .scheduleEnabled) ?? false
+        scheduleStartMinutes = try c.decodeIfPresent(Int.self, forKey: .scheduleStartMinutes) ?? 0
+        scheduleEndMinutes = try c.decodeIfPresent(Int.self, forKey: .scheduleEndMinutes) ?? 1439
+        scheduleWeekdays = try c.decodeIfPresent(Int.self, forKey: .scheduleWeekdays) ?? 0b111_1111
+        isHiddenForPresence = try c.decodeIfPresent(Bool.self, forKey: .isHiddenForPresence) ?? false
     }
 
     // MARK: - Helper
