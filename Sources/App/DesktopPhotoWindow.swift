@@ -218,6 +218,11 @@ class DraggablePhotoView: NSView {
     private var dragMode: DragMode = .none
     private var initialMouse: NSPoint = .zero
     private var anchorPoint: NSPoint = .zero   // the fixed corner (screen coords)
+    // The drag's true origin, accumulated straight from mouse deltas. Never read the window's
+    // on-screen frame back into this — once snapping displays an adjusted origin, the frame and
+    // the true drag position diverge on purpose, and re-deriving one from the other is what
+    // causes the widget to lag behind or run away from the cursor. See SnapEngine.
+    private var unsnappedOrigin: NSPoint = .zero
     var aspectRatio: CGFloat = 1.0
     var baseCornerRadius: CGFloat = 16
     private let handleZone: CGFloat = 12
@@ -424,6 +429,7 @@ class DraggablePhotoView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         dragMode = modeAt(p)
         initialMouse = NSEvent.mouseLocation
+        unsnappedOrigin = win.frame.origin
 
         let f = win.frame
         // Set anchor = the corner OPPOSITE to the one being dragged
@@ -446,12 +452,22 @@ class DraggablePhotoView: NSView {
         case .move:
             let dx = mouse.x - initialMouse.x
             let dy = mouse.y - initialMouse.y
-            let oldOrigin = win.frame.origin
-            win.setFrameOrigin(NSPoint(
-                x: oldOrigin.x + dx,
-                y: oldOrigin.y + dy
-            ))
+            // Accumulate onto the true drag position, not the (possibly snapped) displayed
+            // frame — see the comment on `unsnappedOrigin`.
+            unsnappedOrigin.x += dx
+            unsnappedOrigin.y += dy
             initialMouse = mouse
+
+            let (snapped, guides) = SnapEngine.shared.snappedOrigin(
+                for: win,
+                proposedOrigin: unsnappedOrigin,
+                size: win.frame.size
+            )
+            win.setFrameOrigin(snapped)
+
+            if let screen = win.screen ?? NSScreen.main {
+                SnapGuideOverlay.shared.show(guides, on: screen)
+            }
 
         case .resizeBottomRight:
             let desiredW = max(minSize, mouse.x - anchorPoint.x)
@@ -496,6 +512,8 @@ class DraggablePhotoView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        SnapGuideOverlay.shared.hide()
+
         if isLocked { return }
         guard let win = window else { return }
 
