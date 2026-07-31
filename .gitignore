@@ -39,3 +39,6 @@ Package.resolved
 *.mobileprovision
 *.provisionprofile
 ExportOptions.plist
+
+# Scratch worktrees used by parallel agents
+.claude/worktrees/
