@@ -50,13 +50,19 @@ class PhotoManager: ObservableObject {
             }
         }
 
-        // Save on quit
+        // Save on quit.
+        //
+        // This must run synchronously. Hopping through `Task { }` here schedules
+        // work on the next main-queue turn, which never arrives — the process is
+        // already tearing down, so the save silently never happened. The
+        // notification is delivered on the main queue, so we are already on the
+        // main actor and can just assert it.
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.saveAllPositions()
                 self?.persist()
             }
