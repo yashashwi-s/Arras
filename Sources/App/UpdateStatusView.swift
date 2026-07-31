@@ -13,10 +13,13 @@ struct UpdateBanner: View {
         Group {
             switch updater.phase {
             case .available(let version, let notes):
+                // Naming both versions matters. The previous design put the *available*
+                // version in the footer's version slot, so the one place that tells you
+                // which build you are running read "v2.2.0" while you were on 2.1.0.
                 banner(
                     icon: "arrow.down.circle.fill",
                     tint: Color.accentColor,
-                    title: "Version \(version) is available",
+                    title: "Update available — \(Constants.version) → \(version)",
                     detail: notes
                 ) {
                     Button("Update Now") {

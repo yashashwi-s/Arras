@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.2.0",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.2.0/Tableau.app.zip",
-  "sha256": "e00a0a236cdab08cf03927b0b60bfe7a51ac6d217323d19a68e8f5c5c887d1eb",
-  "releaseNotes": "Portable layout bundles, a redesigned update banner, and macOS 27 fixes including the missing menu bar thumbnails.",
+  "latestVersion": "2.2.1",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.2.1/Tableau.app.zip",
+  "sha256": "256a9aa463e2c6c9af120444ed321385856bddf90c140d4a6a7a1220513f8b5b",
+  "releaseNotes": "The update prompt now names both versions, so the footer always shows the build you are actually running.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
