@@ -25,7 +25,9 @@ class DesktopPhotoWindow: NSWindow {
         level = Self.desktopLevel
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // Shadows are two custom CALayers on the container now (contact + ambient), not the
+        // system window shadow -- see applyShadowSettings.
+        hasShadow = false
         ignoresMouseEvents = false
         collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
         hidesOnDeactivate = false
@@ -120,18 +122,16 @@ class DesktopPhotoWindow: NSWindow {
         contentView?.alphaValue = max(0.1, min(1.0, value))
     }
 
-    // MARK: - v1.3 Shadow
+    // MARK: - v1.3 / v2.1 Shadow
 
+    /// The system window shadow (`hasShadow`) is a single, fixed-look shadow that AppKit
+    /// draws outside the window's own frame -- convenient in that it's never clipped, but it
+    /// can't be split into a tight contact shadow plus a wide ambient one, which is what
+    /// actually reads as elevation. So it stays off permanently, and both shadows are
+    /// rendered as CALayers on the container instead (see DraggablePhotoView.relayout).
     func applyShadowSettings(enabled: Bool, blur: CGFloat, opacity: CGFloat) {
-        hasShadow = enabled
-        if enabled, let container = contentView as? DraggablePhotoView {
-            container.shadow = NSShadow()
-            container.shadow?.shadowColor = NSColor.black.withAlphaComponent(opacity)
-            container.shadow?.shadowOffset = NSSize(width: 0, height: -2)
-            container.shadow?.shadowBlurRadius = blur
-        } else {
-            (contentView as? DraggablePhotoView)?.shadow = nil
-        }
+        hasShadow = false
+        (contentView as? DraggablePhotoView)?.setShadowLayers(enabled: enabled, blur: blur, opacity: opacity)
     }
 
     // MARK: - Modifier Key Monitor (Option key overrides click-through)
@@ -311,6 +311,18 @@ class AspectFillImageView: NSView {
 
 class DraggablePhotoView: NSView {
     let imageView: AspectFillImageView
+
+    /// Hosts vignette + border. A layer-backed NSView's own layer always composites above
+    /// whatever manual sibling CAShapeLayers/CAGradientLayers its *superview* adds directly
+    /// -- z-order calls like insertSublayer(above:) can't override that once the reference
+    /// layer belongs to a subview rather than being a literal entry in the parent's own
+    /// sublayers array. Mat and the two shadow layers sit fine as direct sublayers of
+    /// `self.layer` because they only ever need to be *below* imageView, which that same
+    /// rule gives them for free; vignette and border need to be *above* it, so they live as
+    /// sublayers of this second subview instead, added after imageView so ordinary AppKit
+    /// subview stacking (later-added-on-top) puts it on top.
+    private let overlayView: NSView
+
     var photoImage: NSImage? { imageView.image }
     var isLocked = false
 
@@ -338,16 +350,32 @@ class DraggablePhotoView: NSView {
     private var borderLayer: CAShapeLayer?
     private var vignetteLayer: CAGradientLayer?
 
+    // v2.1 — Borders, frames & depth
+    private var matLayer: CAShapeLayer?
+    private var borderGradientLayer: CAGradientLayer?
+    private var contactShadowLayer: CAShapeLayer?
+    private var ambientShadowLayer: CAShapeLayer?
+    private var matWidth: CGFloat = 0
+    private var matColor: NSColor = .white
+    private var shapeMask: PhotoShapeMask = .roundedRect
+    private var currentBorderWidth: CGFloat = 0
+    private var currentBorderColor: NSColor = .white
+    private var borderStyle: PhotoBorderStyle = .solid
+    private var borderGradientEnabled = false
+    private var borderGradientColor: NSColor = .black
+    private var tiltDegrees: CGFloat = 0
+    private var shadowEnabledFlag = true
+    private var shadowBlurBase: CGFloat = 10
+    private var shadowOpacityBase: CGFloat = 0.3
+    private var vignetteEnabledFlag = false
+
     init(frame: NSRect, content: PhotoContent, locked: Bool, settings: PhotoItem? = nil) {
         imageView = AspectFillImageView(frame: NSRect(origin: .zero, size: frame.size))
         imageView.apply(content)
         imageView.wantsLayer = true
 
-        let cr = settings?.cornerRadius ?? 16
-        self.baseCornerRadius = cr
-        imageView.layer?.cornerRadius = min(cr, min(frame.width, frame.height) * 0.3)
-        imageView.layer?.masksToBounds = true
-        imageView.layer?.cornerCurve = .continuous
+        overlayView = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        overlayView.wantsLayer = true
 
         self.isLocked = locked
         self.aspectRatio = content.size.width / content.size.height
@@ -355,25 +383,29 @@ class DraggablePhotoView: NSView {
         super.init(frame: frame)
 
         wantsLayer = true
-        let shadowEnabled = settings?.shadowEnabled ?? true
-        if shadowEnabled {
-            shadow = NSShadow()
-            shadow?.shadowColor = NSColor.black.withAlphaComponent(settings?.shadowOpacity ?? 0.3)
-            shadow?.shadowOffset = NSSize(width: 0, height: -2)
-            shadow?.shadowBlurRadius = settings?.shadowBlur ?? 10
-        }
-
         addSubview(imageView)
+        addSubview(overlayView) // after imageView, so it stacks on top -- see the property comment
 
-        // Apply border
-        if let s = settings, s.borderWidth > 0 {
-            applyBorder(width: s.borderWidth, color: s.borderColor)
-        }
+        // Seed every appearance property from `settings` before the first relayout, so the
+        // first frame drawn already reflects mat/shape/border/shadow/tilt instead of
+        // snapping into place a moment later. The old NSShadow-based single shadow is gone
+        // -- see relayout()/applyShadowLayers for why two CALayers replace it.
+        baseCornerRadius = settings?.cornerRadius ?? 16
+        shadowEnabledFlag = settings?.shadowEnabled ?? true
+        shadowBlurBase = settings?.shadowBlur ?? 10
+        shadowOpacityBase = settings?.shadowOpacity ?? 0.3
+        currentBorderWidth = settings?.borderWidth ?? 0
+        currentBorderColor = settings?.borderColor ?? .white
+        borderStyle = PhotoBorderStyle(rawValue: settings?.borderStyle ?? "solid") ?? .solid
+        borderGradientEnabled = settings?.borderGradientEnabled ?? false
+        borderGradientColor = settings?.borderGradientColor ?? .black
+        matWidth = settings?.matWidth ?? 0
+        matColor = settings?.matColor ?? .white
+        shapeMask = PhotoShapeMask(rawValue: settings?.shapeMask ?? "roundedRect") ?? .roundedRect
+        tiltDegrees = CGFloat(settings?.tiltDegrees ?? 0)
+        vignetteEnabledFlag = settings?.vignetteEnabled ?? false
 
-        // Apply vignette
-        if settings?.vignetteEnabled == true {
-            applyVignette()
-        }
+        relayout()
 
         addTrackingArea(NSTrackingArea(
             rect: .zero,
@@ -386,75 +418,158 @@ class DraggablePhotoView: NSView {
 
     func updateLayout(_ size: NSSize) {
         frame = NSRect(origin: .zero, size: size)
-        imageView.frame = bounds
-
-        // Recalculate corner radius relative to size
-        let maxRadius = min(size.width, size.height) * 0.3
-        imageView.layer?.cornerRadius = min(baseCornerRadius, maxRadius)
-
-        // Update border path
-        if let bl = borderLayer {
-            bl.frame = bounds
-            bl.path = CGPath(
-                roundedRect: bounds.insetBy(dx: bl.lineWidth / 2, dy: bl.lineWidth / 2),
-                cornerWidth: imageView.layer?.cornerRadius ?? 16,
-                cornerHeight: imageView.layer?.cornerRadius ?? 16,
-                transform: nil
-            )
-        }
-
-        // Update vignette
-        vignetteLayer?.frame = bounds
+        relayout()
     }
 
-    // MARK: - v1.3 Aesthetic Controls
+    // MARK: - v2.1 Unified layout
 
-    func setCornerRadius(_ radius: CGFloat) {
-        baseCornerRadius = radius
-        let maxRadius = min(bounds.width, bounds.height) * 0.3
-        let clamped = min(baseCornerRadius, maxRadius)
-        imageView.layer?.cornerRadius = clamped
+    /// Everything drawn -- image mask, mat, shadows, border, vignette, tilt -- funnels
+    /// through here so they are always derived from the same current state and in the same
+    /// order, rather than several call sites each keeping their own notion of "the shape" in
+    /// sync after a resize.
+    ///
+    /// Shadows and tilt both need pixels beyond the photo's own silhouette to render or
+    /// rotate into, but the window itself cannot grow to provide that room: ImageManager
+    /// treats `window.frame.width` as the photo's persisted `widgetWidth` and writes it
+    /// straight back to photos.json on every move/resize, so inflating the window frame here
+    /// would inflate the saved size on the next launch. Reserving margin by shrinking the
+    /// *content* inside a fixed-size window sidesteps that coupling entirely -- the tradeoff
+    /// is that a photo with a large shadow or a tilt renders very slightly smaller than its
+    /// nominal widgetWidth inside its window, rather than clipping.
+    private func relayout() {
+        let size = bounds.size
+        let margin = contentMargin(for: size)
+        let outer = NSRect(origin: .zero, size: size).insetBy(dx: margin, dy: margin)
+        let inner = outer.insetBy(dx: matWidth, dy: matWidth)
+        imageView.frame = inner
+        overlayView.frame = NSRect(origin: .zero, size: size)
 
-        // Update border path if present
-        if let bl = borderLayer {
-            bl.path = CGPath(
-                roundedRect: bounds.insetBy(dx: bl.lineWidth / 2, dy: bl.lineWidth / 2),
-                cornerWidth: clamped,
-                cornerHeight: clamped,
-                transform: nil
-            )
+        let outerRadius = min(baseCornerRadius, min(outer.width, outer.height) * 0.3)
+        let innerRadius = min(baseCornerRadius, min(inner.width, inner.height) * 0.3)
+
+        applyImageMask(inner: inner, cornerRadius: innerRadius)
+        applyShadowLayers(outer: outer, cornerRadius: outerRadius)
+        applyMatLayer(outer: outer, cornerRadius: outerRadius)
+        applyVignetteLayer(inner: inner)
+        applyBorderLayers(outer: outer, cornerRadius: outerRadius)
+        applyTiltTransform()
+    }
+
+    private func contentMargin(for size: CGSize) -> CGFloat {
+        let minDim = min(size.width, size.height)
+        let shadowMargin: CGFloat = shadowEnabledFlag
+            ? (shadowBlurBase * 1.4 + shadowBlurBase * 0.5 + 4)
+            : 0
+        let margin = max(shadowMargin, Self.tiltMargin(for: size, degrees: tiltDegrees))
+        // Never let margin eat more than ~22% of the shorter side -- a small widget at max
+        // shadow blur is a documented soft limit, not a crash, but it shouldn't be allowed to
+        // consume the whole photo either.
+        return min(margin, minDim * 0.22)
+    }
+
+    /// Extra half-width/height a rect of `size` needs on each side once rotated by `degrees`
+    /// to keep its rotated bounding box inside the original (unrotated) footprint.
+    private static func tiltMargin(for size: CGSize, degrees: CGFloat) -> CGFloat {
+        guard degrees != 0 else { return 0 }
+        let rad = degrees * .pi / 180
+        let w = size.width, h = size.height
+        let rotatedW = abs(w * cos(rad)) + abs(h * sin(rad))
+        let rotatedH = abs(w * sin(rad)) + abs(h * cos(rad))
+        return max(0, max(rotatedW - w, rotatedH - h) / 2)
+    }
+
+    private func applyImageMask(inner: NSRect, cornerRadius: CGFloat) {
+        guard let imgLayer = imageView.layer else { return }
+        switch shapeMask {
+        case .roundedRect:
+            imgLayer.mask = nil
+            imgLayer.cornerRadius = cornerRadius
+            imgLayer.masksToBounds = true
+            imgLayer.cornerCurve = .continuous
+        case .circle, .squircle, .arch:
+            imgLayer.cornerRadius = 0
+            let local = CGRect(origin: .zero, size: inner.size)
+            let maskLayer = CAShapeLayer()
+            maskLayer.frame = local
+            maskLayer.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+            maskLayer.fillColor = NSColor.black.cgColor
+            imgLayer.mask = maskLayer
+            imgLayer.masksToBounds = true
         }
     }
 
-    func applyBorder(width: CGFloat, color: NSColor) {
-        borderLayer?.removeFromSuperlayer()
+    private func makeShadowLayer() -> CAShapeLayer {
+        let l = CAShapeLayer()
+        l.fillColor = NSColor.clear.cgColor
+        return l
+    }
 
-        guard width > 0 else {
-            borderLayer = nil
+    /// A tight contact shadow plus a wide, soft ambient one -- two shadows read as real
+    /// elevation, where one blurred drop shadow reads as flat. Both derive their path from
+    /// `shapeMask`, so a circle or arch casts a shadow shaped like itself rather than a
+    /// leftover rectangle.
+    private func applyShadowLayers(outer: NSRect, cornerRadius: CGFloat) {
+        ambientShadowLayer?.removeFromSuperlayer()
+        contactShadowLayer?.removeFromSuperlayer()
+        guard shadowEnabledFlag, let img = imageView.layer else {
+            ambientShadowLayer = nil
+            contactShadowLayer = nil
             return
         }
 
-        let cr = imageView.layer?.cornerRadius ?? 16
-        let shape = CAShapeLayer()
-        shape.frame = bounds
-        shape.path = CGPath(
-            roundedRect: bounds.insetBy(dx: width / 2, dy: width / 2),
-            cornerWidth: cr,
-            cornerHeight: cr,
-            transform: nil
-        )
-        shape.fillColor = nil
-        shape.strokeColor = color.cgColor
-        shape.lineWidth = width
-        layer?.addSublayer(shape)
-        borderLayer = shape
+        let local = CGRect(origin: .zero, size: outer.size)
+        let path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+
+        let ambient = makeShadowLayer()
+        ambient.frame = outer
+        ambient.path = path
+        ambient.shadowPath = path
+        ambient.shadowColor = NSColor.black.cgColor
+        ambient.shadowOpacity = Float(min(shadowOpacityBase * 0.7, 1.0))
+        ambient.shadowRadius = max(2, shadowBlurBase * 1.4)
+        ambient.shadowOffset = CGSize(width: 0, height: -min(10, shadowBlurBase * 0.5))
+        layer?.insertSublayer(ambient, below: img)
+        ambientShadowLayer = ambient
+
+        let contact = makeShadowLayer()
+        contact.frame = outer
+        contact.path = path
+        contact.shadowPath = path
+        contact.shadowColor = NSColor.black.cgColor
+        contact.shadowOpacity = Float(min(shadowOpacityBase * 1.1, 1.0))
+        contact.shadowRadius = max(1, shadowBlurBase * 0.25)
+        contact.shadowOffset = CGSize(width: 0, height: -min(3, shadowBlurBase * 0.15))
+        // Inserted after ambient -- each "below img" insert lands directly under img, so the
+        // second one (contact) ends up the closer of the two, ambient furthest back.
+        layer?.insertSublayer(contact, below: img)
+        contactShadowLayer = contact
     }
 
-    func applyVignette() {
-        vignetteLayer?.removeFromSuperlayer()
+    /// The passe-partout: a solid inset border of colour between the frame edge and the
+    /// image, sitting directly behind it.
+    private func applyMatLayer(outer: NSRect, cornerRadius: CGFloat) {
+        matLayer?.removeFromSuperlayer()
+        guard matWidth > 0, let img = imageView.layer else {
+            matLayer = nil
+            return
+        }
+        let local = CGRect(origin: .zero, size: outer.size)
+        let mat = CAShapeLayer()
+        mat.frame = outer
+        mat.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+        mat.fillColor = matColor.cgColor
+        layer?.insertSublayer(mat, below: img)
+        matLayer = mat
+    }
 
+    private func applyVignetteLayer(inner: NSRect) {
+        vignetteLayer?.removeFromSuperlayer()
+        guard vignetteEnabledFlag else {
+            vignetteLayer = nil
+            return
+        }
         let gradient = CAGradientLayer()
-        gradient.frame = bounds
+        gradient.frame = inner
         gradient.type = .radial
         gradient.colors = [
             NSColor.clear.cgColor,
@@ -464,19 +579,131 @@ class DraggablePhotoView: NSView {
         gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
         gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
         gradient.cornerRadius = imageView.layer?.cornerRadius ?? 16
-
-        // Insert above image but below border
-        if let bl = borderLayer {
-            layer?.insertSublayer(gradient, below: bl)
-        } else {
-            layer?.addSublayer(gradient)
-        }
+        // overlayView, not self.layer -- see the property comment on overlayView for why a
+        // manual sublayer of the container can never paint above a subview's own layer no
+        // matter the insertion call, so "above the image" has to be a second subview instead.
+        overlayView.layer?.addSublayer(gradient)
         vignetteLayer = gradient
     }
 
+    /// Solid, dashed or dotted; flat colour or a linear gradient sweep. The gradient case
+    /// reuses the stroke shape as a mask (fillColor clear, opaque stroke) so the gradient
+    /// layer only paints where the stroke actually is.
+    private func applyBorderLayers(outer: NSRect, cornerRadius: CGFloat) {
+        borderLayer?.removeFromSuperlayer()
+        borderGradientLayer?.removeFromSuperlayer()
+        guard currentBorderWidth > 0 else {
+            borderLayer = nil
+            borderGradientLayer = nil
+            return
+        }
+
+        let local = CGRect(origin: .zero, size: outer.size)
+        let strokeRect = local.insetBy(dx: currentBorderWidth / 2, dy: currentBorderWidth / 2)
+        let path = shapeMask.path(in: strokeRect, cornerRadius: max(0, cornerRadius - currentBorderWidth / 2))
+
+        let stroke = CAShapeLayer()
+        stroke.frame = outer
+        stroke.path = path
+        stroke.fillColor = nil
+        stroke.lineWidth = currentBorderWidth
+        switch borderStyle {
+        case .solid:
+            stroke.lineDashPattern = nil
+            stroke.lineCap = .butt
+        case .dashed:
+            stroke.lineDashPattern = [(currentBorderWidth * 3) as NSNumber, (currentBorderWidth * 2) as NSNumber]
+            stroke.lineCap = .butt
+        case .dotted:
+            stroke.lineDashPattern = [0.01, (currentBorderWidth * 2.2)] as [NSNumber]
+            stroke.lineCap = .round
+        }
+
+        // overlayView, not self.layer -- see the property comment on overlayView. Appended
+        // after the vignette (added earlier in relayout()), so the border ends up on top of
+        // that too within the overlay.
+        if borderGradientEnabled {
+            stroke.strokeColor = NSColor.black.cgColor // opaque alpha; colour comes from the gradient
+            let gradient = CAGradientLayer()
+            gradient.frame = outer
+            gradient.colors = [currentBorderColor.cgColor, borderGradientColor.cgColor]
+            gradient.startPoint = CGPoint(x: 0, y: 1)
+            gradient.endPoint = CGPoint(x: 1, y: 0)
+            gradient.mask = stroke
+            overlayView.layer?.addSublayer(gradient)
+            borderGradientLayer = gradient
+            borderLayer = nil
+        } else {
+            stroke.strokeColor = currentBorderColor.cgColor
+            overlayView.layer?.addSublayer(stroke)
+            borderLayer = stroke
+            borderGradientLayer = nil
+        }
+    }
+
+    private func applyTiltTransform() {
+        layer?.transform = tiltDegrees == 0
+            ? CATransform3DIdentity
+            : CATransform3DMakeRotation(tiltDegrees * .pi / 180, 0, 0, 1)
+    }
+
+    // MARK: - v1.3 / v2.1 Aesthetic Controls
+
+    func setCornerRadius(_ radius: CGFloat) {
+        baseCornerRadius = radius
+        relayout()
+    }
+
+    func applyBorder(width: CGFloat, color: NSColor) {
+        currentBorderWidth = width
+        currentBorderColor = color
+        relayout()
+    }
+
+    func applyVignette() {
+        vignetteEnabledFlag = true
+        relayout()
+    }
+
     func removeVignette() {
-        vignetteLayer?.removeFromSuperlayer()
-        vignetteLayer = nil
+        vignetteEnabledFlag = false
+        relayout()
+    }
+
+    /// Called by DesktopPhotoWindow.applyShadowSettings, which owns turning off the
+    /// system window shadow in favour of the two layers built in applyShadowLayers.
+    func setShadowLayers(enabled: Bool, blur: CGFloat, opacity: CGFloat) {
+        shadowEnabledFlag = enabled
+        shadowBlurBase = blur
+        shadowOpacityBase = opacity
+        relayout()
+    }
+
+    func setMat(width: CGFloat, color: NSColor) {
+        matWidth = max(0, width)
+        matColor = color
+        relayout()
+    }
+
+    func setShapeMask(_ shape: PhotoShapeMask) {
+        shapeMask = shape
+        relayout()
+    }
+
+    func setBorderStyle(_ style: PhotoBorderStyle) {
+        borderStyle = style
+        relayout()
+    }
+
+    func setBorderGradient(enabled: Bool, color: NSColor) {
+        borderGradientEnabled = enabled
+        borderGradientColor = color
+        relayout()
+    }
+
+    func setTilt(_ degrees: CGFloat) {
+        tiltDegrees = max(-12, min(12, degrees))
+        relayout()
     }
 
     // MARK: - Hit zones

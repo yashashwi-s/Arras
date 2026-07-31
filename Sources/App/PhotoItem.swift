@@ -37,6 +37,19 @@ struct PhotoItem: Identifiable, Codable {
     var borderColorHex: String
     var vignetteEnabled: Bool
 
+    // v2.1 — Borders, frames & depth
+    // Raw Strings rather than typed enums, matching folderSizeMode/rotationInterval below --
+    // an unrecognized value on decode (e.g. from a future version) falls back to a sane
+    // default instead of failing the whole decode.
+    var matWidth: CGFloat            // 0 = no mat (passe-partout)
+    var matColorHex: String
+    var shapeMask: String            // "roundedRect", "circle", "squircle", "arch"
+    var borderStyle: String          // "solid", "dashed", "dotted"
+    var borderGradientEnabled: Bool
+    var borderGradientColorHex: String
+    var tiltDegrees: Double           // small rotation for a scattered-pile look
+    var stylePreset: String?         // last-applied named preset, for the picker's selection; nil once hand-tuned away from any preset
+
     // v1.4 — Smart Canvas (Spaces)
     var spaceImageFilenames: [String]
     var folderSizeMode: String         // "dynamic" or "fixed"
@@ -85,6 +98,16 @@ struct PhotoItem: Identifiable, Codable {
         self.borderColorHex = "#FFFFFF"
         self.vignetteEnabled = false
 
+        // v2.1 defaults
+        self.matWidth = 0
+        self.matColorHex = "#FFFFFF"
+        self.shapeMask = "roundedRect"
+        self.borderStyle = "solid"
+        self.borderGradientEnabled = false
+        self.borderGradientColorHex = "#000000"
+        self.tiltDegrees = 0
+        self.stylePreset = nil
+
         // v1.4 defaults
         self.spaceImageFilenames = []
         self.folderSizeMode = "dynamic"
@@ -116,6 +139,8 @@ struct PhotoItem: Identifiable, Codable {
         case customName
         case cornerRadius, shadowEnabled, shadowBlur, shadowOpacity
         case borderWidth, borderColorHex, vignetteEnabled
+        case matWidth, matColorHex, shapeMask, borderStyle
+        case borderGradientEnabled, borderGradientColorHex, tiltDegrees, stylePreset
         case spaceImageFilenames, folderSizeMode, rotationInterval, folderImageIndex
         case customRotationSeconds, folderImageConfigs
         case displayIdentifier, savedDisplayFrames, isHiddenForDisplay, isSpaceBound, themeAdaptive
@@ -145,6 +170,15 @@ struct PhotoItem: Identifiable, Codable {
         borderColorHex = try c.decodeIfPresent(String.self, forKey: .borderColorHex) ?? "#FFFFFF"
         vignetteEnabled = try c.decodeIfPresent(Bool.self, forKey: .vignetteEnabled) ?? false
 
+        matWidth = try c.decodeIfPresent(CGFloat.self, forKey: .matWidth) ?? 0
+        matColorHex = try c.decodeIfPresent(String.self, forKey: .matColorHex) ?? "#FFFFFF"
+        shapeMask = try c.decodeIfPresent(String.self, forKey: .shapeMask) ?? "roundedRect"
+        borderStyle = try c.decodeIfPresent(String.self, forKey: .borderStyle) ?? "solid"
+        borderGradientEnabled = try c.decodeIfPresent(Bool.self, forKey: .borderGradientEnabled) ?? false
+        borderGradientColorHex = try c.decodeIfPresent(String.self, forKey: .borderGradientColorHex) ?? "#000000"
+        tiltDegrees = try c.decodeIfPresent(Double.self, forKey: .tiltDegrees) ?? 0
+        stylePreset = try c.decodeIfPresent(String.self, forKey: .stylePreset)
+
         spaceImageFilenames = try c.decodeIfPresent([String].self, forKey: .spaceImageFilenames) ?? []
         // Migration: If they had a folderPath, we just ignore it since it's broken in Sandbox anyway
         folderSizeMode = try c.decodeIfPresent(String.self, forKey: .folderSizeMode) ?? "dynamic"
@@ -170,6 +204,14 @@ struct PhotoItem: Identifiable, Codable {
 
     var borderColor: NSColor {
         NSColor.fromHex(borderColorHex) ?? .white
+    }
+
+    var matColor: NSColor {
+        NSColor.fromHex(matColorHex) ?? .white
+    }
+
+    var borderGradientColor: NSColor {
+        NSColor.fromHex(borderGradientColorHex) ?? .black
     }
 }
 
