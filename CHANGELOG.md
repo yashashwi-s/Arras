@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — 2.3.0
+
+**A real settings window.** Photos, Preferences and Privacy are separate tabs
+now. The photo list had quietly become the home for every app-wide switch.
+
+**Reachable with ⌘Tab.** Tableau can take a Dock slot and appear in the app
+switcher, with a proper App/Edit/Window menu bar. macOS ties the Dock icon and
+⌘Tab to a single setting, so it is one toggle rather than two.
+
+**You choose what's in the menu bar.** Optional commands can be turned on or off
+in Preferences. The niche importers are off by default; Add Photo, Settings and
+Quit are always there.
+
+**Shortcuts and Siri** — seven actions: add a photo, toggle all photos, show or
+hide one by name, set opacity, and step a Space forward or back.
+
+**Frame styling** — photo mats, two-layer shadows, shape masks (circle, squircle,
+arch), gradient and dashed borders, tilt, and one-click style presets.
+
+**Privacy**
+- Hide photos from screen shares and recordings while they stay visible to you
+- Optionally hide them entirely while a call or recording app is running
+- Hide behind fullscreen apps to free memory and stop rotation timers
+
+**Also**
+- Screen-region capture and PDF pages (both opt-in from Preferences)
+- Update checks are configurable: hourly through weekly, or never
+- "Up to date" no longer permanently replaces the Check for Updates button
+- Settings can be exported to a file and loaded on another Mac
+- Duplicating a photo now carries its frame styling
+
+---
+
 ## 2.0.3 → 2.2.x — the big one
 
 Seventeen new source files, ~4,700 lines added, and eleven items cleared off the

@@ -29,14 +29,19 @@
 - [x] **Reveal in Finder** — right-click any row in settings to jump to the source file or folder
 
 ### Aesthetic Controls (Per Photo)
+- [x] **Style presets** — Gallery, Polaroid, Minimal, Modern. One click applies a whole look; with this many knobs, presets are the real interface
+- [x] **Shape masks** — rounded rectangle, circle, squircle, arch. One `PhotoShapeMask.path` drives the image mask, mat, border and shadow together so they can never drift apart
+- [x] **Photo mat (passe-partout)** — inset colour between frame and image, like a mounted print
+- [x] **Two-layer shadow** — a tight contact shadow plus a wide ambient one. Real elevation reads as two shadows; a single blur is what makes UI look flat
+- [x] **Border styles** — solid, dashed or dotted, with an optional gradient sweep along the stroke
+- [x] **Tilt** — up to ±12°, with the content inset so rotated corners never clip
 - [x] **Corner radius slider** — 0px (sharp square) to 50px
-- [x] **Shadow** — toggle on/off, adjust blur radius and opacity independently
-- [x] **Border** — adjustable width (0–5px) with a full color picker
+- [x] **Border** — adjustable width with a full color picker
 - [x] **Edge fade (vignette)** — subtle gradient fade-to-transparent at photo edges
 
-### Smart Canvas (Folder Mode)
-- [x] **Folder import** — point a widget at any folder; only images are used (JPEG, PNG, HEIC, TIFF, GIF, WebP, BMP). Non-image files are silently ignored
-- [x] **Live folder watcher** — `DispatchSource` monitors the folder for changes in real-time; new images appear automatically
+### Smart Canvas (Spaces)
+- [x] **Multi-image Spaces** — pick several images and they rotate inside one widget. Images are copied into the app, so a Space keeps working if the originals move
+- [x] **Add to an existing Space** — append more images later without rebuilding it
 - [x] **Rotation intervals** — On Click, 30 seconds, 5 minutes, Hourly, Daily, Custom
 - [x] **Custom rotation interval** — text field for any interval in seconds (minimum 5s)
 - [x] **Double-click to advance** — double-click the desktop photo to cycle to the next image (works even when position is locked)
@@ -51,6 +56,10 @@
 - [x] Windows participate natively in Mission Control (3-fingers up) and App Exposé (3-fingers down) — photos fly away and arrange themselves with other app windows instead of pinning to the desktop background
 
 ### App Shell & Settings Panel
+- [x] **Tabbed settings window** — Photos · Preferences · Privacy. The photo list stopped being the home for every app-wide switch
+- [x] **Dock & app switcher presence** — reachable with ⌘Tab, with a real App/Edit/Window menu bar. macOS ties Dock and ⌘Tab to one activation policy, so it is necessarily a single setting
+- [x] **Customisable menu bar** — choose which optional commands appear. Niche importers are off by default; Add Photo, Settings and Quit are fixed, since a menu you can empty can lock you out
+- [x] **Settings export/import** — save global preferences to a file and load them on another Mac, with confirmation before anything system-wide is rebound
 - [x] Menu bar agent (`LSUIElement`) — no dock icon, no window clutter
 - [x] Full `NSStatusItem` menu: add, show/hide, lock/unlock, remove per photo — with per-photo thumbnails and status badges (hidden, locked, floating, folder)
 - [x] **NSMenuDelegate** — menu rebuilds every time it opens, always in sync with state
@@ -64,10 +73,10 @@
 - [x] Remove All Photos action in menu bar
 
 ### Performance & Persistence
-- [x] ~20MB RAM, near-zero CPU at idle — no polling, no background threads except the folder watcher
-- [x] Joins all Spaces (`canJoinAllSpaces`, `stationary`)
+- [x] ~20MB RAM, near-zero CPU at idle. Nothing polls: rotation, schedules and presence detection are all event- or timer-driven, and GIF playback runs on the render server
+- [x] Joins all Spaces by default (`canJoinAllSpaces`), or pins to one when Space binding is on
 - [x] All state saved to `~/Library/Application Support/PhotoWidget/photos.json`
-- [x] Photos stored as JPEG copies (90% quality) in the same directory
+- [x] Photos stored as JPEG copies (90% quality); animated formats keep their original bytes so they still animate
 - [x] Position, size, lock state, visibility, all aesthetic settings — all restored on relaunch
 - [x] Atomic save on quit (`NSApplication.willTerminate`) and on every drag/resize
 
@@ -92,20 +101,59 @@
 - [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import. Positions are stored **relative to the screen**, so a layout keeps its shape on a Mac with different displays. Optionally carries app settings (shortcut, snapping, launch at login), off by default on export and opt-in on import so a shared layout can never silently rebind someone's system-wide shortcut. Display bindings are deliberately dropped on import — they fingerprint the exporting Mac's monitors and would otherwise arrive as an unresolvable hidden state
 - [x] **Automatic theme adaptation** — opt-in per photo. In Dark Mode it dims the photo to ~80% so a bright image doesn't glare at night, deepens the shadow, and lends a hairline edge to photos that have no border of their own so they don't melt into a dark wallpaper. Adjustments are computed live and never overwrite your stored values, so switching back to Light Mode restores exactly what you configured
 
+### Automation & Import
+- [x] **Apple Shortcuts (App Intents)** — seven actions: add a photo, toggle all visibility, show/hide a named photo, set opacity, and step a Space forward or back. Spotlight phrases included
+- [x] **Screen region capture** — drag a rectangle and pin it as a widget. Off by default in the menu bar; enable it in Preferences
+- [x] **PDF pages** — place a page of a PDF, rendered at 2x and capped so a poster-sized page can't produce a 100MP image. Also opt-in
+
+### Privacy & Presence
+- [x] **Hide from screen sharing and recordings** — sets `NSWindow.sharingType = .none`, the same window-server mechanism macOS uses for password fields. Photos stay visible to you. **Does not** cover AirPlay or HDMI mirroring
+- [x] **Auto-hide during calls** — best effort, watching for Zoom, Teams, QuickTime, OBS and Screenshot. A running app is not proof of an active share, and browser calls cannot be detected at all
+- [x] **Hide behind fullscreen apps** — reclaims memory and stops rotation timers for photos that were invisible anyway
+- [x] **Per-photo schedules** — show a photo only between certain hours and on certain weekdays, with overnight wrap-around. *Engine complete; settings UI not yet wired — see Left to do*
+
 ### Updates & Accessibility
-- [x] **In-app updater** — checks a GitHub appcast, verifies SHA-256, and installs + relaunches in one click. Also checks weekly in the background
+- [x] **In-app updater** — checks a GitHub appcast, verifies SHA-256, and installs + relaunches in one click
+- [x] **Configurable check cadence** — hourly, every six hours, daily, weekly or never. Defaults to six hours; one hour is the floor, matching Sparkle's
 - [x] **VoiceOver support** — labels, hints and values across the settings panel, including every icon-only button and slider
 
 ---
 
-## Roadmap Status
+## Where we stand
 
-The original "Later" list had 22 items. **11 are done**, 11 remain — plus an
-in-app updater and an App Store target that weren't on the list at all.
+**Shipped and published:** 2.2.1.
+**Built but unreleased:** everything in Automation & Import, Privacy & Presence,
+the new Aesthetic Controls, and the tabbed window. That is the next release.
 
-| Done | Remaining |
-|---|---|
-| Per-display profiles · Space binding · Snap to edges · Alignment guides · Global hotkey · Animated GIF playback · Paste from clipboard · Drag & drop onto menu bar · Theme adaptation · Export/import layout · VoiceOver | Apple Shortcuts · URL scheme · CLI · Live web preview · PDF pages · Grid builder · Wallpaper-aware placement · iCloud sync · AppleScript · Raycast extension · Accent color |
+### Original roadmap: 13 of 22 done
+
+| Done (13) | Deliberately dropped (5) | Still open (4) |
+|---|---|---|
+| Per-display profiles · Space binding · Snap to edges · Alignment guides · Global hotkey · Animated GIF · Paste from clipboard · Drag & drop onto menu bar · Theme adaptation · Export/import layout · VoiceOver · **Apple Shortcuts** · **PDF pages** | URL scheme · CLI · AppleScript · Raycast extension · iCloud sync — reasoning recorded below | Grid builder (Living Collage) · Live web preview · Wallpaper-aware placement · Accent colour |
+
+Beyond the original list: an in-app updater, screen-region capture, the privacy
+and presence suite, six frame-styling features, Dock/⌘Tab presence, and a tabbed
+settings window.
+
+---
+
+## Left to do
+
+Ordered by what actually matters, not by effort.
+
+1. **Wire the per-photo schedule UI.** The engine is done and tested (including
+   overnight wrap-around), but there is no way to reach it — so the feature does
+   not exist for users yet. Smallest gap between "built" and "useful".
+2. **Signed updates.** Checksum verification catches a corrupted or tampered
+   download but **cannot** detect a compromised repository. Needs a paid Apple
+   Developer certificate. The single most important item here.
+3. **Verify Preferences and Privacy visually.** They compile and are structurally
+   correct, but have not been seen rendered — the tab bar has, the tab contents
+   have not.
+4. **Living Collage** (dynamic grids) — the one genuinely transformative feature
+   left. Full spec below.
+5. **Duplicate/refine pass on the settings panel** — the APPEARANCE group now
+   carries a lot of controls; presets should probably hide the advanced ones.
 
 ---
 
@@ -120,8 +168,8 @@ mostly look at), several are weaker than they first appeared. Honest triage:
 **Worth building**
 
 - [ ] **Grid builder** — see Living Collage below. The one genuinely transformative item on the list
-- [ ] **Apple Shortcuts support** (App Intents) — the modern, supported automation surface. Also the only one on this list Apple actively invests in, and it composes with Focus modes and Automations, which fits the privacy/presence ideas below
-- [ ] **PDF pages** — small, and there's a real use case: pinning a page of reference material. PDFKit does the work
+- [x] ~~**Apple Shortcuts support**~~ — done. Seven App Intents plus Spotlight phrases
+- [x] ~~**PDF pages**~~ — done, opt-in from the menu bar settings
 
 **Probably worth it, with reservations**
 
@@ -382,27 +430,46 @@ deliberately no longer prints one.
 
 ```
 Sources/App/
-├── PhotoWidgetOSXApp.swift   # @main — delegates everything to AppDelegate
-├── AppDelegate.swift         # NSStatusItem menu (NSMenuDelegate) + settings window lifecycle
-├── ContentView.swift         # SwiftUI settings UI (photo list, toggles, PhotosPicker, grouped controls)
-├── DesktopPhotoWindow.swift  # Borderless NSWindow + DraggablePhotoView (drag/resize/snap/crossfade)
-├── PhotoItem.swift           # Codable model: all per-photo settings + FolderImageConfig
-├── ImageManager.swift        # PhotoManager — add/remove/persist + window creation + rotation
-├── PhotoImport.swift         # Shared pasteboard / drag import path
-├── StatusItemDropView.swift  # Drop target overlaid on the menu bar button
-├── HotKeyManager.swift       # Carbon global hotkey + Shortcut model
-├── ShortcutRecorder.swift    # SwiftUI click-to-record shortcut control
-├── SnapEngine.swift          # Edge/center snapping geometry
-├── SnapGuideOverlay.swift    # Transparent window that draws alignment guides
-├── AnimatedImage.swift       # PhotoContent + GIF/APNG decode and re-encode
-├── DisplayManager.swift      # Stable display identity across reconnects
-├── LayoutArchive.swift       # .tableau export/import (zip writer/reader)
-├── Updater.swift             # Appcast check, download, verify, swap, relaunch
-├── DownloadTask.swift        # Progress-reporting download
-├── UpdateStatusView.swift    # Version + Check for Updates control
-├── StorageMigration.swift    # Carries data out of the old sandbox container
+├── PhotoWidgetOSXApp.swift      # @main — delegates everything to AppDelegate
+├── AppDelegate.swift            # Status item menu + settings window lifecycle
+├── ImageManager.swift           # PhotoManager — the state owner: persist, windows, rotation
+├── PhotoItem.swift              # Codable model: every per-photo setting
+│
+│   # Windows & rendering
+├── DesktopPhotoWindow.swift     # Borderless NSWindow + DraggablePhotoView
+├── FrameStyle.swift             # PhotoShapeMask, PhotoBorderStyle, StylePreset
+├── PhotoAppearanceControls.swift# PhotoManager setters for frame styling
+├── AnimatedImage.swift          # PhotoContent + GIF/APNG decode and re-encode
+├── SnapEngine.swift             # Edge/centre snapping geometry
+├── SnapGuideOverlay.swift       # Transparent window that draws alignment guides
+├── DisplayManager.swift         # Stable display identity across reconnects
+│
+│   # UI
+├── MainWindowView.swift         # Tabbed root: Photos / Preferences / Privacy
+├── ContentView.swift            # Photos tab — list and per-photo controls
+├── PreferencesView.swift        # Preferences tab — global settings
+├── PrivacyView.swift            # Privacy tab — presence controls
+├── UpdateStatusView.swift       # Update banner + footer control
+├── ShortcutRecorder.swift       # Click-to-record shortcut control
+│
+│   # Input & automation
+├── PhotoImport.swift            # Shared pasteboard / drag import path
+├── StatusItemDropView.swift     # Drop target overlaid on the menu bar button
+├── HotKeyManager.swift          # Carbon global hotkey + Shortcut model
+├── TableauIntents.swift         # App Intents for Shortcuts and Spotlight
+├── ScreenshotCapture.swift      # screencapture -i region grab
+├── PDFImport.swift              # PDFKit page rendering
+│
+│   # App-level behaviour
+├── AppActivation.swift          # Dock / ⌘Tab policy + main menu
+├── MenuBarCustomization.swift   # Which optional menu commands appear
+├── PresenceManager.swift        # Schedules, fullscreen and capture detection
+├── LayoutArchive.swift          # .tableau export/import (zip writer/reader)
+├── StorageMigration.swift       # Carries data out of the old sandbox container
+├── Updater.swift                # Appcast check, download, verify, swap, relaunch
+├── DownloadTask.swift           # Progress-reporting download
 └── Assets.xcassets/
-    └── AppIcon.appiconset/   # 16px–1024px icon variants
+    └── AppIcon.appiconset/      # 16px–1024px icon variants
 ```
 
 **Storage:**

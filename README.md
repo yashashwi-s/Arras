@@ -75,7 +75,22 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 - 🫳 **Drag onto the menu bar** — drop image files right onto the icon
 - ⌨️ **Global hotkey** — one shortcut hides every photo and brings them back (default `⌥⌘P`)
 - 🎞️ **Animated GIFs** — GIFs and APNGs play natively, with no CPU cost when idle
+- 🤖 **Shortcuts & Siri** — add photos, toggle visibility, set opacity from the Shortcuts app
+- 📸 **Screen region capture** — drag a rectangle and pin it as a reference
 - 📦 **Export/import layouts** — move your whole desktop setup to another Mac as a `.tableau` file
+
+### Style
+- 🖼️ **Presets** — Gallery, Polaroid, Minimal, Modern in one click
+- ⭕ **Shape masks** — rounded rectangle, circle, squircle or arch
+- 🎞️ **Photo mat** — an inset border like a mounted print
+- 🌑 **Two-layer shadow** — contact plus ambient, the way real elevation reads
+- 📐 **Tilt** — a few degrees so a cluster looks scattered, not gridded
+
+### Privacy
+- 🙈 **Hide from screen sharing** — photos stay visible to you but stay out of screen shares and recordings
+- 📵 **Auto-hide during calls** — best effort, for Zoom, Teams, QuickTime and OBS
+- 🖥️ **Hide behind fullscreen apps** — frees memory and stops rotation timers
+- ⏰ **Schedules** — show a photo only during certain hours or days
 
 ### Smart Canvas (Folders)
 - 📁 **Folder import** — point a widget at any folder, only images are used
