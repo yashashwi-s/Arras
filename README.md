@@ -8,7 +8,7 @@
   <img src="assets/demo.gif" alt="Tableau Action Demo" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.0.0-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.2.1-green?style=flat-square)
 
 ## What is this?
 
@@ -36,7 +36,7 @@ Since Tableau is free and open source (not distributed through the App Store), m
    ```
 4. Double-click the app — it opens normally from now on
 
-Tableau is a menu bar app with no Dock icon, so on first launch look for the 📷 icon in your **menu bar** (top right), not in the Dock.
+Tableau lives in your **menu bar** — look for the 📷 icon at the top right. It also appears in the Dock and ⌘Tab by default, which you can turn off in Preferences.
 
 ### On macOS 14 Sonoma and earlier
 
@@ -47,7 +47,7 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 ## Quick Start
 
 1. Launch the app — a 📷 icon appears in your **menu bar**
-2. Click **Add Photo…** to pick images from Finder, **Add Folder…** for a rotating set, or **Photos** to pick from your Photos library
+2. Click **Add Photo…** to pick images from Finder, **Add Space…** for a rotating set, or **Photos** to pick from your Photos library
 3. Your photos appear on your desktop — **drag them anywhere**
 4. **Right-click** any photo to lock its position or remove it
 5. **Drag corners** to resize (aspect ratio is always maintained)
@@ -92,20 +92,14 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 - 🖥️ **Hide behind fullscreen apps** — frees memory and stops rotation timers
 - ⏰ **Schedules** — show a photo only during certain hours or days
 
-### Smart Canvas (Folders)
-- 📁 **Folder import** — point a widget at any folder, only images are used
+### Smart Canvas (Spaces)
+- 🗂️ **Multi-image Spaces** — pick several images and they rotate inside one widget
 - 🔄 **Rotation** — on click, 30s, 5m, hourly, daily, or custom interval (minimum 5s)
-- 🖱️ **Double-click to advance** — double-click any folder photo to go to the next image
-- 📐 **Per-image position & size** — each image in a folder remembers its own layout independently
+- 🖱️ **Double-click to advance** — double-click any Space to go to the next image
+- 📐 **Per-image position & size** — each image in a Space remembers its own layout independently
 - ✨ **GPU crossfade** — smooth Core Animation transition between images
 - 🔲 **Sizing modes** — Dynamic (each image resizes to its true ratio) or Fixed Frame (images crop to fill a locked frame)
-- ⬅️ **Previous/Next navigation** — step through folder images from settings or menu bar
-
-### Aesthetics (Per Photo)
-- 🎨 **Corner radius** — 0px (sharp) to 50px
-- 🌑 **Shadow** — toggle + blur/opacity controls
-- 🖼️ **Border** — adjustable width with color picker
-- 🌫️ **Edge fade** — subtle vignette that blends into your wallpaper
+- ⬅️ **Previous/Next navigation** — step through a Space's images from settings or menu bar
 
 ### App Shell
 - 🚀 **Launch at Login** — starts automatically with your Mac
@@ -127,8 +121,9 @@ replacing its own bundle and spawning a helper process, both of which the App Sa
 forbids. Guideline 2.4.5(iv) also reserves updating for the App Store itself.
 
 So it's genuinely either/or: a sandboxed App Store build, or a self-updating free one.
-We chose self-updating and free. A sandboxed `Tableau-MAS` target is kept in the repo
-and builds cleanly, should that ever change.
+We chose self-updating and free. A sandboxed App Store target existed briefly and was
+removed — without a paid developer account it could not be signed or submitted, so it
+was dead code. `FEATURES.md` records what reinstating it would take.
 
 ## Competitive Landscape
 
