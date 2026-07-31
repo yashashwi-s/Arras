@@ -8,6 +8,10 @@ struct ContentView: View {
     @State private var selectedPhotosItems: [PhotosPickerItem] = []
     @ObservedObject private var hotKeys = HotKeyManager.shared
 
+    // SnapEngine stores this in UserDefaults rather than publishing it, so the
+    // view seeds its own state from there once.
+    @State private var snapEnabled = SnapEngine.shared.isEnabled
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -95,6 +99,15 @@ struct ContentView: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
                 .accessibilityHint("Starts \(Constants.appName) automatically when you log in")
+
+                Toggle("Snap to Edges", isOn: $snapEnabled)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 11))
+                    .onChange(of: snapEnabled) { _, newValue in
+                        SnapEngine.shared.isEnabled = newValue
+                    }
+                    .help("Photos align magnetically to screen edges and to each other while dragging")
+                    .accessibilityHint("Aligns photos to screen edges and other photos while you drag them")
 
                 Spacer()
             }
@@ -529,6 +542,11 @@ struct PhotoRowView: View {
                     get: { item.opacity },
                     set: { manager.setOpacity(item.id, $0) }
                 ), range: 0.1...1.0, step: 0.05) { "\(Int($0 * 100))%" }
+
+                compactToggle("Pin to This Space", isOn: Binding(
+                    get: { item.isSpaceBound },
+                    set: { manager.setSpaceBound(item.id, $0); onMenuUpdate?() }
+                ), hint: "Shows this photo only on the Space it currently sits on, instead of every Space")
             }
 
             separator
@@ -559,6 +577,11 @@ struct PhotoRowView: View {
                     get: { item.vignetteEnabled },
                     set: { manager.setVignette(item.id, enabled: $0) }
                 ), hint: "Fades the photo's edges to transparent")
+
+                compactToggle("Adapt to Dark Mode", isOn: Binding(
+                    get: { item.themeAdaptive },
+                    set: { manager.setThemeAdaptive(item.id, $0) }
+                ), hint: "Strengthens the shadow and lightens the border when macOS switches to Dark Mode")
             }
 
             // Folder
