@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0
+
+**Photos tab header.** The Arras wordmark moves to the top right, opposite the Add
+controls instead of competing with them for the left edge, where it read as a
+heading for the list underneath. The rule below the header is gone; the tab bar
+above it already does that job.
+
+**Update states clear themselves after five seconds** rather than lingering.
+
+**PureMac now says Arras** (puremac.yashashwi.me/puremac/arras, with the old URL
+redirecting).
+
 ## 2.3.4
 
 **An available update now shows in Preferences.** The card only ever appeared

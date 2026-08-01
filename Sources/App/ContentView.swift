@@ -11,7 +11,6 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerBar
-            Divider()
 
             if manager.photos.isEmpty {
                 emptyView
@@ -29,11 +28,6 @@ struct ContentView: View {
 
     private var headerBar: some View {
         HStack(spacing: 8) {
-            Text(Constants.appName)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-
-            Spacer()
-
             Menu {
                 Button("From Finder…") { pickFile() }
                 Button("Create Space…") { pickSpace() }
@@ -62,6 +56,21 @@ struct ContentView: View {
             .accessibilityLabel("Add from Photos")
             .accessibilityHint("Pick up to 20 photos from your Photos library")
 
+            Spacer()
+
+            // The wordmark sits opposite the controls rather than competing with them for the
+            // left edge, where it read as a heading for the list below it.
+            Text(Constants.appName)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.primary, Color.primary.opacity(0.55)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .kerning(0.4)
+                .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

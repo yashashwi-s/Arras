@@ -2,7 +2,7 @@
   "latestVersion": "2.3.4",
   "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.4/Arras.app.zip",
   "sha256": "cde26f6dc65cef75ef1b09c48bb7c8cd1e65136bd06132fe6d8cd828f69f603e",
-  "releaseNotes": "Tableau is now Arras. Same app, same settings, same updates. Right-click a widget to layer it in front of your other photos, behind your desktop icons, above the macOS widgets, or floating over everything. Available updates now show in Preferences too, on the same button you use to check.",
+  "releaseNotes": "Tidier Photos tab header, and update states now clear themselves after a few seconds. An available update appears on the same button you use to check for one.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

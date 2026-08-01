@@ -167,12 +167,12 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// user is checking already lives.
     func announceInstalled(version: String) {
         phase = .installed(version: version)
-        scheduleReturnToIdle(after: 12)
+        scheduleReturnToIdle(after: 5)
     }
 
     /// Drops a transient result back to `.idle` so the Check for Updates control
     /// comes back. Cancelled if the phase changes in the meantime.
-    private func scheduleReturnToIdle(after seconds: TimeInterval = 6) {
+    private func scheduleReturnToIdle(after seconds: TimeInterval = 5) {
         idleResetTask?.cancel()
         let expected = phase
         idleResetTask = Task { [weak self] in
