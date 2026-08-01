@@ -1,7 +1,7 @@
 {
   "latestVersion": "2.3.0",
   "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.0/Tableau.app.zip",
-  "sha256": "12cee331f7c9771d6659f27f3d19b560046d16f1b3e4709f6403d4644d703ca2",
+  "sha256": "987837368df5b7468204a6b908043bebace7b30aae926822c6452fd5c1c1473f",
   "releaseNotes": "Widgets no longer steal focus or the menu bar, and \u2318Q works again. Shadows and tilt stopped cropping your photos. Snapping now aligns the edge you can actually see, and can line up with other apps' windows and the system's desktop widgets. New per-photo depth control: behind desktop icons, on the desktop, above the system widgets, or floating. Adding photos is several times faster. Simpler settings panel and one-file backup.",
   "minimumOSVersion": "14.0",
   "announcement": null
