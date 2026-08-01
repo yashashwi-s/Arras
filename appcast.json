@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.3.1",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.1/Arras.app.zip",
+  "latestVersion": "2.3.2",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.2/Arras.app.zip",
   "sha256": "a064e00d32a4b30571991ed85d04c39af1138a7c1178f0f273e73361b922d484",
-  "releaseNotes": "Widgets no longer steal focus or the menu bar, and \u2318Q works again. Shadows and tilt stopped cropping your photos. Snapping now aligns the edge you can actually see, and can line up with other apps' windows and the system's desktop widgets. New per-photo depth control: behind desktop icons, on the desktop, above the system widgets, or floating. Adding photos is several times faster. Simpler settings panel and one-file backup.",
+  "releaseNotes": "Tableau is now Arras \u2014 same app, same settings, same updates. Right-click a widget to bring it to front or send it back. Backups export as .arras and their options moved to Preferences, where they render and stay put.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

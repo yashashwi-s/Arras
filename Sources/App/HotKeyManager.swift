@@ -157,7 +157,7 @@ final class HotKeyManager: ObservableObject {
         } else {
             // Almost always means another app already owns the combination.
             // Leave the preference on so the user can pick a different one.
-            NSLog("Tableau: could not register hotkey \(shortcut.displayString) (error \(status))")
+            NSLog("Arras: could not register hotkey \(shortcut.displayString) (error \(status))")
         }
     }
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.3.2
+
+**Backup options you can actually see.** The export dialog offered a set of
+checkboxes for which settings to include — and none of them rendered. As an
+accessory view on an `NSSavePanel`, and then on an `NSAlert`, enabled controls
+simply did not draw, while disabled ones did; the same view renders correctly in
+an isolated harness and I never found the cause. The choice now lives in
+Preferences as two ordinary switches — include settings when exporting, apply
+them when importing — where it is visible, clickable and remembered. The import
+dialog's checkbox had the same invisible-accessory problem and is gone with it.
+
+**Backups are written as `.arras`.** `.tableau` files still open.
+
 ## 2.3.1 — Tableau is now Arras
 
 **New name.** Same app, same bundle identifier, same photo library, same update
@@ -165,7 +178,7 @@ Adding a widget used to mean the file picker. Now:
 
 ### Moving your setup
 
-- **Export / import layouts** — save everything as a single `.tableau` file and
+- **Export / import layouts** — save everything as a single `.arras` file and
   restore it on another Mac. Positions are stored **relative to the screen**, so
   a layout keeps its shape on a machine with different displays
 - Bundles can optionally carry your app settings (shortcut, snapping, launch at
@@ -227,7 +240,7 @@ Adding a widget used to mean the file picker. Now:
 - Updates are verified by checksum, not by signature. That catches a corrupted or
   tampered *download*, but **not** a compromised repository. Signature checking
   needs a paid Apple Developer certificate and is the top item on the roadmap
-- `.tableau` bundles store the app's re-encoded images, not your originals — a
+- `.arras` bundles store the app's re-encoded images, not your originals — a
   layout backup, not a photo archive
 - Per-display and per-Space bindings deliberately do not travel between Macs;
   they describe hardware that does not exist on the other machine

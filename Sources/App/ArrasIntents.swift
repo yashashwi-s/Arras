@@ -12,16 +12,16 @@ import AppIntents
 /// give two owners of the same `photos.json`, each free to overwrite the
 /// other's writes; this bridge exists purely to avoid that.
 @MainActor
-enum TableauIntentBridge {
+enum ArrasIntentBridge {
     static func manager() throws -> PhotoManager {
         guard let delegate = NSApp.delegate as? AppDelegate else {
-            throw TableauIntentError.appNotReady
+            throw ArrasIntentError.appNotReady
         }
         return delegate.manager
     }
 }
 
-enum TableauIntentError: Error, CustomLocalizedStringResourceConvertible {
+enum ArrasIntentError: Error, CustomLocalizedStringResourceConvertible {
     case appNotReady
     case invalidImage
     case photoNotFound(String)
@@ -29,9 +29,9 @@ enum TableauIntentError: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .appNotReady:
-            return "Tableau isn't ready yet. Try again in a moment."
+            return "Arras isn't ready yet. Try again in a moment."
         case .invalidImage:
-            return "That file isn't an image Tableau can display."
+            return "That file isn't an image Arras can display."
         case .photoNotFound(let name):
             return "No photo named \"\(name)\" was found."
         }
@@ -53,16 +53,16 @@ extension PhotoManager {
 
 struct AddPhotoIntent: AppIntent {
     static var title: LocalizedStringResource = "Add Photo to Desktop"
-    static var description = IntentDescription("Adds an image file as a new desktop widget in Tableau.")
+    static var description = IntentDescription("Adds an image file as a new desktop widget in Arras.")
 
     @Parameter(title: "Image File")
     var file: IntentFile
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let image = NSImage(data: file.data) else {
-            throw TableauIntentError.invalidImage
+            throw ArrasIntentError.invalidImage
         }
         manager.addPhoto(image)
         return .result()
@@ -72,14 +72,14 @@ struct AddPhotoIntent: AppIntent {
 // MARK: - Toggle All Visibility
 
 struct ToggleAllPhotosVisibilityIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle All Tableau Photos"
+    static var title: LocalizedStringResource = "Toggle All Arras Photos"
     static var description = IntentDescription(
-        "Shows every Tableau photo widget, or hides them all if any are currently visible."
+        "Shows every Arras photo widget, or hides them all if any are currently visible."
     )
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         let visible = manager.toggleAllVisibility()
         return .result(value: visible)
     }
@@ -88,17 +88,17 @@ struct ToggleAllPhotosVisibilityIntent: AppIntent {
 // MARK: - Show / Hide a specific photo
 
 struct ShowPhotoIntent: AppIntent {
-    static var title: LocalizedStringResource = "Show Tableau Photo"
-    static var description = IntentDescription("Shows a Tableau photo widget by name.")
+    static var title: LocalizedStringResource = "Show Arras Photo"
+    static var description = IntentDescription("Shows an Arras photo widget by name.")
 
     @Parameter(title: "Photo Name")
     var name: String
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let item = manager.photo(named: name) else {
-            throw TableauIntentError.photoNotFound(name)
+            throw ArrasIntentError.photoNotFound(name)
         }
         if !item.isVisible {
             manager.toggleVisibility(item.id)
@@ -108,17 +108,17 @@ struct ShowPhotoIntent: AppIntent {
 }
 
 struct HidePhotoIntent: AppIntent {
-    static var title: LocalizedStringResource = "Hide Tableau Photo"
-    static var description = IntentDescription("Hides a Tableau photo widget by name.")
+    static var title: LocalizedStringResource = "Hide Arras Photo"
+    static var description = IntentDescription("Hides an Arras photo widget by name.")
 
     @Parameter(title: "Photo Name")
     var name: String
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let item = manager.photo(named: name) else {
-            throw TableauIntentError.photoNotFound(name)
+            throw ArrasIntentError.photoNotFound(name)
         }
         if item.isVisible {
             manager.toggleVisibility(item.id)
@@ -130,8 +130,8 @@ struct HidePhotoIntent: AppIntent {
 // MARK: - Set Opacity
 
 struct SetPhotoOpacityIntent: AppIntent {
-    static var title: LocalizedStringResource = "Set Tableau Photo Opacity"
-    static var description = IntentDescription("Sets a Tableau photo widget's opacity, from 0 to 100 percent.")
+    static var title: LocalizedStringResource = "Set Arras Photo Opacity"
+    static var description = IntentDescription("Sets an Arras photo widget's opacity, from 0 to 100 percent.")
 
     @Parameter(title: "Photo Name")
     var name: String
@@ -141,9 +141,9 @@ struct SetPhotoOpacityIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let item = manager.photo(named: name) else {
-            throw TableauIntentError.photoNotFound(name)
+            throw ArrasIntentError.photoNotFound(name)
         }
         // setOpacity itself clamps to the app's normal 0.1...1.0 range, so an
         // out-of-range percent from Shortcuts can't produce an invisible or
@@ -156,17 +156,17 @@ struct SetPhotoOpacityIntent: AppIntent {
 // MARK: - Next / Previous image in a Space
 
 struct NextSpaceImageIntent: AppIntent {
-    static var title: LocalizedStringResource = "Next Image in Tableau Space"
-    static var description = IntentDescription("Advances a Tableau Space to its next image.")
+    static var title: LocalizedStringResource = "Next Image in Arras Space"
+    static var description = IntentDescription("Advances an Arras Space to its next image.")
 
     @Parameter(title: "Space Name")
     var name: String
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let item = manager.photo(named: name) else {
-            throw TableauIntentError.photoNotFound(name)
+            throw ArrasIntentError.photoNotFound(name)
         }
         manager.nextFolderImage(item.id)
         return .result()
@@ -174,17 +174,17 @@ struct NextSpaceImageIntent: AppIntent {
 }
 
 struct PreviousSpaceImageIntent: AppIntent {
-    static var title: LocalizedStringResource = "Previous Image in Tableau Space"
-    static var description = IntentDescription("Steps a Tableau Space back to its previous image.")
+    static var title: LocalizedStringResource = "Previous Image in Arras Space"
+    static var description = IntentDescription("Steps an Arras Space back to its previous image.")
 
     @Parameter(title: "Space Name")
     var name: String
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let manager = try TableauIntentBridge.manager()
+        let manager = try ArrasIntentBridge.manager()
         guard let item = manager.photo(named: name) else {
-            throw TableauIntentError.photoNotFound(name)
+            throw ArrasIntentError.photoNotFound(name)
         }
         manager.prevFolderImage(item.id)
         return .result()
@@ -193,7 +193,7 @@ struct PreviousSpaceImageIntent: AppIntent {
 
 // MARK: - Shortcuts / Spotlight phrases
 
-struct TableauShortcuts: AppShortcutsProvider {
+struct ArrasShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: AddPhotoIntent(),

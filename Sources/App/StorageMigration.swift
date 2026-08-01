@@ -51,9 +51,9 @@ enum StorageMigration {
                 guard !fm.fileExists(atPath: to.path) else { continue }
                 try fm.copyItem(at: from, to: to)
             }
-            NSLog("Tableau: migrated widget data out of the sandbox container")
+            NSLog("Arras: migrated widget data out of the sandbox container")
         } catch {
-            NSLog("Tableau: storage migration failed — \(error.localizedDescription)")
+            NSLog("Arras: storage migration failed — \(error.localizedDescription)")
         }
     }
 }

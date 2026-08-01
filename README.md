@@ -81,7 +81,7 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 - 🎞️ **Animated GIFs** — GIFs and APNGs play natively, with no CPU cost when idle
 - 🤖 **Shortcuts & Siri** — add photos, toggle visibility, set opacity from the Shortcuts app
 - 📸 **Screen region capture** — drag a rectangle and pin it as a reference
-- 📦 **Export/import layouts** — move your whole desktop setup to another Mac as a `.tableau` file
+- 📦 **Export/import layouts** — move your whole desktop setup to another Mac as a `.arras` file
 
 ### Style
 - 🖼️ **Presets** — Gallery, Polaroid, Minimal, Modern in one click

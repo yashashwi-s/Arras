@@ -93,7 +93,7 @@ final class SnapEngine {
             // real bottom of the screen unreachable.
             addRect(screen.frame, priority: .screen, style: .solid)
             // The 8pt gutter the system's own desktop widgets sit in. Matching it is what
-            // makes a Tableau widget look placed rather than dropped.
+            // makes an Arras widget look placed rather than dropped.
             addRect(screen.visibleFrame.insetBy(dx: 8, dy: 8), priority: .screen, style: .solid)
         }
 

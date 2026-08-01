@@ -1,9 +1,9 @@
 import AppKit
 
-/// Keeps Tableau a menu bar agent and gives it a main menu anyway.
+/// Keeps Arras a menu bar agent and gives it a main menu anyway.
 ///
 /// There was briefly a setting that flipped the activation policy to `.regular`, putting
-/// Tableau in the Dock and in ⌘Tab. It was removed: a desktop ornament that also occupies a
+/// Arras in the Dock and in ⌘Tab. It was removed: a desktop ornament that also occupies a
 /// Dock slot and an app-switcher card is asking for attention it never needs, and the app has
 /// exactly one window worth returning to, reachable from the status item in a click.
 ///

@@ -60,7 +60,7 @@
 - [x] **Tabbed settings window** — Photos · Preferences · Privacy. The photo list stopped being the home for every app-wide switch
 - [x] **Menu bar agent, always** — no Dock icon, no ⌘Tab card. A real App/Edit/Window menu is still installed, so ⌘Q, ⌘W and ⌘C/⌘V keep working while the Settings window is open
 - [x] **Customisable menu bar** — choose which optional commands appear. Niche importers are off by default; Add Photo, Settings and Quit are fixed, since a menu you can empty can lock you out
-- [x] **Backup & transfer** — one command, one `.tableau` file, in Preferences. Tick which of General / Global shortcut / Menu bar / Updates / Privacy to include alongside the widgets. There used to be two separate mechanisms, and the one named "Settings" had no options and silently wrote five of roughly seventeen
+- [x] **Backup & transfer** — one command, one `.arras` file, in Preferences. Tick which of General / Global shortcut / Menu bar / Updates / Privacy to include alongside the widgets. There used to be two separate mechanisms, and the one named "Settings" had no options and silently wrote five of roughly seventeen
 - [x] Menu bar agent (`LSUIElement`) — no dock icon, no window clutter
 - [x] Full `NSStatusItem` menu: add, show/hide, lock/unlock, remove per photo — with per-photo thumbnails and status badges (hidden, locked, floating, folder)
 - [x] **NSMenuDelegate** — menu rebuilds every time it opens, always in sync with state
@@ -100,7 +100,7 @@
 
 ### Content & Portability
 - [x] **Animated GIF playback** — GIFs and APNGs animate natively, driven by a `CAKeyframeAnimation` on the render server so idle CPU stays at zero
-- [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import. Positions are stored **relative to the screen**, so a layout keeps its shape on a Mac with different displays. Optionally carries app settings (shortcut, snapping, launch at login), off by default on export and opt-in on import so a shared layout can never silently rebind someone's system-wide shortcut. Display bindings are deliberately dropped on import — they fingerprint the exporting Mac's monitors and would otherwise arrive as an unresolvable hidden state
+- [x] **Export/import layout** — save a `.arras` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import. Positions are stored **relative to the screen**, so a layout keeps its shape on a Mac with different displays. Optionally carries app settings (shortcut, snapping, launch at login), off by default on export and opt-in on import so a shared layout can never silently rebind someone's system-wide shortcut. Display bindings are deliberately dropped on import — they fingerprint the exporting Mac's monitors and would otherwise arrive as an unresolvable hidden state
 
 ### Automation & Import
 - [x] **Apple Shortcuts (App Intents)** — seven actions: add a photo, toggle all visibility, show/hide a named photo, set opacity, and step a Space forward or back. Spotlight phrases included
@@ -184,18 +184,18 @@ mostly look at), several are weaker than they first appeared. Honest triage:
 - [ ] ~~**CLI interface**~~ — a GUI desktop-decoration app has essentially no CLI audience, and installing a binary outside the bundle is exactly the kind of thing that breaks on update and trips Gatekeeper. Hard to justify
 - [ ] ~~**AppleScript dictionary**~~ — largely superseded by App Intents. Meaningful work (an `sdef`, an Apple Event surface to maintain) for a shrinking user base. Do Shortcuts instead
 - [ ] ~~**Raycast extension**~~ — not this repo's job. It's a separate project in a different language, and it can be built by anyone once Shortcuts or a URL scheme exists. Better as a community contribution than a roadmap item
-- [ ] ~~**iCloud sync**~~ — the *appealing* version (widgets follow you across Macs) collides with per-display and per-Space bindings, which are inherently machine-specific: syncing them faithfully would be wrong, and stripping them makes the sync half-useless. It also needs a paid account and CloudKit containers. The `.tableau` bundle already solves the real need — moving a setup once — at a fraction of the cost. Revisit only if people ask for continuous sync specifically
+- [ ] ~~**iCloud sync**~~ — the *appealing* version (widgets follow you across Macs) collides with per-display and per-Space bindings, which are inherently machine-specific: syncing them faithfully would be wrong, and stripping them makes the sync half-useless. It also needs a paid account and CloudKit containers. The `.arras` bundle already solves the real need — moving a setup once — at a fraction of the cost. Revisit only if people ask for continuous sync specifically
 
 **Verdict:** of the eleven, three are worth building, three are conditional, and
 five should probably be dropped rather than left to imply they are planned.
 
-### Layout bundles (`.tableau`)
+### Layout bundles (`.arras`)
 
 Relative positions, app settings, and provenance shipped; these are what's left.
 
-- [ ] **Store originals** — images are the app's re-encoded 90% JPEGs (and re-encoded GIFs), so export → import → export compounds the loss. A `.tableau` is a layout backup, not a photo archive. Offer "archive quality" vs "layout only" so it can be either
+- [ ] **Store originals** — images are the app's re-encoded 90% JPEGs (and re-encoded GIFs), so export → import → export compounds the loss. A `.arras` is a layout backup, not a photo archive. Offer "archive quality" vs "layout only" so it can be either
 - [ ] **Per-widget export** — share one photo or one Space, instead of all-or-nothing
-- [ ] **Registered UTI + document icon** — so a `.tableau` is identifiable in Finder and double-clicking it opens Arras
+- [ ] **Registered UTI + document icon** — so a `.arras` is identifiable in Finder and double-clicking it opens Arras
 - [ ] **Thumbnail contact sheet in the manifest** — preview a bundle's contents without importing
 - [ ] **Preflight item selection** — the import dialog now reports widget count, source version and export date, but is still all-or-nothing; let the user deselect individual widgets before committing
 
@@ -210,7 +210,7 @@ The features most likely to be missed once you've had them.
 
 ### Layout & editing
 
-- [ ] **Scenes** — named layouts (Work, Weekend, Presentation) switchable from the menu bar or a hotkey. A natural extension of the `.tableau` export that already exists
+- [ ] **Scenes** — named layouts (Work, Weekend, Presentation) switchable from the menu bar or a hotkey. A natural extension of the `.arras` export that already exists
 - [ ] **Multi-select + align/distribute** — select several photos and align edges or distribute spacing evenly, the way a design tool does
 - [ ] **Snap to grid** — an optional fixed grid in addition to the existing edge snapping, for deliberately tidy arrangements
 - [ ] **Keyboard nudge** — arrow keys move the selected photo 1pt, ⇧arrow 10pt. Far more precise than dragging
@@ -465,7 +465,7 @@ Sources/App/
 ├── AppActivation.swift          # menu bar agent policy + main menu
 ├── MenuBarCustomization.swift   # Which optional menu commands appear
 ├── PresenceManager.swift        # Schedules, fullscreen and capture detection
-├── LayoutArchive.swift          # .tableau export/import (zip writer/reader)
+├── LayoutArchive.swift          # .arras export/import (zip writer/reader)
 ├── StorageMigration.swift       # Carries data out of the old sandbox container
 ├── Updater.swift                # Appcast check, download, verify, swap, relaunch
 ├── DownloadTask.swift           # Progress-reporting download

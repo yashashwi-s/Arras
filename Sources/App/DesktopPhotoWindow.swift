@@ -60,9 +60,9 @@ enum PhotoCanvas {
 /// Where a widget sits in the desktop's window stack.
 ///
 /// The stack, measured on macOS 27: wallpaper at −2147483624, Finder's desktop icons at
-/// −2147483603 (all of them, in one screen-sized window), Tableau at −2147483602, and the
+/// −2147483603 (all of them, in one screen-sized window), Arras at −2147483602, and the
 /// system's own desktop widgets at −2147483601. That last one is why an overlapping Sonoma
-/// widget always drew on top of a photo — Tableau was one level short.
+/// widget always drew on top of a photo — Arras was one level short.
 enum WidgetDepth: String, Codable, CaseIterable {
     /// Below Finder's desktop icons. Icons stay readable over the photo — but Finder's desktop
     /// window spans the whole screen and is not click-through, so it swallows every event
@@ -117,7 +117,7 @@ enum WidgetDepth: String, Codable, CaseIterable {
 ///
 /// An `NSPanel` with `.nonactivatingPanel`, not a plain `NSWindow`. Clicking an ordinary
 /// window activates its application, whatever `canBecomeKey` says — so dragging a widget used
-/// to pull Tableau to the front, hand it the menu bar, and leave it there. A non-activating
+/// to pull Arras to the front, hand it the menu bar, and leave it there. A non-activating
 /// panel takes mouse events without ever making the app active, which is the only way a
 /// desktop ornament can be interactive without being intrusive.
 class DesktopPhotoWindow: NSPanel {
@@ -159,7 +159,7 @@ class DesktopPhotoWindow: NSPanel {
     }
 
     /// A widget never needs keyboard focus — it has no text field and no key equivalents of
-    /// its own — and taking key status is what put Tableau's menu bar on screen in place of
+    /// its own — and taking key status is what put Arras's menu bar on screen in place of
     /// whatever the user was actually working in. Mouse events do not require it.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
@@ -270,7 +270,7 @@ class DesktopPhotoWindow: NSPanel {
         }
 
         // orderFront, never makeKeyAndOrderFront: showing a widget must not pull the app to
-        // the front. Every launch used to activate Tableau once per visible widget.
+        // the front. Every launch used to activate Arras once per visible widget.
         orderFront(nil)
     }
 

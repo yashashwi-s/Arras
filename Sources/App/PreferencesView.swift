@@ -17,6 +17,12 @@ struct PreferencesView: View {
     @State private var snapEnabled = SnapEngine.shared.isEnabled
     @State private var snapOtherApps = SnapEngine.shared.includesOtherApps
 
+    // These live here rather than on the export/import dialogs. As accessory views on an
+    // NSAlert or NSSavePanel they would not render at all in this app — see the git history
+    // for four attempts — and a control nobody can see is worse than one click more.
+    @AppStorage("backup.includeSettings") private var includeSettingsInBackup = false
+    @AppStorage("backup.applySettingsOnImport") private var applySettingsOnImport = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -144,6 +150,14 @@ struct PreferencesView: View {
         section("BACKUP & TRANSFER") {
             caption("Save your widgets and settings to a single file, or restore them on another Mac.")
 
+            Toggle("Include app settings when exporting", isOn: $includeSettingsInBackup)
+                .accessibilityHint("Adds your login item, global shortcut, menu bar choices, update frequency and privacy switches to the backup file")
+
+            Toggle("Apply app settings when importing", isOn: $applySettingsOnImport)
+                .accessibilityHint("Lets an imported backup change this Mac's settings. Off by default, so a shared layout can never rebind your shortcut")
+
+            caption("Both are off by default: a backup you share shouldn't carry your login item or rebind someone else's global shortcut.")
+
             HStack(spacing: 8) {
                 Button("Export Backup…") { exportBackup() }
                     .controlSize(.small)
@@ -155,19 +169,19 @@ struct PreferencesView: View {
     }
 
     private func exportBackup() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
-        panel.nameFieldStringValue = "Tableau Backup.tableau"
-        panel.prompt = "Export"
-        panel.message = "Choose what this backup should contain"
-        let options = ExportOptionsView()
-        panel.accessoryView = options
+        let groups: Set<ExportedPreferences.Group> =
+            includeSettingsInBackup ? Set(ExportedPreferences.Group.allCases) : []
 
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [BackupFormat.exportType]
+        panel.nameFieldStringValue = "Arras Backup.\(BackupFormat.currentExtension)"
+        panel.prompt = "Export"
+        panel.message = "Where should the backup go?"
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            try manager.exportLayout(to: url, preferenceGroups: options.selectedGroups)
+            try manager.exportLayout(to: url, preferenceGroups: groups)
         } catch {
             presentAlert("Couldn't Export Backup", error.localizedDescription, .warning)
         }
@@ -175,11 +189,12 @@ struct PreferencesView: View {
 
     private func importBackup() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
+        // Both, so backups written before the rename still open.
+        panel.allowedContentTypes = BackupFormat.importTypes
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.prompt = "Import"
-        panel.message = "Choose a Tableau backup"
+        panel.message = "Choose an Arras backup"
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
@@ -194,7 +209,7 @@ struct PreferencesView: View {
         if let manifest {
             let count = manifest.itemCount ?? manifest.photos.count
             details.append("\(count) widget\(count == 1 ? "" : "s")")
-            details.append("from Tableau \(manifest.appVersion)")
+            details.append("from Arras \(manifest.appVersion)")
             details.append(manifest.exportedAt.formatted(date: .abbreviated, time: .shortened))
         }
         let provenance = details.isEmpty ? "" : details.joined(separator: " · ") + "\n\n"
@@ -203,19 +218,6 @@ struct PreferencesView: View {
             ? "Add the widgets from this backup to your desktop."
             : "Add these widgets to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone.")
 
-        // Only offered when the file carries them, and never on by default — importing
-        // somebody else's backup must not silently rebind this Mac's global shortcut.
-        var prefsBox: NSButton?
-        if let preferences = manifest?.preferences, !preferences.groups.isEmpty {
-            let box = NSButton(
-                checkboxWithTitle: "Also apply app settings (\(preferences.summary))",
-                target: nil,
-                action: nil
-            )
-            box.state = .off
-            alert.accessoryView = box
-            prefsBox = box
-        }
 
         alert.addButton(withTitle: "Merge")
         alert.addButton(withTitle: "Replace Everything")
@@ -231,7 +233,7 @@ struct PreferencesView: View {
 
         do {
             let count = try manager.importLayout(from: url, mode: mode)
-            if prefsBox?.state == .on, let preferences = manifest?.preferences {
+            if applySettingsOnImport, let preferences = manifest?.preferences {
                 manager.applyImportedPreferences(preferences)
                 snapEnabled = SnapEngine.shared.isEnabled
             }

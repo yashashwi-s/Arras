@@ -25,7 +25,7 @@ struct Appcast: Decodable {
 
 /// Checks for, downloads, and installs updates in place.
 ///
-/// This is why the app is not sandboxed: replacing `Tableau.app` and spawning a
+/// This is why the app is not sandboxed: replacing `Arras.app` and spawning a
 /// helper that outlives the process are both blocked under the sandbox.
 @MainActor
 final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
@@ -438,7 +438,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// read the staged app after we terminate.
     private static func makeWorkDirectory() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TableauUpdate-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("ArrasUpdate-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
