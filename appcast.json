@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.4.2",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.2/Arras.app.zip",
-  "sha256": "052eb56f7aacf2e9e51539294206358b7929d79dfd998dd8ab68118c18532591",
+  "latestVersion": "2.4.3",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.3/Arras.app.zip",
+  "sha256": "88c1693f63a0f8acafa8766e08857d4124e14e060e7ac6a6c427f971c658cbd3",
   "releaseNotes": "Widgets take their name from the file you added, and renaming happens inline in the row instead of in a dialog box.",
   "minimumOSVersion": "14.0",
   "announcement": null
