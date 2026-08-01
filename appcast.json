@@ -2,7 +2,7 @@
   "latestVersion": "2.4.0",
   "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.0/Arras.app.zip",
   "sha256": "37c7a3a84e4a0f59862de748e59c91759159781b386df766b97b3c9b17f7a665",
-  "releaseNotes": "Tidier Photos tab, with the Arras wordmark up in the title bar. Update states clear themselves after a few seconds, and an available update now appears on the same button you use to check for one.",
+  "releaseNotes": "The Arras wordmark moves up into the title bar with a soft vertical fade. Tidier Photos tab, and an available update now appears on the same button you use to check for one.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

@@ -54,21 +54,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let font = rounded.flatMap { NSFont(descriptor: $0, size: size) }
             ?? .systemFont(ofSize: size, weight: .bold)
 
-        // Kerned and set in the label colour so it reads as a wordmark rather than a caption.
-        let label = NSTextField(labelWithAttributedString: NSAttributedString(
+        let attributed = NSAttributedString(
             string: Constants.appName,
-            attributes: [
-                .font: font,
-                .foregroundColor: NSColor.labelColor,
-                .kern: 0.6
-            ]
-        ))
-        label.sizeToFit()
-
+            attributes: [.font: font, .foregroundColor: NSColor.labelColor, .kern: 0.6]
+        )
+        let textSize = attributed.size()
         let height: CGFloat = 34
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 20, height: height))
-        label.frame.origin = NSPoint(x: 2, y: (height - label.frame.height) / 2)
-        container.addSubview(label)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: ceil(textSize.width) + 22, height: height))
+        container.wantsLayer = true
+
+        // The wordmark is a gradient masked by the glyphs, rather than flat text: it falls off
+        // toward the baseline so it reads as a mark instead of another label in the title bar.
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+
+        let glyphs = CATextLayer()
+        glyphs.string = attributed
+        glyphs.contentsScale = scale
+        glyphs.frame = CGRect(x: 0, y: 0, width: ceil(textSize.width) + 2, height: ceil(textSize.height))
+
+        let gradient = CAGradientLayer()
+        gradient.frame = glyphs.frame
+        gradient.contentsScale = scale
+        gradient.colors = [
+            NSColor.labelColor.cgColor,
+            NSColor.labelColor.withAlphaComponent(0.55).cgColor
+        ]
+        // CALayer geometry is not flipped here, so (0.5, 1) is the top edge.
+        gradient.startPoint = CGPoint(x: 0.5, y: 1)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        gradient.mask = glyphs
+
+        gradient.frame.origin = CGPoint(x: 2, y: (height - gradient.frame.height) / 2)
+        container.layer?.addSublayer(gradient)
+
+        container.setAccessibilityRole(.staticText)
+        container.setAccessibilityLabel(Constants.appName)
 
         let accessory = NSTitlebarAccessoryViewController()
         accessory.layoutAttribute = .right

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.1
+
+**The Arras wordmark sits in the title bar**, level with the tabs, set as a
+gradient masked by the glyphs so it falls off toward the baseline and reads as a
+mark rather than another label.
+
 ## 2.4.0
 
 **Photos tab header.** The Arras wordmark moves to the top right, opposite the Add
