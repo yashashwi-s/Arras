@@ -2,11 +2,12 @@
 
 ## 2.4.4
 
-**The tab bar has its glass back.** Putting the Arras wordmark in the title bar as
-an `NSTitlebarAccessoryViewController` made AppKit render the whole title bar
-differently: the tab control lost its translucency and rounded pill and came out
-flat and squared off. The accessory is gone. The wordmark goes with it, which is
-the trade, and the tabs look native again.
+**The tab bar has its glass back, and the wordmark stayed.** Putting the Arras
+wordmark in the title bar as an `NSTitlebarAccessoryViewController` made AppKit
+render the whole title bar differently: the tab control lost its translucency and
+rounded pill and came out flat and squared off. The wordmark is now a plain
+subview of the title bar instead of an accessory, which leaves that layout alone.
+Same position, level with the tabs, and the pill is native again.
 
 ## 2.4.3
 

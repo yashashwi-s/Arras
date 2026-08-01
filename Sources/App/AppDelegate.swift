@@ -47,6 +47,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
+    /// Puts the app name in the title bar, level with the tab pill.
+    ///
+    /// Added straight into the title bar's own view hierarchy rather than through
+    /// `addTitlebarAccessoryViewController`. Installing an accessory changes how AppKit lays
+    /// the title bar out, and the SwiftUI tab control stopped rendering as a translucent pill
+    /// and came out flat and squared off. A plain subview leaves that alone.
+    private static func installWordmark(in window: NSWindow) {
+        guard let titlebar = window.standardWindowButton(.closeButton)?.superview else { return }
+
+        let size: CGFloat = 17
+        let descriptor = NSFont.systemFont(ofSize: size, weight: .bold).fontDescriptor.withDesign(.rounded)
+        let font = descriptor.flatMap { NSFont(descriptor: $0, size: size) }
+            ?? .systemFont(ofSize: size, weight: .bold)
+
+        let label = NSTextField(labelWithAttributedString: NSAttributedString(
+            string: Constants.appName,
+            attributes: [.font: font, .foregroundColor: NSColor.labelColor, .kern: 0.6]
+        ))
+        label.sizeToFit()
+        label.tag = wordmarkTag
+
+        let inset: CGFloat = 18
+        label.frame.origin = NSPoint(
+            x: titlebar.bounds.maxX - label.frame.width - inset,
+            y: (titlebar.bounds.height - label.frame.height) / 2
+        )
+        label.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+
+        titlebar.viewWithTag(wordmarkTag)?.removeFromSuperview()
+        titlebar.addSubview(label)
+    }
+
+    private static let wordmarkTag = 0x4152
+
     // MARK: - Status Item (Menu Bar Icon)
 
     func setupStatusItem() {
@@ -438,6 +472,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.minSize = NSSize(width: 420, height: 400)
         window.contentView = NSHostingView(rootView: contentView)
         window.isReleasedWhenClosed = false
+        Self.installWordmark(in: window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window
