@@ -2,8 +2,125 @@ import AppKit
 import SwiftUI
 import QuartzCore
 
-/// A borderless, always-on-desktop window that displays a photo.
-class DesktopPhotoWindow: NSWindow {
+// MARK: - Canvas geometry
+
+/// How much room a widget's window reserves *around* the photo.
+///
+/// Shadows spill outside the photo's silhouette and a tilted photo sweeps a larger bounding
+/// box; anything drawn outside the window is clipped by the WindowServer along the window's
+/// straight edges. This used to be handled by shrinking the content inside a window sized to
+/// the photo, which had two bugs: `insetBy(dx:dy:)` takes the same amount off both axes, so a
+/// non-square photo came out with a different aspect ratio and the `resizeAspectFill` image
+/// layer silently cropped it (7% of a 300x517 widget at default settings, 37% of a panorama
+/// at max blur); and the reserved room was capped at 22% of the short side, which is less
+/// than a 12-degree tilt needs, so corners were cut off by the window edge anyway.
+///
+/// Reserving the room outside the photo instead keeps the photo's aspect ratio exact and has
+/// no upper bound to hit. The window is no longer the photo — see `DesktopPhotoWindow.photoFrame`.
+enum PhotoCanvas {
+    /// Padding on each side of the window, outside the photo's own rect.
+    static func inset(
+        photoSize: CGSize,
+        shadowEnabled: Bool,
+        shadowBlur: CGFloat,
+        matWidth: CGFloat,
+        tiltDegrees: CGFloat
+    ) -> CGFloat {
+        // The mat is drawn outward from the photo — a passe-partout physically enlarges a
+        // framed print — so it is the first thing the window has to make room for. Drawing it
+        // inward is what forced the old equal-inset aspect-ratio bug.
+        var width = photoSize.width + matWidth * 2
+        var height = photoSize.height + matWidth * 2
+
+        // The furthest a shadow pixel lands from the silhouette: the ambient layer's blur
+        // radius plus the offset it is pushed down by. See applyShadowLayers.
+        let shadowSpill = shadowEnabled ? shadowBlur * 1.4 + min(10, shadowBlur * 0.5) : 0
+        width += shadowSpill * 2
+        height += shadowSpill * 2
+
+        // Summed, not maxed: whenever tilt needed more room than the shadow, taking the larger
+        // of the two left the rotated content exactly touching the window edge, so the entire
+        // shadow then fell outside it and was clipped.
+        return matWidth + shadowSpill + halfBoundingGrowth(width: width, height: height, degrees: tiltDegrees)
+    }
+
+    /// Half the growth of a rect's axis-aligned bounding box once rotated — i.e. the room each
+    /// side needs, given the content is rotated about its centre.
+    private static func halfBoundingGrowth(width: CGFloat, height: CGFloat, degrees: CGFloat) -> CGFloat {
+        guard degrees != 0 else { return 0 }
+        let rad = abs(degrees) * .pi / 180
+        let rotatedW = width * cos(rad) + height * sin(rad)
+        let rotatedH = width * sin(rad) + height * cos(rad)
+        return max(rotatedW - width, rotatedH - height) / 2
+    }
+}
+
+// MARK: - Depth
+
+/// Where a widget sits in the desktop's window stack.
+///
+/// The stack, measured on macOS 27: wallpaper at −2147483624, Finder's desktop icons at
+/// −2147483603 (all of them, in one screen-sized window), Tableau at −2147483602, and the
+/// system's own desktop widgets at −2147483601. That last one is why an overlapping Sonoma
+/// widget always drew on top of a photo — Tableau was one level short.
+enum WidgetDepth: String, Codable, CaseIterable {
+    /// Below Finder's desktop icons. Icons stay readable over the photo — but Finder's desktop
+    /// window spans the whole screen and is not click-through, so it swallows every event
+    /// before it can reach us. A widget here cannot be dragged, resized or right-clicked at
+    /// all, which is why selecting it also locks the widget (see PhotoManager.setDepth).
+    case behindIcons
+    /// Above desktop icons, below the system's desktop widgets. The historical default.
+    case onDesktop
+    /// Above the system's desktop widgets too, but still behind every ordinary app window.
+    case aboveWidgets
+    /// Above ordinary app windows.
+    case floating
+
+    var displayName: String {
+        switch self {
+        case .behindIcons: return "Behind Icons"
+        case .onDesktop: return "On Desktop"
+        case .aboveWidgets: return "Above Widgets"
+        case .floating: return "Floating"
+        }
+    }
+
+    /// A one-line caveat, or nil when the mode does what its name says without qualification.
+    var caveat: String? {
+        switch self {
+        case .behindIcons:
+            return "Desktop icons draw over the photo. It can't be dragged or clicked here, so it stays locked."
+        case .onDesktop, .aboveWidgets, .floating:
+            return nil
+        }
+    }
+
+    var windowLevel: NSWindow.Level {
+        let icons = Int(CGWindowLevelForKey(.desktopIconWindow))
+        switch self {
+        case .behindIcons: return NSWindow.Level(rawValue: icons - 1)
+        case .onDesktop: return NSWindow.Level(rawValue: icons + 1)
+        case .aboveWidgets: return NSWindow.Level(rawValue: icons + 3)
+        case .floating: return NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)) + 1)
+        }
+    }
+
+    /// Whether the widget can receive mouse events at this depth at all.
+    var isInteractive: Bool { self != .behindIcons }
+}
+
+/// A borderless, always-on-desktop panel that displays a photo.
+///
+/// The window frame is a *canvas*: the photo's own rect inset outward by `canvasInset` (see
+/// `PhotoCanvas`). Everything user-facing — the persisted frame, snapping, resize handles —
+/// works in photo coordinates, never window coordinates.
+///
+/// An `NSPanel` with `.nonactivatingPanel`, not a plain `NSWindow`. Clicking an ordinary
+/// window activates its application, whatever `canBecomeKey` says — so dragging a widget used
+/// to pull Tableau to the front, hand it the menu bar, and leave it there. A non-activating
+/// panel takes mouse events without ever making the app active, which is the only way a
+/// desktop ornament can be interactive without being intrusive.
+class DesktopPhotoWindow: NSPanel {
     var photoId: UUID?
     var onLockToggle: (() -> Void)?
     var onRemove: (() -> Void)?
@@ -11,18 +128,18 @@ class DesktopPhotoWindow: NSWindow {
     var onOpacityChanged: ((CGFloat) -> Void)?
     var onClickAdvance: (() -> Void)?
 
-    private static let desktopLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
-    private static let floatingLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)) + 1)
+    /// Padding between the window frame and the photo rect, on every side.
+    private(set) var canvasInset: CGFloat = 0
 
     init() {
         super.init(
             contentRect: NSRect(x: 100, y: 100, width: 300, height: 300),
-            styleMask: .borderless,
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
-        level = Self.desktopLevel
+        level = WidgetDepth.onDesktop.windowLevel
         isOpaque = false
         backgroundColor = .clear
         // Shadows are two custom CALayers on the container now (contact + ambient), not the
@@ -31,23 +148,97 @@ class DesktopPhotoWindow: NSWindow {
         ignoresMouseEvents = false
         collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
         hidesOnDeactivate = false
+
+        // Without this the window receives no mouseMoved events at all, even with a tracking
+        // area that asks for them — installing the tracking area does not set this for you.
+        // That is why the resize crosshair never appeared: mouseEntered fired, mouseMoved
+        // never did, so the cursor was never changed.
+        acceptsMouseMovedEvents = true
     }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    /// A widget never needs keyboard focus — it has no text field and no key equivalents of
+    /// its own — and taking key status is what put Tableau's menu bar on screen in place of
+    /// whatever the user was actually working in. Mouse events do not require it.
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    // MARK: - Photo rect vs window frame
+
+    /// The photo's own rect in screen coordinates. This is what gets persisted, snapped and
+    /// resized; the window frame is this outset by `canvasInset`.
+    ///
+    /// Stored rather than derived from `frame`. Deriving it round-trips through the window
+    /// server, which rounds window frames to device pixels — so every save/restore cycle put
+    /// back a slightly different size than the one that went in, and the widget grew by a
+    /// fraction of a point on each launch (measured: 300 -> 300.06 -> 301.01).
+    private(set) var photoFrame: NSRect = .zero
+
+    /// The outermost opaque edge — the mat if there is one, otherwise the photo. What the user
+    /// actually sees the boundary of, and therefore what alignment guides must land on.
+    var visualFrame: NSRect {
+        let mat = (contentView as? DraggablePhotoView)?.matInset ?? 0
+        return photoFrame.insetBy(dx: -mat, dy: -mat)
+    }
+
+    func windowFrame(forPhoto rect: NSRect) -> NSRect {
+        rect.insetBy(dx: -canvasInset, dy: -canvasInset)
+    }
+
+    /// Positions and sizes the *photo*, growing the window around it.
+    ///
+    /// The padding is re-derived from the rect being set rather than reused, since the amount
+    /// of room a tilt needs depends on the photo's dimensions — restoring a saved frame at a
+    /// different size than the window was built with would otherwise keep a stale inset and
+    /// put the photo slightly off where it was saved.
+    func setPhotoFrame(_ rect: NSRect, display: Bool = true) {
+        if let container = contentView as? DraggablePhotoView {
+            canvasInset = container.requiredCanvasInset(photoSize: rect.size)
+            container.canvasInset = canvasInset
+        }
+        photoFrame = rect
+        let target = windowFrame(forPhoto: rect)
+        setFrame(target, display: display)
+        (contentView as? DraggablePhotoView)?.updateLayout(target.size)
+    }
+
+    /// Moves the photo without touching its size — the drag path, where re-deriving the size
+    /// from the window frame on every event is exactly what accumulates rounding error.
+    func setPhotoOrigin(_ origin: NSPoint) {
+        photoFrame.origin = origin
+        setFrameOrigin(windowFrame(forPhoto: photoFrame).origin)
+    }
+
+    /// Re-derives the padding after an appearance change, holding the photo rect fixed so the
+    /// photo does not appear to move when a shadow, mat or tilt is adjusted.
+    func refreshCanvasInset() {
+        setPhotoFrame(photoFrame)
+    }
 
     func showPhoto(_ content: PhotoContent, baseWidth: CGFloat = 300, locked: Bool = false, settings: PhotoItem? = nil) {
         let imageSize = content.size
         guard imageSize.width > 0, imageSize.height > 0 else { return }
 
         let aspectRatio = imageSize.width / imageSize.height
-        let w = baseWidth
-        let h = w / aspectRatio
+        let photoSize = NSSize(width: baseWidth, height: baseWidth / aspectRatio)
+
+        canvasInset = PhotoCanvas.inset(
+            photoSize: photoSize,
+            shadowEnabled: settings?.shadowEnabled ?? true,
+            shadowBlur: settings?.shadowBlur ?? 10,
+            matWidth: settings?.matWidth ?? 0,
+            tiltDegrees: CGFloat(settings?.tiltDegrees ?? 0)
+        )
+
+        let canvasSize = NSSize(
+            width: photoSize.width + canvasInset * 2,
+            height: photoSize.height + canvasInset * 2
+        )
 
         let container = DraggablePhotoView(
-            frame: NSRect(x: 0, y: 0, width: w, height: h),
+            frame: NSRect(origin: .zero, size: canvasSize),
             content: content,
             locked: locked,
+            canvasInset: canvasInset,
             settings: settings
         )
         container.onLockToggle = { [weak self] in self?.onLockToggle?() }
@@ -56,7 +247,8 @@ class DesktopPhotoWindow: NSWindow {
         container.onOpacityChanged = { [weak self] newOpacity in self?.onOpacityChanged?(newOpacity) }
 
         contentView = container
-        setContentSize(NSSize(width: w, height: h))
+        setContentSize(canvasSize)
+        photoFrame = frame.insetBy(dx: canvasInset, dy: canvasInset)
 
         // Lay out synchronously before the window is ordered in, so the first frame
         // drawn is already the right size rather than snapping into place.
@@ -65,31 +257,37 @@ class DesktopPhotoWindow: NSWindow {
         // deprecated in macOS 15 and documents as doing nothing at all. Keeping it
         // implied a guarantee that has not held for two releases; the synchronous
         // layout below is what actually prevents the flicker.
-        container.updateLayout(NSSize(width: w, height: h))
+        container.updateLayout(canvasSize)
 
         // Apply settings
         if let s = settings {
-            setFloating(s.isFloating)
+            setDepth(s.depth)
             setPhotoOpacity(s.opacity)
-            applyShadowSettings(enabled: s.shadowEnabled, blur: s.shadowBlur, opacity: s.shadowOpacity)
         }
 
-        makeKeyAndOrderFront(nil)
+        // orderFront, never makeKeyAndOrderFront: showing a widget must not pull the app to
+        // the front. Every launch used to activate Tableau once per visible widget.
+        orderFront(nil)
     }
 
     func hidePhoto() {
-
         // Strip any in-flight CATransition animations to prevent stale callbacks
         if let container = contentView as? DraggablePhotoView {
             container.layer?.removeAllAnimations()
-            container.imageView.layer?.removeAllAnimations()
+            container.imageLayer.removeAllAnimations()
             // Also tear down GIF playback explicitly rather than relying on
             // removeAllAnimations() alone -- it clears the render-server
             // side, but stopAnimating() also drops our tracked frame data
             // so a stray delayed "start playback" block (see swapImage)
             // can't resurrect it on a view that's going away.
-            container.imageView.stopAnimating()
+            container.photoLayer.stopAnimating()
         }
+
+        // A closed widget window stays in NSApp.windows for the life of the process
+        // (isReleasedWhenClosed is false on purpose, to prevent a use-after-free on re-show).
+        // Clearing the id stops any lookup that scans NSApp.windows from resolving to this
+        // corpse instead of the replacement window a later show() creates.
+        photoId = nil
         close()
     }
 
@@ -101,20 +299,30 @@ class DesktopPhotoWindow: NSWindow {
         guard let container = contentView as? DraggablePhotoView,
               let image = container.photoImage else { return }
         // photoImage is always a representative still (even for animated
-        // content -- see AspectFillImageView.image), so aspect-ratio math
+        // content -- see PhotoImageLayer.image), so aspect-ratio math
         // here needs no animated-specific branch.
         let ar = image.size.width / image.size.height
-        let h = width / ar
-        let newFrame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: h)
-        setFrame(newFrame, display: true, animate: true)
-        container.updateLayout(NSSize(width: width, height: h))
+        let photo = photoFrame
+        let newPhoto = NSRect(x: photo.origin.x, y: photo.origin.y, width: width, height: width / ar)
+        canvasInset = container.requiredCanvasInset(photoSize: newPhoto.size)
+        container.canvasInset = canvasInset
+        photoFrame = newPhoto
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            ctx.allowsImplicitAnimation = true
+            self.animator().setFrame(self.windowFrame(forPhoto: newPhoto), display: true)
+        }
+        container.updateLayout(windowFrame(forPhoto: newPhoto).size)
     }
 
-    // MARK: - v1.1 Floating Mode
+    // MARK: - Depth
 
-    func setFloating(_ floating: Bool) {
-        level = floating ? Self.floatingLevel : Self.desktopLevel
-        // Floating windows shouldn't hide on deactivate
+    func setDepth(_ depth: WidgetDepth) {
+        level = depth.windowLevel
+        // A widget behind Finder's desktop window can never be clicked, so there is no reason
+        // to keep hit-testing it — and letting go of the events means the desktop underneath
+        // behaves exactly as it would with no widget there.
+        ignoresMouseEvents = !depth.isInteractive
         hidesOnDeactivate = false
     }
 
@@ -132,9 +340,8 @@ class DesktopPhotoWindow: NSWindow {
     func applyShadowSettings(enabled: Bool, blur: CGFloat, opacity: CGFloat) {
         hasShadow = false
         (contentView as? DraggablePhotoView)?.setShadowLayers(enabled: enabled, blur: blur, opacity: opacity)
+        refreshCanvasInset()
     }
-
-    // MARK: - Modifier Key Monitor (Option key overrides click-through)
 
     // MARK: - Smooth image swap (CATransition crossfade + dynamic frame)
 
@@ -149,20 +356,24 @@ class DesktopPhotoWindow: NSWindow {
             container.aspectRatio = newAR
         }
 
-        // Determine target frame
-        let newFrame: NSRect
+        // Determine the target *photo* rect. Callers persist and pass photo rects, never
+        // window frames — the padding is re-derived here.
+        let photo = photoFrame
+        let newPhoto: NSRect
         if mode == "fixed" {
-            newFrame = frame // don't change frame
+            newPhoto = photo // don't change size
+        } else if let target = targetFrame, target.width > 0 {
+            newPhoto = target
         } else {
-            if let target = targetFrame, target.width > 0 {
-                newFrame = target
-            } else {
-                // Keep current width, adjust height for new aspect ratio. Pin top-left.
-                let newH = frame.width / newAR
-                let newOriginY = frame.origin.y + frame.height - newH
-                newFrame = NSRect(x: frame.origin.x, y: newOriginY, width: frame.width, height: newH)
-            }
+            // Keep current width, adjust height for new aspect ratio. Pin top-left.
+            let newH = photo.width / newAR
+            newPhoto = NSRect(x: photo.origin.x, y: photo.maxY - newH, width: photo.width, height: newH)
         }
+
+        canvasInset = container.requiredCanvasInset(photoSize: newPhoto.size)
+        container.canvasInset = canvasInset
+        photoFrame = newPhoto
+        let newFrame = windowFrame(forPhoto: newPhoto)
 
         if animate {
             // GPU-accelerated crossfade via Core Animation
@@ -170,7 +381,7 @@ class DesktopPhotoWindow: NSWindow {
             transition.type = .fade
             transition.duration = Self.crossfadeDuration
             transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            container.imageView.layer?.add(transition, forKey: kCATransition)
+            container.imageLayer.add(transition, forKey: kCATransition)
         }
 
         // Hand off the new content (the CATransition above handles the
@@ -183,7 +394,7 @@ class DesktopPhotoWindow: NSWindow {
         // whatever `contents` is at each instant rather than a single fixed
         // end state. Landing on frame 0 first keeps the crossfade correct
         // and simple; playback then picks up smoothly right after.
-        container.imageView.apply(content, animationStartDelay: animate ? Self.crossfadeDuration : 0)
+        container.photoLayer.apply(content, animationStartDelay: animate ? Self.crossfadeDuration : 0)
 
         if animate {
             NSAnimationContext.runAnimationGroup { ctx in
@@ -221,10 +432,20 @@ private enum DragMode {
     case resizeTopLeft, resizeTopRight, resizeBottomLeft, resizeBottomRight
 }
 
-// MARK: - Aspect Fill Image View
+// MARK: - Photo image layer
 
-class AspectFillImageView: NSView {
+/// Owns the CALayer that shows the photo, including GIF/APNG playback.
+///
+/// This used to be an NSView. It never handled an event — the container's `hitTest` always
+/// returned the container — and being a view forced an awkward second overlay *view* to get
+/// the border and vignette above it, because a subview's backing layer always composites over
+/// its superview's own manual sublayers regardless of insertion order. As a plain layer it
+/// takes its place in one sublayer array, so z-order is just array order, and it can live
+/// inside a layer we rotate ourselves.
+final class PhotoImageLayer {
     private static let gifAnimationKey = "gifPlayback"
+
+    let layer = CALayer()
 
     /// A representative still (first frame, for animated content) kept in
     /// sync at all times so aspect-ratio/size math elsewhere (resizeTo,
@@ -232,8 +453,7 @@ class AspectFillImageView: NSView {
     /// playback is currently animated.
     private(set) var image: NSImage?
 
-    /// Non-nil while a GIF-style animation is actively driving
-    /// `layer.contents`.
+    /// Non-nil while a GIF-style animation is actively driving `layer.contents`.
     private(set) var animatedFrames: AnimatedImageFrames?
 
     /// Bumped on every `apply(_:)` call. A deferred playback-start closure
@@ -243,13 +463,10 @@ class AspectFillImageView: NSView {
     /// delayed animation clobber B's content after the fact.
     private var generation = 0
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.contentsGravity = .resizeAspectFill
+    init() {
+        layer.contentsGravity = .resizeAspectFill
+        layer.masksToBounds = true
     }
-
-    required init?(coder: NSCoder) { fatalError() }
 
     /// Displays `content`, stopping any in-progress animation first.
     /// `animationStartDelay` lets callers (the crossfade in
@@ -269,7 +486,7 @@ class AspectFillImageView: NSView {
     private func setStill(_ newImage: NSImage?) {
         stopAnimating()
         image = newImage
-        layer?.contents = newImage
+        layer.contents = newImage
     }
 
     private func setAnimated(_ frames: AnimatedImageFrames, representativeImage: NSImage, startDelay: TimeInterval) {
@@ -277,7 +494,7 @@ class AspectFillImageView: NSView {
         image = representativeImage
         // Show frame 0 right away so there's always something on screen,
         // even before (or if) the keyframe animation below installs.
-        layer?.contents = frames.images.first
+        layer.contents = frames.images.first
         guard frames.images.count > 1 else { return }
         animatedFrames = frames
 
@@ -288,7 +505,7 @@ class AspectFillImageView: NSView {
             // pending -- see the stale-callback discipline documented on
             // hidePhoto().
             guard let self, self.generation == expectedGeneration else { return }
-            self.layer?.add(frames.makeContentsAnimation(), forKey: Self.gifAnimationKey)
+            self.layer.add(frames.makeContentsAnimation(), forKey: Self.gifAnimationKey)
         }
         if startDelay > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + startDelay, execute: install)
@@ -302,7 +519,7 @@ class AspectFillImageView: NSView {
     func stopAnimating() {
         generation += 1
         guard animatedFrames != nil else { return }
-        layer?.removeAnimation(forKey: Self.gifAnimationKey)
+        layer.removeAnimation(forKey: Self.gifAnimationKey)
         animatedFrames = nil
     }
 }
@@ -310,21 +527,23 @@ class AspectFillImageView: NSView {
 // MARK: - Draggable Photo View
 
 class DraggablePhotoView: NSView {
-    let imageView: AspectFillImageView
+    let photoLayer = PhotoImageLayer()
 
-    /// Hosts vignette + border. A layer-backed NSView's own layer always composites above
-    /// whatever manual sibling CAShapeLayers/CAGradientLayers its *superview* adds directly
-    /// -- z-order calls like insertSublayer(above:) can't override that once the reference
-    /// layer belongs to a subview rather than being a literal entry in the parent's own
-    /// sublayers array. Mat and the two shadow layers sit fine as direct sublayers of
-    /// `self.layer` because they only ever need to be *below* imageView, which that same
-    /// rule gives them for free; vignette and border need to be *above* it, so they live as
-    /// sublayers of this second subview instead, added after imageView so ordinary AppKit
-    /// subview stacking (later-added-on-top) puts it on top.
-    private let overlayView: NSView
+    /// Everything the user sees, parented under one layer we own outright.
+    ///
+    /// Tilt lives here rather than on `self.layer`. An NSView's backing layer is AppKit's:
+    /// writing `transform` on it is silently reset to identity on the first display pass and
+    /// again on every resize (measured), which is why a saved tilt vanished on relaunch. It
+    /// also has `anchorPoint = (0, 0)`, so a rotation about "the centre" actually pivoted
+    /// about the bottom-left corner and threw the photo out of the window. A layer we create
+    /// ourselves keeps its transform and lets us set the anchor point.
+    private let contentLayer = CALayer()
 
-    var photoImage: NSImage? { imageView.image }
-    var isLocked = false
+    var imageLayer: CALayer { photoLayer.layer }
+    var photoImage: NSImage? { photoLayer.image }
+    var isLocked = false {
+        didSet { if isLocked != oldValue { updateHandles() } }
+    }
 
     var onLockToggle: (() -> Void)?
     var onRemove: (() -> Void)?
@@ -343,18 +562,24 @@ class DraggablePhotoView: NSView {
     private var unsnappedOrigin: NSPoint = .zero
     var aspectRatio: CGFloat = 1.0
     var baseCornerRadius: CGFloat = 16
-    private let handleZone: CGFloat = 12
+
+    /// Padding between the window's edge and the photo. Mirrors the window's own value.
+    var canvasInset: CGFloat
+
+    private let handleZone: CGFloat = 16
     private let minSize: CGFloat = 80
+    private var isHovering = false
 
     // v1.3 — Aesthetic layers
     private var borderLayer: CAShapeLayer?
-    private var vignetteLayer: CAGradientLayer?
+    private var vignetteLayer: CALayer?
 
     // v2.1 — Borders, frames & depth
     private var matLayer: CAShapeLayer?
     private var borderGradientLayer: CAGradientLayer?
     private var contactShadowLayer: CAShapeLayer?
     private var ambientShadowLayer: CAShapeLayer?
+    private var handleLayers: [CALayer] = []
     private var matWidth: CGFloat = 0
     private var matColor: NSColor = .white
     private var shapeMask: PhotoShapeMask = .roundedRect
@@ -369,27 +594,21 @@ class DraggablePhotoView: NSView {
     private var shadowOpacityBase: CGFloat = 0.3
     private var vignetteEnabledFlag = false
 
-    init(frame: NSRect, content: PhotoContent, locked: Bool, settings: PhotoItem? = nil) {
-        imageView = AspectFillImageView(frame: NSRect(origin: .zero, size: frame.size))
-        imageView.apply(content)
-        imageView.wantsLayer = true
+    /// The mat's width, so the window can report the outermost opaque edge.
+    var matInset: CGFloat { matWidth }
 
-        overlayView = NSView(frame: NSRect(origin: .zero, size: frame.size))
-        overlayView.wantsLayer = true
-
+    init(frame: NSRect, content: PhotoContent, locked: Bool, canvasInset: CGFloat, settings: PhotoItem? = nil) {
+        self.canvasInset = canvasInset
         self.isLocked = locked
         self.aspectRatio = content.size.width / content.size.height
 
         super.init(frame: frame)
 
         wantsLayer = true
-        addSubview(imageView)
-        addSubview(overlayView) // after imageView, so it stacks on top -- see the property comment
 
         // Seed every appearance property from `settings` before the first relayout, so the
         // first frame drawn already reflects mat/shape/border/shadow/tilt instead of
-        // snapping into place a moment later. The old NSShadow-based single shadow is gone
-        // -- see relayout()/applyShadowLayers for why two CALayers replace it.
+        // snapping into place a moment later.
         baseCornerRadius = settings?.cornerRadius ?? 16
         shadowEnabledFlag = settings?.shadowEnabled ?? true
         shadowBlurBase = settings?.shadowBlur ?? 10
@@ -405,11 +624,15 @@ class DraggablePhotoView: NSView {
         tiltDegrees = CGFloat(settings?.tiltDegrees ?? 0)
         vignetteEnabledFlag = settings?.vignetteEnabled ?? false
 
+        layer?.addSublayer(contentLayer)
+        contentLayer.addSublayer(photoLayer.layer)
+        photoLayer.apply(content)
+
         relayout()
 
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.activeAlways, .mouseMoved, .inVisibleRect, .mouseEnteredAndExited],
+            options: [.activeAlways, .mouseMoved, .cursorUpdate, .inVisibleRect, .mouseEnteredAndExited],
             owner: self
         ))
     }
@@ -421,81 +644,88 @@ class DraggablePhotoView: NSView {
         relayout()
     }
 
-    // MARK: - v2.1 Unified layout
+    /// The padding this photo's current appearance settings require.
+    func requiredCanvasInset(photoSize: CGSize) -> CGFloat {
+        PhotoCanvas.inset(
+            photoSize: photoSize,
+            shadowEnabled: shadowEnabledFlag,
+            shadowBlur: shadowBlurBase,
+            matWidth: matWidth,
+            tiltDegrees: tiltDegrees
+        )
+    }
+
+    // MARK: - Geometry
+
+    /// The photo's rect in this view's coordinates. Exactly the photo's aspect ratio — the
+    /// window grew to accommodate shadow and tilt rather than the photo shrinking to make room.
+    private var photoRect: NSRect {
+        bounds.insetBy(dx: canvasInset, dy: canvasInset)
+    }
+
+    /// Photo plus mat: the outermost opaque edge, and the rect the user grabs.
+    private var visualRect: NSRect {
+        photoRect.insetBy(dx: -matWidth, dy: -matWidth)
+    }
+
+    // MARK: - Unified layout
 
     /// Everything drawn -- image mask, mat, shadows, border, vignette, tilt -- funnels
     /// through here so they are always derived from the same current state and in the same
     /// order, rather than several call sites each keeping their own notion of "the shape" in
     /// sync after a resize.
-    ///
-    /// Shadows and tilt both need pixels beyond the photo's own silhouette to render or
-    /// rotate into, but the window itself cannot grow to provide that room: ImageManager
-    /// treats `window.frame.width` as the photo's persisted `widgetWidth` and writes it
-    /// straight back to photos.json on every move/resize, so inflating the window frame here
-    /// would inflate the saved size on the next launch. Reserving margin by shrinking the
-    /// *content* inside a fixed-size window sidesteps that coupling entirely -- the tradeoff
-    /// is that a photo with a large shadow or a tilt renders very slightly smaller than its
-    /// nominal widgetWidth inside its window, rather than clipping.
     private func relayout() {
-        let size = bounds.size
-        let margin = contentMargin(for: size)
-        let outer = NSRect(origin: .zero, size: size).insetBy(dx: margin, dy: margin)
-        let inner = outer.insetBy(dx: matWidth, dy: matWidth)
-        imageView.frame = inner
-        overlayView.frame = NSRect(origin: .zero, size: size)
+        let outer = visualRect
+        guard outer.width > 0, outer.height > 0 else { return }
 
-        let outerRadius = min(baseCornerRadius, min(outer.width, outer.height) * 0.3)
-        let innerRadius = min(baseCornerRadius, min(inner.width, inner.height) * 0.3)
+        // Sublayers are positioned in contentLayer's own coordinates, so the rotation below
+        // is the only thing that has to know where on screen any of this ends up.
+        let local = CGRect(origin: .zero, size: outer.size)
+        let inner = local.insetBy(dx: matWidth, dy: matWidth)
 
-        applyImageMask(inner: inner, cornerRadius: innerRadius)
-        applyShadowLayers(outer: outer, cornerRadius: outerRadius)
-        applyMatLayer(outer: outer, cornerRadius: outerRadius)
-        applyVignetteLayer(inner: inner)
-        applyBorderLayers(outer: outer, cornerRadius: outerRadius)
-        applyTiltTransform()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        contentLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        contentLayer.bounds = local
+        contentLayer.position = CGPoint(x: outer.midX, y: outer.midY)
+        contentLayer.transform = tiltDegrees == 0
+            ? CATransform3DIdentity
+            : CATransform3DMakeRotation(tiltDegrees * .pi / 180, 0, 0, 1)
+
+        let outerRadius = min(baseCornerRadius, min(local.width, local.height) * 0.5)
+        let innerRadius = min(baseCornerRadius, min(inner.width, inner.height) * 0.5)
+
+        applyShadowLayers(outer: local, cornerRadius: outerRadius)
+        applyMatLayer(outer: local, cornerRadius: outerRadius)
+        applyImageLayer(inner: inner, cornerRadius: innerRadius)
+        applyVignetteLayer(inner: inner, cornerRadius: innerRadius)
+        applyBorderLayers(outer: local, cornerRadius: outerRadius)
+        applyHandleLayers(outer: local)
+
+        CATransaction.commit()
     }
 
-    private func contentMargin(for size: CGSize) -> CGFloat {
-        let minDim = min(size.width, size.height)
-        let shadowMargin: CGFloat = shadowEnabledFlag
-            ? (shadowBlurBase * 1.4 + shadowBlurBase * 0.5 + 4)
-            : 0
-        let margin = max(shadowMargin, Self.tiltMargin(for: size, degrees: tiltDegrees))
-        // Never let margin eat more than ~22% of the shorter side -- a small widget at max
-        // shadow blur is a documented soft limit, not a crash, but it shouldn't be allowed to
-        // consume the whole photo either.
-        return min(margin, minDim * 0.22)
-    }
-
-    /// Extra half-width/height a rect of `size` needs on each side once rotated by `degrees`
-    /// to keep its rotated bounding box inside the original (unrotated) footprint.
-    private static func tiltMargin(for size: CGSize, degrees: CGFloat) -> CGFloat {
-        guard degrees != 0 else { return 0 }
-        let rad = degrees * .pi / 180
-        let w = size.width, h = size.height
-        let rotatedW = abs(w * cos(rad)) + abs(h * sin(rad))
-        let rotatedH = abs(w * sin(rad)) + abs(h * cos(rad))
-        return max(0, max(rotatedW - w, rotatedH - h) / 2)
-    }
-
-    private func applyImageMask(inner: NSRect, cornerRadius: CGFloat) {
-        guard let imgLayer = imageView.layer else { return }
+    private func applyImageLayer(inner: NSRect, cornerRadius: CGFloat) {
+        let img = photoLayer.layer
+        img.frame = inner
+        let local = CGRect(origin: .zero, size: inner.size)
         switch shapeMask {
         case .roundedRect:
-            imgLayer.mask = nil
-            imgLayer.cornerRadius = cornerRadius
-            imgLayer.masksToBounds = true
-            imgLayer.cornerCurve = .continuous
+            img.mask = nil
+            img.cornerRadius = cornerRadius
+            img.cornerCurve = .continuous
         case .circle, .squircle, .arch:
-            imgLayer.cornerRadius = 0
-            let local = CGRect(origin: .zero, size: inner.size)
+            img.cornerRadius = 0
             let maskLayer = CAShapeLayer()
             maskLayer.frame = local
             maskLayer.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
             maskLayer.fillColor = NSColor.black.cgColor
-            imgLayer.mask = maskLayer
-            imgLayer.masksToBounds = true
+            img.mask = maskLayer
         }
+        // No reordering here on purpose: the image layer is the one layer that persists across
+        // relayouts (it owns any running GIF animation), so everything else is positioned
+        // relative to it — shadows and mat below, vignette and border above.
     }
 
     private func makeShadowLayer() -> CAShapeLayer {
@@ -511,14 +741,13 @@ class DraggablePhotoView: NSView {
     private func applyShadowLayers(outer: NSRect, cornerRadius: CGFloat) {
         ambientShadowLayer?.removeFromSuperlayer()
         contactShadowLayer?.removeFromSuperlayer()
-        guard shadowEnabledFlag, let img = imageView.layer else {
+        guard shadowEnabledFlag else {
             ambientShadowLayer = nil
             contactShadowLayer = nil
             return
         }
 
-        let local = CGRect(origin: .zero, size: outer.size)
-        let path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+        let path = shapeMask.path(in: outer, cornerRadius: cornerRadius)
 
         let ambient = makeShadowLayer()
         ambient.frame = outer
@@ -528,7 +757,7 @@ class DraggablePhotoView: NSView {
         ambient.shadowOpacity = Float(min(shadowOpacityBase * 0.7, 1.0))
         ambient.shadowRadius = max(2, shadowBlurBase * 1.4)
         ambient.shadowOffset = CGSize(width: 0, height: -min(10, shadowBlurBase * 0.5))
-        layer?.insertSublayer(ambient, below: img)
+        contentLayer.insertSublayer(ambient, below: photoLayer.layer)
         ambientShadowLayer = ambient
 
         let contact = makeShadowLayer()
@@ -539,51 +768,70 @@ class DraggablePhotoView: NSView {
         contact.shadowOpacity = Float(min(shadowOpacityBase * 1.1, 1.0))
         contact.shadowRadius = max(1, shadowBlurBase * 0.25)
         contact.shadowOffset = CGSize(width: 0, height: -min(3, shadowBlurBase * 0.15))
-        // Inserted after ambient -- each "below img" insert lands directly under img, so the
-        // second one (contact) ends up the closer of the two, ambient furthest back.
-        layer?.insertSublayer(contact, below: img)
+        // Each "below the image" insert lands directly under it, so this second one ends up
+        // the closer of the two and ambient stays furthest back.
+        contentLayer.insertSublayer(contact, below: photoLayer.layer)
         contactShadowLayer = contact
     }
 
-    /// The passe-partout: a solid inset border of colour between the frame edge and the
-    /// image, sitting directly behind it.
+    /// The passe-partout: a solid border of colour around the image, drawn *outward* so the
+    /// image keeps its exact aspect ratio (a mounted print is bigger than the print).
     private func applyMatLayer(outer: NSRect, cornerRadius: CGFloat) {
         matLayer?.removeFromSuperlayer()
-        guard matWidth > 0, let img = imageView.layer else {
+        guard matWidth > 0 else {
             matLayer = nil
             return
         }
-        let local = CGRect(origin: .zero, size: outer.size)
         let mat = CAShapeLayer()
         mat.frame = outer
-        mat.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+        mat.path = shapeMask.path(in: CGRect(origin: .zero, size: outer.size), cornerRadius: cornerRadius)
         mat.fillColor = matColor.cgColor
-        layer?.insertSublayer(mat, below: img)
+        // Directly behind the image, in front of both shadows.
+        contentLayer.insertSublayer(mat, below: photoLayer.layer)
         matLayer = mat
     }
 
-    private func applyVignetteLayer(inner: NSRect) {
+    /// Darkens the photo's edges and corners.
+    ///
+    /// Not a CAGradientLayer any more: a `.radial` gradient paints nothing beyond the ellipse
+    /// its endpoint describes, so the previous version drew a dark ring *inside* the photo and
+    /// left all four corners untouched — the inverse of a vignette. A shape layer with an even-odd
+    /// path (photo rect minus an inset rounded rect) shaded by a soft shadow gets the corners.
+    private func applyVignetteLayer(inner: NSRect, cornerRadius: CGFloat) {
         vignetteLayer?.removeFromSuperlayer()
-        guard vignetteEnabledFlag else {
+        guard vignetteEnabledFlag, inner.width > 0, inner.height > 0 else {
             vignetteLayer = nil
             return
         }
-        let gradient = CAGradientLayer()
-        gradient.frame = inner
-        gradient.type = .radial
-        gradient.colors = [
-            NSColor.clear.cgColor,
-            NSColor.black.withAlphaComponent(0.4).cgColor
-        ]
-        gradient.locations = [0.5, 1.0]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
-        gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
-        gradient.cornerRadius = imageView.layer?.cornerRadius ?? 16
-        // overlayView, not self.layer -- see the property comment on overlayView for why a
-        // manual sublayer of the container can never paint above a subview's own layer no
-        // matter the insertion call, so "above the image" has to be a second subview instead.
-        overlayView.layer?.addSublayer(gradient)
-        vignetteLayer = gradient
+
+        let local = CGRect(origin: .zero, size: inner.size)
+        let feather = min(local.width, local.height) * 0.28
+
+        let ring = CAShapeLayer()
+        ring.frame = inner
+        let path = CGMutablePath()
+        path.addPath(shapeMask.path(in: local, cornerRadius: cornerRadius))
+        path.addPath(shapeMask.path(in: local.insetBy(dx: feather, dy: feather), cornerRadius: cornerRadius))
+        ring.path = path
+        ring.fillRule = .evenOdd
+        ring.fillColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        // Blurring the ring inward is what makes it read as a fade rather than a dark frame.
+        ring.shadowColor = NSColor.black.cgColor
+        ring.shadowOpacity = 0.5
+        ring.shadowRadius = feather * 0.6
+        ring.shadowOffset = .zero
+        ring.shadowPath = path
+
+        // Clip to the photo's silhouette so the blur can't bleed onto the mat.
+        let clip = CAShapeLayer()
+        clip.frame = CGRect(origin: .zero, size: inner.size)
+        clip.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
+        clip.fillColor = NSColor.black.cgColor
+        ring.mask = clip
+
+        // Appended, so it stacks above the image; the border is appended after it.
+        contentLayer.addSublayer(ring)
+        vignetteLayer = ring
     }
 
     /// Solid, dashed or dotted; flat colour or a linear gradient sweep. The gradient case
@@ -619,9 +867,6 @@ class DraggablePhotoView: NSView {
             stroke.lineCap = .round
         }
 
-        // overlayView, not self.layer -- see the property comment on overlayView. Appended
-        // after the vignette (added earlier in relayout()), so the border ends up on top of
-        // that too within the overlay.
         if borderGradientEnabled {
             stroke.strokeColor = NSColor.black.cgColor // opaque alpha; colour comes from the gradient
             let gradient = CAGradientLayer()
@@ -630,24 +875,61 @@ class DraggablePhotoView: NSView {
             gradient.startPoint = CGPoint(x: 0, y: 1)
             gradient.endPoint = CGPoint(x: 1, y: 0)
             gradient.mask = stroke
-            overlayView.layer?.addSublayer(gradient)
+            contentLayer.addSublayer(gradient)
             borderGradientLayer = gradient
             borderLayer = nil
         } else {
             stroke.strokeColor = currentBorderColor.cgColor
-            overlayView.layer?.addSublayer(stroke)
+            contentLayer.addSublayer(stroke)
             borderLayer = stroke
             borderGradientLayer = nil
         }
     }
 
-    private func applyTiltTransform() {
-        layer?.transform = tiltDegrees == 0
-            ? CATransform3DIdentity
-            : CATransform3DMakeRotation(tiltDegrees * .pi / 180, 0, 0, 1)
+    // MARK: - Resize handles
+
+    /// Four corner grips, shown only while the pointer is over an unlocked widget.
+    ///
+    /// A cursor change alone was the entire affordance before, and it never fired — the window
+    /// was not accepting mouseMoved events at all. Even once it does, a cursor is a poor signal
+    /// for a borderless object with no chrome: there is nothing on screen to tell you the
+    /// corners are draggable until you happen to hover one.
+    private func applyHandleLayers(outer: NSRect) {
+        handleLayers.forEach { $0.removeFromSuperlayer() }
+        handleLayers = []
+        guard isHovering, !isLocked else { return }
+
+        let size: CGFloat = 10
+        let corners = [
+            CGPoint(x: outer.minX, y: outer.minY),
+            CGPoint(x: outer.maxX, y: outer.minY),
+            CGPoint(x: outer.minX, y: outer.maxY),
+            CGPoint(x: outer.maxX, y: outer.maxY)
+        ]
+        for corner in corners {
+            let dot = CALayer()
+            dot.frame = CGRect(x: corner.x - size / 2, y: corner.y - size / 2, width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.backgroundColor = NSColor.white.cgColor
+            dot.borderColor = NSColor.black.withAlphaComponent(0.35).cgColor
+            dot.borderWidth = 1
+            dot.shadowColor = NSColor.black.cgColor
+            dot.shadowOpacity = 0.35
+            dot.shadowRadius = 2
+            dot.shadowOffset = CGSize(width: 0, height: -1)
+            contentLayer.addSublayer(dot)
+            handleLayers.append(dot)
+        }
     }
 
-    // MARK: - v1.3 / v2.1 Aesthetic Controls
+    private func updateHandles() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyHandleLayers(outer: CGRect(origin: .zero, size: visualRect.size))
+        CATransaction.commit()
+    }
+
+    // MARK: - Aesthetic Controls
 
     func setCornerRadius(_ radius: CGFloat) {
         baseCornerRadius = radius
@@ -708,15 +990,35 @@ class DraggablePhotoView: NSView {
 
     // MARK: - Hit zones
 
-    private func modeAt(_ localPoint: NSPoint) -> DragMode {
-        let h = handleZone
-        let w = bounds.width
-        let ht = bounds.height
+    /// Converts a point in view coordinates into the tilted content's own frame, so the corner
+    /// grips stay grabbable where they are actually drawn rather than where an unrotated rect
+    /// would put them.
+    private func pointInContent(_ p: NSPoint) -> NSPoint {
+        let outer = visualRect
+        let centre = NSPoint(x: outer.midX, y: outer.midY)
+        let dx = p.x - centre.x
+        let dy = p.y - centre.y
+        guard tiltDegrees != 0 else {
+            return NSPoint(x: dx + outer.width / 2, y: dy + outer.height / 2)
+        }
+        let rad = -tiltDegrees * .pi / 180
+        return NSPoint(
+            x: dx * cos(rad) - dy * sin(rad) + outer.width / 2,
+            y: dx * sin(rad) + dy * cos(rad) + outer.height / 2
+        )
+    }
 
-        let nearLeft = localPoint.x < h
-        let nearRight = localPoint.x > w - h
-        let nearBottom = localPoint.y < h
-        let nearTop = localPoint.y > ht - h
+    private func modeAt(_ localPoint: NSPoint) -> DragMode {
+        let outer = visualRect
+        let p = pointInContent(localPoint)
+        let h = handleZone
+
+        guard p.x > -h, p.y > -h, p.x < outer.width + h, p.y < outer.height + h else { return .none }
+
+        let nearLeft = p.x < h
+        let nearRight = p.x > outer.width - h
+        let nearBottom = p.y < h
+        let nearTop = p.y > outer.height - h
 
         if nearBottom && nearLeft { return .resizeBottomLeft }
         if nearBottom && nearRight { return .resizeBottomRight }
@@ -727,13 +1029,10 @@ class DraggablePhotoView: NSView {
 
     // MARK: - Cursor
 
-    override func mouseMoved(with event: NSEvent) {
+    private func applyCursor(at localPoint: NSPoint) {
         if isLocked { NSCursor.arrow.set(); return }
-        let p = convert(event.locationInWindow, from: nil)
-        switch modeAt(p) {
-        case .resizeTopLeft, .resizeBottomRight:
-            NSCursor.crosshair.set()
-        case .resizeTopRight, .resizeBottomLeft:
+        switch modeAt(localPoint) {
+        case .resizeTopLeft, .resizeBottomRight, .resizeTopRight, .resizeBottomLeft:
             NSCursor.crosshair.set()
         case .move:
             NSCursor.openHand.set()
@@ -742,7 +1041,26 @@ class DraggablePhotoView: NSView {
         }
     }
 
-    override func mouseExited(with event: NSEvent) { NSCursor.arrow.set() }
+    override func mouseMoved(with event: NSEvent) {
+        applyCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    /// Belt and braces alongside mouseMoved: AppKit re-asserts the cursor from cursor rects
+    /// after various events, and cursorUpdate is the hook it offers for saying otherwise.
+    override func cursorUpdate(with event: NSEvent) {
+        applyCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        updateHandles()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        updateHandles()
+        NSCursor.arrow.set()
+    }
 
     // MARK: - Mouse events
 
@@ -758,13 +1076,17 @@ class DraggablePhotoView: NSView {
 
         if isLocked { return }
 
-        guard let win = window else { return }
+        guard let win = window as? DesktopPhotoWindow else { return }
         let p = convert(event.locationInWindow, from: nil)
         dragMode = modeAt(p)
         initialMouse = NSEvent.mouseLocation
-        unsnappedOrigin = win.frame.origin
+        unsnappedOrigin = win.photoFrame.origin
 
-        let f = win.frame
+        // Window positions do not change while a widget is being dragged, so the alignment
+        // targets are gathered once here rather than re-queried on every mouseDragged.
+        SnapEngine.shared.beginDrag(for: win)
+
+        let f = win.photoFrame
         // Set anchor = the corner OPPOSITE to the one being dragged
         switch dragMode {
         case .resizeBottomRight: anchorPoint = NSPoint(x: f.minX, y: f.maxY) // top-left fixed
@@ -777,7 +1099,7 @@ class DraggablePhotoView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         if isLocked { return }
-        guard let win = window else { return }
+        guard let win = window as? DesktopPhotoWindow else { return }
 
         let mouse = NSEvent.mouseLocation
 
@@ -794,68 +1116,56 @@ class DraggablePhotoView: NSView {
             let (snapped, guides) = SnapEngine.shared.snappedOrigin(
                 for: win,
                 proposedOrigin: unsnappedOrigin,
-                size: win.frame.size
+                size: win.photoFrame.size,
+                matInset: matWidth,
+                modifiers: event.modifierFlags,
+                dragStart: NSPoint(x: unsnappedOrigin.x - dx, y: unsnappedOrigin.y - dy)
             )
-            win.setFrameOrigin(snapped)
+            win.setPhotoOrigin(snapped)
 
             if let screen = win.screen ?? NSScreen.main {
-                SnapGuideOverlay.shared.show(guides, on: screen)
+                SnapGuideOverlay.shared.show(guides, on: screen, above: win)
             }
 
         case .resizeBottomRight:
-            let desiredW = max(minSize, mouse.x - anchorPoint.x)
-            let newW = desiredW
-            let newH = newW / aspectRatio
-            let newX = anchorPoint.x
-            let newY = anchorPoint.y - newH
-            applyFrame(NSRect(x: newX, y: newY, width: newW, height: newH), to: win)
+            let newW = max(minSize, mouse.x - anchorPoint.x)
+            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win)
 
         case .resizeBottomLeft:
-            let desiredW = max(minSize, anchorPoint.x - mouse.x)
-            let newW = desiredW
-            let newH = newW / aspectRatio
-            let newX = anchorPoint.x - newW
-            let newY = anchorPoint.y - newH
-            applyFrame(NSRect(x: newX, y: newY, width: newW, height: newH), to: win)
+            let newW = max(minSize, anchorPoint.x - mouse.x)
+            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win)
 
         case .resizeTopRight:
-            let desiredW = max(minSize, mouse.x - anchorPoint.x)
-            let newW = desiredW
-            let newH = newW / aspectRatio
-            let newX = anchorPoint.x
-            let newY = anchorPoint.y
-            applyFrame(NSRect(x: newX, y: newY, width: newW, height: newH), to: win)
+            let newW = max(minSize, mouse.x - anchorPoint.x)
+            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win)
 
         case .resizeTopLeft:
-            let desiredW = max(minSize, anchorPoint.x - mouse.x)
-            let newW = desiredW
-            let newH = newW / aspectRatio
-            let newX = anchorPoint.x - newW
-            let newY = anchorPoint.y
-            applyFrame(NSRect(x: newX, y: newY, width: newW, height: newH), to: win)
+            let newW = max(minSize, anchorPoint.x - mouse.x)
+            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win)
 
         case .none:
             break
         }
     }
 
-    private func applyFrame(_ rect: NSRect, to win: NSWindow) {
-        win.setFrame(rect, display: true)
-        updateLayout(rect.size)
+    private func applyPhotoFrame(_ rect: NSRect, to win: DesktopPhotoWindow) {
+        canvasInset = requiredCanvasInset(photoSize: rect.size)
+        win.setPhotoFrame(rect)
     }
 
     override func mouseUp(with event: NSEvent) {
         SnapGuideOverlay.shared.hide()
+        SnapEngine.shared.endDrag()
 
         if isLocked { return }
-        guard let win = window else { return }
+        guard let win = window as? DesktopPhotoWindow else { return }
 
         // Save position
         NotificationCenter.default.post(name: .desktopPhotoMoved, object: win)
 
         // If we were resizing, report the new width
         if dragMode != .move && dragMode != .none {
-            onResizeFinished?(win.frame.width)
+            onResizeFinished?(win.photoFrame.width)
         }
         dragMode = .none
     }
@@ -904,9 +1214,10 @@ class DraggablePhotoView: NSView {
 
     func flashLockState(_ locked: Bool) {
         let size: CGFloat = 48
+        let outer = visualRect
         let indicator = NSView(frame: NSRect(
-            x: (bounds.width - size) / 2,
-            y: (bounds.height - size) / 2,
+            x: outer.midX - size / 2,
+            y: outer.midY - size / 2,
             width: size, height: size
         ))
         indicator.wantsLayer = true
@@ -934,8 +1245,12 @@ class DraggablePhotoView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// Only the photo itself is clickable. The window is deliberately larger than the photo
+    /// now (see PhotoCanvas), and claiming that padding would swallow clicks meant for the
+    /// desktop icons and wallpaper behind it.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        modeAt(point) == .none ? nil : self
     }
 }
 

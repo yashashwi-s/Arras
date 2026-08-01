@@ -32,19 +32,25 @@ extension PhotoManager {
         guard let image = NSImage(pasteboard: pasteboard), image.isValid else { return 0 }
         addPhoto(image)
         return 1
+        // Left on the NSImage path deliberately: a pasteboard image has no original file
+        // behind it, so there are no source bytes to pass through.
     }
 
     /// Creates widgets from image files on disk. Used by drag-and-drop.
-    /// - Returns: the number of widgets created.
+    ///
+    /// Returns how many files *look* importable and kicks the real work off in the
+    /// background — the caller (a drag handler) has no way to await, and the batched path
+    /// prepares the files concurrently off the main actor.
+    /// - Returns: the number of widgets that will be created.
     @discardableResult
     func addImages(from urls: [URL]) -> Int {
-        var added = 0
-        for url in urls {
-            guard let image = NSImage(contentsOf: url), image.isValid else { continue }
-            addPhoto(image)
-            added += 1
+        let candidates = urls.filter { url in
+            guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+            return Self.importableTypes.contains { type.conforms(to: $0) }
         }
-        return added
+        guard !candidates.isEmpty else { return 0 }
+        Task { @MainActor in await addPhotos(urls: candidates) }
+        return candidates.count
     }
 
     // MARK: - Pasteboard inspection

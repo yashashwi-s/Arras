@@ -1,53 +1,29 @@
 import AppKit
 
-/// Controls whether Tableau behaves as a background agent or as an ordinary app.
+/// Keeps Tableau a menu bar agent and gives it a main menu anyway.
 ///
-/// macOS ties Dock presence and ⌘Tab presence to the same switch: `.regular`
-/// gives both, `.accessory` gives neither. There is no policy that appears in the
-/// app switcher while staying out of the Dock, so this is necessarily one
-/// setting rather than two.
+/// There was briefly a setting that flipped the activation policy to `.regular`, putting
+/// Tableau in the Dock and in ⌘Tab. It was removed: a desktop ornament that also occupies a
+/// Dock slot and an app-switcher card is asking for attention it never needs, and the app has
+/// exactly one window worth returning to, reachable from the status item in a click.
+///
+/// The main menu stays. An agent's menu bar is only ever shown while the app is frontmost —
+/// which now only happens when its Settings window is open — so it costs nothing, and without
+/// it there is no ⌘Q, no ⌘W, and no ⌘C/⌘V in the settings text fields, because those are all
+/// driven by menu key equivalents.
 @MainActor
-final class AppActivation: ObservableObject {
+final class AppActivation {
     static let shared = AppActivation()
-
-    private let key = "showInDock"
 
     private init() {}
 
-    /// When true the app takes a Dock slot and appears in ⌘Tab.
-    ///
-    /// Defaults to true: once an app has a settings window worth returning to,
-    /// being unreachable from the app switcher is more surprising than the Dock
-    /// icon is intrusive.
-    var showsInDock: Bool {
-        get { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
-        set {
-            objectWillChange.send()
-            UserDefaults.standard.set(newValue, forKey: key)
-            apply()
-        }
-    }
-
-    /// Applies the stored preference. Safe to call at launch and on change.
+    /// Installs the menu bar. Safe to call more than once.
     func apply() {
-        let wantsRegular = showsInDock
-        let current = NSApp.activationPolicy()
-        let target: NSApplication.ActivationPolicy = wantsRegular ? .regular : .accessory
-
-        // Installing the main menu before switching means the menu bar is already
-        // correct the moment the app becomes regular, rather than briefly empty.
-        NSApp.mainMenu = wantsRegular ? Self.buildMainMenu() : nil
-
-        guard current != target else { return }
-        NSApp.setActivationPolicy(target)
-
-        // Going accessory -> regular leaves the menu bar stale until the app
-        // loses and regains focus; re-activating on the next turn of the run loop
-        // forces AppKit to adopt the new menu immediately.
-        if wantsRegular {
-            DispatchQueue.main.async {
-                NSApp.activate(ignoringOtherApps: true)
-            }
+        if NSApp.mainMenu == nil {
+            NSApp.mainMenu = Self.buildMainMenu()
+        }
+        if NSApp.activationPolicy() != .accessory {
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 

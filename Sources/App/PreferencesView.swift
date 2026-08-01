@@ -11,11 +11,11 @@ struct PreferencesView: View {
     var onMenuUpdate: (() -> Void)?
 
     @ObservedObject private var hotKeys = HotKeyManager.shared
-    @ObservedObject private var activation = AppActivation.shared
     @ObservedObject private var menuBar = MenuBarCustomization.shared
     @ObservedObject private var updater = Updater.shared
 
     @State private var snapEnabled = SnapEngine.shared.isEnabled
+    @State private var snapOtherApps = SnapEngine.shared.includesOtherApps
 
     var body: some View {
         ScrollView {
@@ -40,17 +40,15 @@ struct PreferencesView: View {
             ))
             .accessibilityHint("Starts \(Constants.appName) automatically when you log in")
 
-            Toggle("Show in Dock & App Switcher", isOn: Binding(
-                get: { activation.showsInDock },
-                set: { activation.showsInDock = $0; onMenuUpdate?() }
-            ))
-            // Worth saying out loud: people look for these as two settings.
-            .accessibilityHint("macOS ties these together — an app in the app switcher always has a Dock icon")
-            caption("macOS ties these together. An app that appears in ⌘Tab always has a Dock icon.")
-
             Toggle("Snap to Edges", isOn: $snapEnabled)
                 .onChange(of: snapEnabled) { _, value in SnapEngine.shared.isEnabled = value }
                 .accessibilityHint("Aligns photos to screen edges and other photos while you drag")
+
+            Toggle("Also snap to other apps' windows", isOn: $snapOtherApps)
+                .onChange(of: snapOtherApps) { _, value in SnapEngine.shared.includesOtherApps = value }
+                .disabled(!snapEnabled)
+                .accessibilityHint("Aligns photos to other applications' windows and to the system's desktop widgets")
+            caption("Reads window positions only. No permissions are needed and no window contents are read.")
         }
     }
 
@@ -133,60 +131,126 @@ struct PreferencesView: View {
         }
     }
 
-    // MARK: - Backup
+    // MARK: - Backup & transfer
 
+    /// One command, one file format, one place.
+    ///
+    /// There used to be two mechanisms: "Export Layout…", hidden behind an unlabelled glyph in
+    /// the Photos tab, which carried the widgets and had the only "include app settings"
+    /// checkbox; and "Export Settings…" here, which was named for settings, offered no options
+    /// at all, and silently wrote five of them. People looking for the checkbox looked at the
+    /// button that says Settings and did not find it.
     private var backup: some View {
-        section("SETTINGS BACKUP") {
-            caption("Save these settings to a file, or load them on another Mac. Photos are exported separately from the Layout menu.")
+        section("BACKUP & TRANSFER") {
+            caption("Save your widgets and settings to a single file, or restore them on another Mac.")
 
             HStack(spacing: 8) {
-                Button("Export Settings…") { exportSettings() }
+                Button("Export Backup…") { exportBackup() }
                     .controlSize(.small)
-                Button("Import Settings…") { importSettings() }
+                Button("Import Backup…") { importBackup() }
                     .controlSize(.small)
                 Spacer()
             }
         }
     }
 
-    private func exportSettings() {
+    private func exportBackup() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "Tableau Settings.json"
+        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
+        panel.nameFieldStringValue = "Tableau Backup.tableau"
         panel.prompt = "Export"
+        panel.message = "Choose what this backup should contain"
+        let options = ExportOptionsView()
+        panel.accessoryView = options
+
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        let prefs = ExportedPreferences.current(launchAtLogin: manager.launchAtLogin)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(prefs) else { return }
-        try? data.write(to: url, options: .atomic)
+        do {
+            try manager.exportLayout(to: url, preferenceGroups: options.selectedGroups)
+        } catch {
+            presentAlert("Couldn't Export Backup", error.localizedDescription, .warning)
+        }
     }
 
-    private func importSettings() {
+    private func importBackup() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [UTType(filenameExtension: "tableau") ?? .data]
         panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
         panel.prompt = "Import"
+        panel.message = "Choose a Tableau backup"
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url),
-              let prefs = try? JSONDecoder().decode(ExportedPreferences.self, from: data) else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        // Same reasoning as importing a layout: these are system-wide, so confirm
-        // before rebinding somebody's global shortcut or login item.
+        // Read the manifest first so the dialog can describe what is actually inside, rather
+        // than asking the user to commit to an opaque file.
+        let manifest = try? PhotoManager.inspect(url)
+
         let alert = NSAlert()
-        alert.messageText = "Apply these settings?"
-        alert.informativeText = "This will change: \(prefs.summary)."
-        alert.addButton(withTitle: "Apply")
+        alert.messageText = "Import Backup"
+
+        var details: [String] = []
+        if let manifest {
+            let count = manifest.itemCount ?? manifest.photos.count
+            details.append("\(count) widget\(count == 1 ? "" : "s")")
+            details.append("from Tableau \(manifest.appVersion)")
+            details.append(manifest.exportedAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        let provenance = details.isEmpty ? "" : details.joined(separator: " · ") + "\n\n"
+
+        alert.informativeText = provenance + (manager.photos.isEmpty
+            ? "Add the widgets from this backup to your desktop."
+            : "Add these widgets to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone.")
+
+        // Only offered when the file carries them, and never on by default — importing
+        // somebody else's backup must not silently rebind this Mac's global shortcut.
+        var prefsBox: NSButton?
+        if let preferences = manifest?.preferences, !preferences.groups.isEmpty {
+            let box = NSButton(
+                checkboxWithTitle: "Also apply app settings (\(preferences.summary))",
+                target: nil,
+                action: nil
+            )
+            box.state = .off
+            alert.accessoryView = box
+            prefsBox = box
+        }
+
+        alert.addButton(withTitle: "Merge")
+        alert.addButton(withTitle: "Replace Everything")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        manager.applyImportedPreferences(prefs)
-        snapEnabled = SnapEngine.shared.isEnabled
-        onMenuUpdate?()
+        let mode: PhotoManager.LayoutImportMode
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: mode = .merge
+        case .alertSecondButtonReturn: mode = .replace
+        default: return
+        }
+
+        do {
+            let count = try manager.importLayout(from: url, mode: mode)
+            if prefsBox?.state == .on, let preferences = manifest?.preferences {
+                manager.applyImportedPreferences(preferences)
+                snapEnabled = SnapEngine.shared.isEnabled
+            }
+            onMenuUpdate?()
+            if count == 0 {
+                presentAlert("Nothing to Import", "That backup didn't contain any widgets with valid images.", .informational)
+            }
+        } catch {
+            presentAlert("Couldn't Import Backup", error.localizedDescription, .warning)
+        }
+    }
+
+    private func presentAlert(_ title: String, _ message: String, _ style: NSAlert.Style) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private var lastCheckedDescription: String {

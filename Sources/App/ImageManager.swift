@@ -18,11 +18,25 @@ class PhotoManager: ObservableObject {
     @Published var isConferencingAppDetected: Bool = false
     @Published var isFullscreenAppDetected: Bool = false
 
-    private var windows: [UUID: DesktopPhotoWindow] = [:]
+    /// Not private: PhotoAppearanceControls.swift lives in another file and needs the same
+    /// authoritative lookup. It used to scan `NSApp.windows` for a matching `photoId` instead,
+    /// which silently resolved to a *closed* window — widget windows are deliberately never
+    /// released (see `isReleasedWhenClosed` in createWindow), so they stay in `NSApp.windows`
+    /// forever. After a single hide/show cycle, half the appearance panel stopped working.
+    var windows: [UUID: DesktopPhotoWindow] = [:]
 
     // v1.4 — Spaces (Internal rotation timers)
-    private var spaceImages: [UUID: [URL]] = [:]
+    var spaceImages: [UUID: [URL]] = [:]
     private var rotationTimers: [UUID: DispatchSourceTimer] = [:]
+
+    /// Rendered thumbnails, keyed by source filename and point size.
+    ///
+    /// `thumbnail(for:)` decodes the stored image at full resolution and draws it into a
+    /// bitmap. It is called from `PhotoRowView`'s body — so once per visible row per SwiftUI
+    /// pass — and from `rebuildMenu`, once per photo every time the status menu opens. With no
+    /// cache, adding one photo to a library of twenty cost twenty full-resolution decodes on
+    /// the main thread, and so did every click on the menu bar icon.
+    private let thumbnailCache = NSCache<NSString, NSImage>()
 
     // v1.6 — Presence & Privacy
     private let presence = PresenceMonitor()
@@ -60,7 +74,7 @@ class PhotoManager: ObservableObject {
             guard let window = notification.object as? DesktopPhotoWindow,
                   let id = window.photoId else { return }
             Task { @MainActor [weak self] in
-                self?.saveWindowPosition(for: id, frame: window.frame)
+                self?.saveWindowPosition(for: id, frame: window.photoFrame)
             }
         }
 
@@ -90,19 +104,6 @@ class PhotoManager: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.handleScreenParametersChanged()
-            }
-        }
-
-        // v1.5 — Theme Adaptation: AppleInterfaceThemeChangedNotification is the reliable
-        // public signal for Light/Dark switches; there is no KVO-observable AppKit property
-        // that fires at the same moment without also firing for unrelated appearance churn.
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.handleThemeChanged()
             }
         }
 
@@ -172,7 +173,10 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    private func persist() {
+    /// Not private, for the same reason `windows` isn't — PhotoAppearanceControls.swift used
+    /// to carry a byte-for-byte copy of this, which made two independent writers to the same
+    /// file and a lost-update waiting to happen.
+    func persist() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         guard let data = try? encoder.encode(photos) else { return }
@@ -181,10 +185,13 @@ class PhotoManager: ObservableObject {
 
     private func saveAllPositions() {
         for (id, window) in windows {
-            saveWindowPosition(for: id, frame: window.frame)
+            saveWindowPosition(for: id, frame: window.photoFrame)
         }
     }
 
+    /// `frame` is always the *photo* rect, never the window frame — the window is larger by
+    /// however much room the shadow and tilt need (see `PhotoCanvas`), and persisting that
+    /// would grow every widget a little on each launch.
     private func saveWindowPosition(for id: UUID, frame: NSRect) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].frameString = NSStringFromRect(frame)
@@ -265,60 +272,11 @@ class PhotoManager: ObservableObject {
         persist()
     }
 
-    func addSpace(images: [NSImage]) {
-        guard !images.isEmpty else { return }
 
-        // Save all images to disk and collect filenames
-        var filenames: [String] = []
-        for image in images {
-            if let (filename, _) = saveImportedImage(image) {
-                filenames.append(filename)
-            }
-        }
-        guard !filenames.isEmpty else { return }
-
-        // Create one PhotoItem to represent the Space
-        var item = PhotoItem(filename: "")
-        item.customName = "Space"
-        item.spaceImageFilenames = filenames
-        item.rotationInterval = "30s"
-        item.folderSizeMode = "dynamic" // Ensure default size mode is set
-        photos.append(item)
-
-        let urls = filenames.map { storageDir.appendingPathComponent($0) }
-        spaceImages[item.id] = urls
-
-        // Display the first image
-        if let firstURL = urls.first, let content = PhotoContent.load(from: firstURL) {
-            createWindow(for: item, content: content)
-            setupRotationTimer(for: item)
-        }
-    }
-
-    func appendPhotosToSpace(_ id: UUID, images: [NSImage]) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        guard !images.isEmpty else { return }
-
-        var newFilenames: [String] = []
-        for image in images {
-            if let (filename, _) = saveImportedImage(image) {
-                newFilenames.append(filename)
-            }
-        }
-        guard !newFilenames.isEmpty else { return }
-
-        photos[index].spaceImageFilenames.append(contentsOf: newFilenames)
-
-        let newUrls = newFilenames.map { storageDir.appendingPathComponent($0) }
-        var currentUrls = spaceImages[id] ?? []
-        currentUrls.append(contentsOf: newUrls)
-        spaceImages[id] = currentUrls
-
-        persist()
-    }
 
     func removePhoto(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        invalidateThumbnails(for: photos[index])
         let item = photos[index]
 
         windows[id]?.hidePhoto()
@@ -386,7 +344,7 @@ class PhotoManager: ObservableObject {
 
     // MARK: - Window Creation
 
-    private func createWindow(for item: PhotoItem, content: PhotoContent) {
+    func createWindow(for item: PhotoItem, content: PhotoContent) {
         let window = DesktopPhotoWindow()
         window.isReleasedWhenClosed = false
         window.photoId = item.id
@@ -416,8 +374,7 @@ class PhotoManager: ObservableObject {
         }
 
         if rectToUse.width > 0 {
-            window.setFrame(rectToUse, display: true)
-            (window.contentView as? DraggablePhotoView)?.updateLayout(rectToUse.size)
+            window.setPhotoFrame(rectToUse)
         }
 
         window.setSpaceBound(item.isSpaceBound)
@@ -431,10 +388,6 @@ class PhotoManager: ObservableObject {
             photos[idx].displayIdentifier = DisplayManager.identifier(for: screen)
         }
 
-        if item.themeAdaptive {
-            applyThemeAdaptation(item)
-        }
-
         // Callbacks
         window.onLockToggle = { [weak self] in self?.toggleLock(item.id) }
         window.onRemove = { [weak self] in self?.removePhoto(item.id) }
@@ -445,14 +398,7 @@ class PhotoManager: ObservableObject {
         }
         window.onOpacityChanged = { [weak self] newOpacity in
             guard let self, let i = self.photos.firstIndex(where: { $0.id == item.id }) else { return }
-            // Scrolling reports the alpha actually on screen. While a photo is
-            // dimmed for Dark Mode that is the *adapted* value, so store the
-            // undimmed equivalent — otherwise each theme switch would dim the
-            // already-dimmed value and the photo would fade away over time.
-            let adapting = self.photos[i].themeAdaptive && self.isDarkMode()
-            self.photos[i].opacity = adapting
-                ? min(1.0, newOpacity / Self.darkModeDimming)
-                : newOpacity
+            self.photos[i].opacity = newOpacity
             self.persist()
         }
 
@@ -473,14 +419,21 @@ class PhotoManager: ObservableObject {
 
     // MARK: - v1.1 Controls
 
-    func setFloating(_ id: UUID, _ floating: Bool) {
+    func setDepth(_ id: UUID, _ depth: WidgetDepth) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].isFloating = floating
-        windows[id]?.setFloating(floating)
-        
-        if !floating {
+        photos[index].depth = depth
+        // Kept in sync so an older build reading this file still gets the floating state right.
+        photos[index].isFloating = depth == .floating
+
+        // Finder's desktop window covers the whole screen and consumes every click, so a widget
+        // below it is unreachable by definition. Locking it is the honest thing to do: the
+        // alternative is a widget the user cannot grab and cannot tell why.
+        if !depth.isInteractive {
+            photos[index].isLocked = true
+            windows[id]?.setLocked(true)
         }
-        
+
+        windows[id]?.setDepth(depth)
         persist()
     }
 
@@ -549,6 +502,7 @@ class PhotoManager: ObservableObject {
     func replacePhoto(_ id: UUID, with newImage: NSImage) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         let item = photos[index]
+        invalidateThumbnails(for: item)
 
         // Only replace file for single-image photos
         if item.spaceImageFilenames.isEmpty {
@@ -651,6 +605,7 @@ class PhotoManager: ObservableObject {
 
     private func copyAppearanceSettings(from src: PhotoItem, to dst: inout PhotoItem) {
         dst.isFloating = src.isFloating
+        dst.depth = src.depth
         dst.opacity = src.opacity
         dst.cornerRadius = src.cornerRadius
         dst.shadowEnabled = src.shadowEnabled
@@ -660,7 +615,6 @@ class PhotoManager: ObservableObject {
         dst.borderColorHex = src.borderColorHex
         dst.vignetteEnabled = src.vignetteEnabled
         dst.isSpaceBound = src.isSpaceBound
-        dst.themeAdaptive = src.themeAdaptive
 
         // v2.2 frame styling. Duplicating a photo is almost always "give me
         // another one of these", so a copy that silently lost its mat, shape and
@@ -801,8 +755,8 @@ class PhotoManager: ObservableObject {
         if oldMode == "dynamic" && mode == "fixed" {
             // We just switched to fixed. Update the frameString to current frame so all images use it.
             if let window = windows[id] {
-                photos[index].frameString = NSStringFromRect(window.frame)
-                photos[index].widgetWidth = window.frame.width
+                photos[index].frameString = NSStringFromRect(window.photoFrame)
+                photos[index].widgetWidth = window.photoFrame.width
             }
         }
 
@@ -824,7 +778,7 @@ class PhotoManager: ObservableObject {
 
 
 
-    private func setupRotationTimer(for item: PhotoItem) {
+    func setupRotationTimer(for item: PhotoItem) {
         let interval: TimeInterval?
         switch item.rotationInterval {
         case "30s":    interval = 30
@@ -854,8 +808,8 @@ class PhotoManager: ObservableObject {
         let currentImage = images[safe: photos[index].folderImageIndex]
         if let key = currentImage?.lastPathComponent {
             photos[index].folderImageConfigs[key] = FolderImageConfig(
-                frameString: NSStringFromRect(window.frame),
-                widgetWidth: window.frame.width
+                frameString: NSStringFromRect(window.photoFrame),
+                widgetWidth: window.photoFrame.width
             )
         }
     }
@@ -889,7 +843,7 @@ class PhotoManager: ObservableObject {
 
                 let id = photos[index].id
                 if let window = windows[id] {
-                    photos[index].savedDisplayFrames[displayId] = NSStringFromRect(window.frame)
+                    photos[index].savedDisplayFrames[displayId] = NSStringFromRect(window.photoFrame)
                     window.hidePhoto()
                     windows.removeValue(forKey: id)
                 }
@@ -934,82 +888,6 @@ class PhotoManager: ObservableObject {
         photos[index].isSpaceBound = bound
         windows[id]?.setSpaceBound(bound)
         persist()
-    }
-
-    // MARK: - v1.5 Theme Adaptation
-
-    private func isDarkMode() -> Bool {
-        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    }
-
-    /// Applies a contrast nudge on top of the photo's stored (light-mode-authored) appearance
-    /// settings without mutating them, so switching back to Light Mode — or turning theme
-    /// adaptation off — exactly restores what the user actually configured. Dark desktops tend
-    /// to swallow soft shadows and pale borders, so Dark Mode gets a stronger shadow and a
-    /// border blended toward white; Light Mode is a no-op pass-through of the stored values.
-    private func applyThemeAdaptation(_ item: PhotoItem) {
-        guard item.themeAdaptive, let window = windows[item.id] else { return }
-        guard isDarkMode() else {
-            applyStoredAppearance(item)
-            return
-        }
-
-        // Dimming is what actually makes this toggle worth having. A photo
-        // tuned for a bright desktop glares at night, and adjusting only the
-        // shadow and border — as this first did — changed nothing visible for
-        // the common case, since borderWidth defaults to 0 and a slightly
-        // darker shadow is invisible against a dark wallpaper.
-        window.setPhotoOpacity(max(0.1, item.opacity * Self.darkModeDimming))
-
-        window.applyShadowSettings(
-            enabled: item.shadowEnabled,
-            blur: item.shadowBlur,
-            opacity: min(item.shadowOpacity + 0.15, 0.6)
-        )
-
-        // With no border of their own, a dark photo on a dark wallpaper loses
-        // its edges entirely, so lend it a hairline. Anyone who did pick a
-        // border keeps it, lightened for contrast.
-        let view = window.contentView as? DraggablePhotoView
-        if item.borderWidth > 0 {
-            let lightened = item.borderColor.blended(withFraction: 0.25, of: .white) ?? item.borderColor
-            view?.applyBorder(width: item.borderWidth, color: lightened)
-        } else {
-            view?.applyBorder(width: 1, color: NSColor.white.withAlphaComponent(0.15))
-        }
-    }
-
-    /// How much a theme-adaptive photo dims in Dark Mode. Enough to take the
-    /// glare off a bright image at night without making it look broken.
-    private static let darkModeDimming: CGFloat = 0.8
-
-    /// Reverts a window to exactly its stored (non-adapted) appearance settings.
-    ///
-    /// Must undo every adaptation, including the borrowed hairline and the
-    /// dimming — otherwise switching back to Light Mode, or turning the toggle
-    /// off, strands the photo looking permanently faded.
-    private func applyStoredAppearance(_ item: PhotoItem) {
-        guard let window = windows[item.id] else { return }
-        window.setPhotoOpacity(item.opacity)
-        window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: item.shadowOpacity)
-        (window.contentView as? DraggablePhotoView)?.applyBorder(width: item.borderWidth, color: item.borderColor)
-    }
-
-    func setThemeAdaptive(_ id: UUID, _ enabled: Bool) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].themeAdaptive = enabled
-        if enabled {
-            applyThemeAdaptation(photos[index])
-        } else {
-            applyStoredAppearance(photos[index])
-        }
-        persist()
-    }
-
-    private func handleThemeChanged() {
-        for item in photos where item.themeAdaptive {
-            applyThemeAdaptation(item)
-        }
     }
 
     // MARK: - v1.6 Presence & Privacy
@@ -1168,6 +1046,16 @@ class PhotoManager: ObservableObject {
 
     /// Returns a small thumbnail for UI display.
     func thumbnail(for item: PhotoItem, size: CGFloat = 48) -> NSImage? {
+        let sourceName: String
+        if !item.spaceImageFilenames.isEmpty {
+            sourceName = item.spaceImageFilenames[safe: item.folderImageIndex]
+                ?? item.spaceImageFilenames.first ?? item.filename
+        } else {
+            sourceName = item.filename
+        }
+        let cacheKey = "\(sourceName)@\(Int(size))" as NSString
+        if let cached = thumbnailCache.object(forKey: cacheKey) { return cached }
+
         let image: NSImage?
         if !item.spaceImageFilenames.isEmpty {
             let images = spaceImages[item.id] ?? item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
@@ -1228,7 +1116,20 @@ class PhotoManager: ObservableObject {
 
         let thumb = NSImage(size: NSSize(width: size, height: size))
         thumb.addRepresentation(rep)
+        thumbnailCache.setObject(thumb, forKey: cacheKey)
         return thumb
+    }
+
+    /// Drops cached thumbnails for a photo. Called wherever the bytes behind a filename can
+    /// change or go away.
+    func invalidateThumbnails(for item: PhotoItem) {
+        var names = item.spaceImageFilenames
+        names.append(item.filename)
+        for name in names {
+            for size in [16, 48] {
+                thumbnailCache.removeObject(forKey: "\(name)@\(size)" as NSString)
+            }
+        }
     }
 
     /// Label for a photo.

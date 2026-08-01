@@ -90,33 +90,104 @@ struct RelativeFrame: Codable {
 /// hotkey, snapping, and login behaviour don't. Import is opt-in precisely because
 /// these are global: a layout someone shares should never silently rebind the
 /// recipient's system-wide shortcut or change what launches at login.
+/// Every field is Optional on purpose: an absent key means "this backup doesn't carry that
+/// setting", which is also exactly what an older app reading a newer file sees. That makes the
+/// format forward- and backward-compatible without any `decodeIfPresent` bookkeeping, and it
+/// is what lets the export dialog offer per-group checkboxes — an unchecked group is simply nil.
 struct ExportedPreferences: Codable {
+    // General
     var launchAtLogin: Bool?
-    var globalHotKeyEnabled: Bool?
-    var globalHotKeyShortcut: Shortcut?
     var snapToEdgesEnabled: Bool?
+    var snapToOtherAppsEnabled: Bool?
     var hideMenuBarIcon: Bool?
 
-    /// Snapshot of the current app settings.
+    // Global shortcut
+    var globalHotKeyEnabled: Bool?
+    var globalHotKeyShortcut: Shortcut?
+
+    // Menu bar contents
+    var menuBarItems: [String: Bool]?
+
+    // Updates
+    var updateCheckFrequency: TimeInterval?
+
+    // Privacy
+    var excludeFromScreenCapture: Bool?
+    var autoHideForConferencingApps: Bool?
+    var hideWhenFullscreenActive: Bool?
+
+    /// Which groups a backup carries. Drives the export checkboxes, and the import dialog's
+    /// description of what a file will change.
+    enum Group: String, CaseIterable, Identifiable {
+        case general, shortcut, menuBar, updates, privacy
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .general: return "General (login, snapping, menu bar icon)"
+            case .shortcut: return "Global shortcut"
+            case .menuBar: return "Menu bar commands"
+            case .updates: return "Update checking"
+            case .privacy: return "Privacy"
+            }
+        }
+    }
+
+    /// Snapshot of the current app settings, limited to `groups`.
+    ///
+    /// The old version of this exported five settings out of roughly seventeen and said
+    /// nothing about the omission, so restoring on a new Mac quietly lost the update
+    /// frequency, every menu bar toggle and all three privacy switches.
     @MainActor
-    static func current(launchAtLogin: Bool) -> ExportedPreferences {
-        ExportedPreferences(
-            launchAtLogin: launchAtLogin,
-            globalHotKeyEnabled: HotKeyManager.shared.isEnabled,
-            globalHotKeyShortcut: HotKeyManager.shared.shortcut,
-            snapToEdgesEnabled: SnapEngine.shared.isEnabled,
-            hideMenuBarIcon: UserDefaults.standard.bool(forKey: "hideMenuBarIcon")
-        )
+    static func current(launchAtLogin: Bool, groups: Set<Group> = Set(Group.allCases)) -> ExportedPreferences {
+        var prefs = ExportedPreferences()
+
+        if groups.contains(.general) {
+            prefs.launchAtLogin = launchAtLogin
+            prefs.snapToEdgesEnabled = SnapEngine.shared.isEnabled
+            prefs.snapToOtherAppsEnabled = SnapEngine.shared.includesOtherApps
+            prefs.hideMenuBarIcon = UserDefaults.standard.bool(forKey: "hideMenuBarIcon")
+        }
+        if groups.contains(.shortcut) {
+            prefs.globalHotKeyEnabled = HotKeyManager.shared.isEnabled
+            prefs.globalHotKeyShortcut = HotKeyManager.shared.shortcut
+        }
+        if groups.contains(.menuBar) {
+            var items: [String: Bool] = [:]
+            for item in MenuBarCustomization.Item.allCases {
+                items[item.rawValue] = MenuBarCustomization.shared.isVisible(item)
+            }
+            prefs.menuBarItems = items
+        }
+        if groups.contains(.updates) {
+            prefs.updateCheckFrequency = Updater.shared.checkFrequency.rawValue
+        }
+        if groups.contains(.privacy) {
+            prefs.excludeFromScreenCapture = UserDefaults.standard.bool(forKey: "presence.excludeFromScreenCapture")
+            prefs.autoHideForConferencingApps = UserDefaults.standard.bool(forKey: "presence.autoHideForConferencingApps")
+            prefs.hideWhenFullscreenActive = UserDefaults.standard.bool(forKey: "presence.hideWhenFullscreenActive")
+        }
+        return prefs
+    }
+
+    /// Which groups this file actually carries.
+    var groups: Set<Group> {
+        var found: Set<Group> = []
+        if launchAtLogin != nil || snapToEdgesEnabled != nil || hideMenuBarIcon != nil { found.insert(.general) }
+        if globalHotKeyEnabled != nil || globalHotKeyShortcut != nil { found.insert(.shortcut) }
+        if menuBarItems != nil { found.insert(.menuBar) }
+        if updateCheckFrequency != nil { found.insert(.updates) }
+        if excludeFromScreenCapture != nil || autoHideForConferencingApps != nil || hideWhenFullscreenActive != nil {
+            found.insert(.privacy)
+        }
+        return found
     }
 
     /// A short human-readable list, so the import dialog can say what it is about to change.
     var summary: String {
-        var parts: [String] = []
-        if launchAtLogin != nil { parts.append("launch at login") }
-        if globalHotKeyEnabled != nil || globalHotKeyShortcut != nil { parts.append("global shortcut") }
-        if snapToEdgesEnabled != nil { parts.append("snapping") }
-        if hideMenuBarIcon != nil { parts.append("menu bar icon") }
-        return parts.isEmpty ? "none" : parts.joined(separator: ", ")
+        let names = Group.allCases.filter { groups.contains($0) }.map { $0.rawValue }
+        return names.isEmpty ? "none" : names.joined(separator: ", ")
     }
 }
 
@@ -145,7 +216,7 @@ extension PhotoManager {
     /// Writes every current photo (single images and Spaces) plus their positions and
     /// aesthetic settings into a `.tableau` bundle at `url`. `url` must come from an
     /// `NSSavePanel` — the sandbox only grants write access to user-chosen paths.
-    func exportLayout(to url: URL, includePreferences: Bool = false) throws {
+    func exportLayout(to url: URL, preferenceGroups: Set<ExportedPreferences.Group> = []) throws {
         guard !photos.isEmpty else { throw LayoutArchiveError.emptyLayout }
 
         var writer = SimpleZipWriter()
@@ -184,7 +255,7 @@ extension PhotoManager {
             exportedAt: Date(),
             photos: photos,
             itemCount: photos.count,
-            preferences: includePreferences ? .current(launchAtLogin: launchAtLogin) : nil,
+            preferences: preferenceGroups.isEmpty ? nil : .current(launchAtLogin: launchAtLogin, groups: preferenceGroups),
             relativeFrames: relativeFrames.isEmpty ? nil : relativeFrames,
             relativeImageFrames: relativeImageFrames.isEmpty ? nil : relativeImageFrames
         )
@@ -245,7 +316,13 @@ extension PhotoManager {
 
             var filenameMap: [String: String] = [:]
             for name in names {
-                filenameMap[name] = UUID().uuidString + ".jpg"
+                // Keep the source extension. This used to force `.jpg` on everything, which
+                // mislabelled the bundled bytes — already wrong for the `.gif` an animated
+                // widget is stored as (PhotoContent.load keys animation off the extension),
+                // and reachable for PNG/HEIC now that imports can be written through without
+                // being transcoded. See PhotoIngest.
+                let ext = (name as NSString).pathExtension
+                filenameMap[name] = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
             }
             for (oldName, newName) in filenameMap {
                 guard let payload = payloads[oldName] else { continue }
@@ -308,6 +385,29 @@ extension PhotoManager {
         if let snap = preferences.snapToEdgesEnabled {
             SnapEngine.shared.isEnabled = snap
         }
+        if let snapApps = preferences.snapToOtherAppsEnabled {
+            SnapEngine.shared.includesOtherApps = snapApps
+        }
+        if let items = preferences.menuBarItems {
+            for item in MenuBarCustomization.Item.allCases {
+                if let visible = items[item.rawValue] {
+                    MenuBarCustomization.shared.setVisible(item, visible)
+                }
+            }
+        }
+        if let frequency = preferences.updateCheckFrequency,
+           let parsed = Updater.CheckFrequency(rawValue: frequency) {
+            Updater.shared.checkFrequency = parsed
+        }
+        if let value = preferences.excludeFromScreenCapture {
+            setExcludeFromScreenCapture(value)
+        }
+        if let value = preferences.autoHideForConferencingApps {
+            setAutoHideForConferencingApps(value)
+        }
+        if let value = preferences.hideWhenFullscreenActive {
+            setHideWhenFullscreenActive(value)
+        }
         if let hide = preferences.hideMenuBarIcon {
             UserDefaults.standard.set(hide, forKey: "hideMenuBarIcon")
         }
@@ -354,6 +454,7 @@ extension PhotoManager {
         item.isLocked = source.isLocked
         item.isVisible = source.isVisible
         item.isFloating = source.isFloating
+        item.depth = source.depth
         item.opacity = source.opacity
         item.customName = source.customName
         item.cornerRadius = source.cornerRadius
@@ -378,7 +479,6 @@ extension PhotoManager {
         // Portable per-photo preferences: these describe intent, not hardware, so they
         // travel.
         item.isSpaceBound = source.isSpaceBound
-        item.themeAdaptive = source.themeAdaptive
 
         // Display bindings deliberately do NOT travel.
         //

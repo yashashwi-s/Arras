@@ -13,6 +13,7 @@
 		1B63F3E3FCFC718AB4BD6FA4 /* PresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */; };
 		1CA42CC126EE9579AA94C077 /* PDFImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0D9488B7E9A474E2E3826D /* PDFImport.swift */; };
 		1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */; };
+		2C5D1E13C80E912F8E19721C /* FrameInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327FD5D1D9EF5C8136DE5C4 /* FrameInspector.swift */; };
 		2D7B0D529EBC3DCC16F13C8B /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256E087A8CCDF5D924BD3064 /* StatusItemDropView.swift */; };
 		3D8B58FF158C6DE3FAB0C3E6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877C01CDA67795DE4EF40F70 /* ContentView.swift */; };
 		3EB0B5142A23A2C55F5DCB3A /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475CF76E321700D3B0FE411B /* Constants.swift */; };
@@ -33,11 +34,14 @@
 		A345F09CD4A2E93BEA74FFBB /* UpdateStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */; };
 		A683C147E0A05A0E8B6BA81C /* AppActivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A899C726A169A855798356 /* AppActivation.swift */; };
 		A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742175918C454F8D2BB2D84F /* HotKeyManager.swift */; };
+		AFD07D2379982F4307BA8C88 /* ExportOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 452FB03446C1B09271190872 /* ExportOptions.swift */; };
 		C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */; };
 		C8D666ACD5D6E42B2CB6FEA1 /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA53C8E29A1106E6841727D /* StorageMigration.swift */; };
 		CB797FD9327BA67258E26419 /* FrameStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14666726CAC77E9EC4BEF304 /* FrameStyle.swift */; };
 		CF623BE4F5B4BAEC790BD98A /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E43F197F2037BE8D5FB4BBD /* MainWindowView.swift */; };
 		D1C7EE125DEE2CFBDD87A65A /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */; };
+		EA9F5937C9EF0388164A90B1 /* PhotoRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCAEF28879C5D1BF7A2458C2 /* PhotoRowView.swift */; };
+		F3EEF585624DC28D2E26C4CF /* PhotoIngest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D63B0D25775CFCD8B575E52 /* PhotoIngest.swift */; };
 		FE3D166DDAAF551FFD47DFEC /* TableauIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8A1287E845326A89BEA6C6 /* TableauIntents.swift */; };
 /* End PBXBuildFile section */
 
@@ -55,10 +59,12 @@
 		3159880EA2D19188C7F9D214 /* ImageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageManager.swift; sourceTree = "<group>"; };
 		35C51BB2B8D692860D86FEFA /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
 		3E43F197F2037BE8D5FB4BBD /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
+		452FB03446C1B09271190872 /* ExportOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportOptions.swift; sourceTree = "<group>"; };
 		46B380431ACD3E561F2BC948 /* PhotoAppearanceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAppearanceControls.swift; sourceTree = "<group>"; };
 		475CF76E321700D3B0FE411B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		5037EB0E1A447569185D578D /* ScreenshotCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotCapture.swift; sourceTree = "<group>"; };
 		5243BF4CF6AD56596BCC051F /* SnapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapEngine.swift; sourceTree = "<group>"; };
+		5D63B0D25775CFCD8B575E52 /* PhotoIngest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoIngest.swift; sourceTree = "<group>"; };
 		5D8A1287E845326A89BEA6C6 /* TableauIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableauIntents.swift; sourceTree = "<group>"; };
 		5F46A9971A32BECF3D655474 /* PhotoImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImport.swift; sourceTree = "<group>"; };
 		6AE05C9E9EEE0B44D4CE433D /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
@@ -68,10 +74,12 @@
 		877C01CDA67795DE4EF40F70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceManager.swift; sourceTree = "<group>"; };
 		8BCAA9AB9949BAC052A40EBB /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		B327FD5D1D9EF5C8136DE5C4 /* FrameInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameInspector.swift; sourceTree = "<group>"; };
 		B7002D7D7A0D350E3425F497 /* DisplayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManager.swift; sourceTree = "<group>"; };
 		B96EA63F122DC504B5129E88 /* UpdateStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatusView.swift; sourceTree = "<group>"; };
 		BF8A78DD3F0CBFAE1F2616DD /* MenuBarCustomization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarCustomization.swift; sourceTree = "<group>"; };
 		CBFF4B6913BE317DBBBFA9C6 /* AnimatedImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedImage.swift; sourceTree = "<group>"; };
+		CCAEF28879C5D1BF7A2458C2 /* PhotoRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoRowView.swift; sourceTree = "<group>"; };
 		E335E996F9CBD4F89AD4D634 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E7207FDCA56B8315D7261617 /* Tableau.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tableau.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F83FE7808355A305F1FBCBF5 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
@@ -106,6 +114,8 @@
 				24B6BFA68C59F8921F61B18E /* DesktopPhotoWindow.swift */,
 				B7002D7D7A0D350E3425F497 /* DisplayManager.swift */,
 				2DD8235ABA05B3CF358C833A /* DownloadTask.swift */,
+				452FB03446C1B09271190872 /* ExportOptions.swift */,
+				B327FD5D1D9EF5C8136DE5C4 /* FrameInspector.swift */,
 				14666726CAC77E9EC4BEF304 /* FrameStyle.swift */,
 				742175918C454F8D2BB2D84F /* HotKeyManager.swift */,
 				3159880EA2D19188C7F9D214 /* ImageManager.swift */,
@@ -115,7 +125,9 @@
 				2D0D9488B7E9A474E2E3826D /* PDFImport.swift */,
 				46B380431ACD3E561F2BC948 /* PhotoAppearanceControls.swift */,
 				5F46A9971A32BECF3D655474 /* PhotoImport.swift */,
+				5D63B0D25775CFCD8B575E52 /* PhotoIngest.swift */,
 				28A13F1F0FB05C71C07A0DC2 /* PhotoItem.swift */,
+				CCAEF28879C5D1BF7A2458C2 /* PhotoRowView.swift */,
 				2AECD1F66F0B35184A84E006 /* PhotoWidgetOSXApp.swift */,
 				8BCAA9AB9949BAC052A40EBB /* PreferencesView.swift */,
 				89F3BCF8CB34B823F8D4ACEE /* PresenceManager.swift */,
@@ -220,6 +232,8 @@
 				8F6C22F4736C412B7F9A0C65 /* DesktopPhotoWindow.swift in Sources */,
 				9B1094CED44B95FC355FDDF7 /* DisplayManager.swift in Sources */,
 				5BC1338EC31C117A7740DC4E /* DownloadTask.swift in Sources */,
+				AFD07D2379982F4307BA8C88 /* ExportOptions.swift in Sources */,
+				2C5D1E13C80E912F8E19721C /* FrameInspector.swift in Sources */,
 				CB797FD9327BA67258E26419 /* FrameStyle.swift in Sources */,
 				A8090EA6CB8B3A1B5B8AC4F3 /* HotKeyManager.swift in Sources */,
 				9E4BEAFAB2A96FED694CE243 /* ImageManager.swift in Sources */,
@@ -229,7 +243,9 @@
 				1CA42CC126EE9579AA94C077 /* PDFImport.swift in Sources */,
 				8D9E0AB8199FAAFC3693322C /* PhotoAppearanceControls.swift in Sources */,
 				82FDB537E4090AB3118AAF35 /* PhotoImport.swift in Sources */,
+				F3EEF585624DC28D2E26C4CF /* PhotoIngest.swift in Sources */,
 				C1C99B8B7D369E9C5B6BBF53 /* PhotoItem.swift in Sources */,
+				EA9F5937C9EF0388164A90B1 /* PhotoRowView.swift in Sources */,
 				1D213204E06B196C4CE34DDD /* PhotoWidgetOSXApp.swift in Sources */,
 				5DD68F2E1C86FF5659A7E836 /* PreferencesView.swift in Sources */,
 				1B63F3E3FCFC718AB4BD6FA4 /* PresenceManager.swift in Sources */,
@@ -257,7 +273,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -269,7 +285,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Tableau;
 				SDKROOT = macosx;
@@ -404,7 +420,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -416,7 +432,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.1;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Tableau;
 				SDKROOT = macosx;

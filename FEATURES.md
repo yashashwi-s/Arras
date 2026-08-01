@@ -10,11 +10,12 @@
 - [x] Drag to reposition anywhere on screen
 - [x] Corner resize — drag any of the 4 corners, aspect ratio always locked
 - [x] Lock position toggle (right-click or menu bar)
-- [x] Cursor feedback — crosshair near corners, open hand in center
+- [x] Cursor feedback — crosshair near corners, open hand in center. Four corner grips also appear while the pointer is over an unlocked widget, so the resize targets are visible rather than guessed at
 - [x] Right-click context menu directly on the photo overlay (Reveal in Finder)
 
 ### Floating Mode
-- [x] **Window level toggle** — switch between desktop level (behind everything) and floating level (above everything). Stored per photo, persisted across relaunches
+- [x] **Depth** — four positions in the desktop stack, per photo: behind desktop icons, on the desktop, above the system's desktop widgets, or floating above app windows. Persisted across relaunches
+- [x] **Behind-icons is honest about its limit** — Finder's desktop window covers the whole screen and consumes every click, so a widget below it cannot be dragged or right-clicked. Choosing that depth locks the widget and says so, instead of leaving one that can't be grabbed
 - [x] **Opacity slider** — per-photo 10%–100%. Scroll-wheel on the photo adjusts it quickly
 
 > Click-through and the Option-key override were removed in 2.0.2. They relied on
@@ -34,7 +35,7 @@
 - [x] **Photo mat (passe-partout)** — inset colour between frame and image, like a mounted print
 - [x] **Two-layer shadow** — a tight contact shadow plus a wide ambient one. Real elevation reads as two shadows; a single blur is what makes UI look flat
 - [x] **Border styles** — solid, dashed or dotted, with an optional gradient sweep along the stroke
-- [x] **Tilt** — up to ±12°, with the content inset so rotated corners never clip
+- [x] **Tilt** — up to ±12°, rotated about the photo's centre, with the window enlarged to fit the rotated bounding box so corners never clip
 - [x] **Corner radius slider** — 0px (sharp square) to 50px
 - [x] **Border** — adjustable width with a full color picker
 - [x] **Edge fade (vignette)** — subtle gradient fade-to-transparent at photo edges
@@ -57,15 +58,15 @@
 
 ### App Shell & Settings Panel
 - [x] **Tabbed settings window** — Photos · Preferences · Privacy. The photo list stopped being the home for every app-wide switch
-- [x] **Dock & app switcher presence** — reachable with ⌘Tab, with a real App/Edit/Window menu bar. macOS ties Dock and ⌘Tab to one activation policy, so it is necessarily a single setting
+- [x] **Menu bar agent, always** — no Dock icon, no ⌘Tab card. A real App/Edit/Window menu is still installed, so ⌘Q, ⌘W and ⌘C/⌘V keep working while the Settings window is open
 - [x] **Customisable menu bar** — choose which optional commands appear. Niche importers are off by default; Add Photo, Settings and Quit are fixed, since a menu you can empty can lock you out
-- [x] **Settings export/import** — save global preferences to a file and load them on another Mac, with confirmation before anything system-wide is rebound
+- [x] **Backup & transfer** — one command, one `.tableau` file, in Preferences. Tick which of General / Global shortcut / Menu bar / Updates / Privacy to include alongside the widgets. There used to be two separate mechanisms, and the one named "Settings" had no options and silently wrote five of roughly seventeen
 - [x] Menu bar agent (`LSUIElement`) — no dock icon, no window clutter
 - [x] Full `NSStatusItem` menu: add, show/hide, lock/unlock, remove per photo — with per-photo thumbnails and status badges (hidden, locked, floating, folder)
 - [x] **NSMenuDelegate** — menu rebuilds every time it opens, always in sync with state
 - [x] Settings window with expandable photo rows, visibility toggle, trash button, and per-photo controls
 - [x] **Hover backgrounds** — rows highlight on hover; full-row click target to expand/collapse
-- [x] **Grouped settings** — MODE, APPEARANCE, SMART CANVAS sections with uppercase headers
+- [x] **Five controls at rest** — Style, Size, Opacity, Depth and Space pinning stay in the expanded row; everything that shapes how the photo is drawn moved into a Frame inspector, with stroke, gradient, edge fade and tilt behind an Advanced disclosure. Every row shares one label/control/value grid
 - [x] **Photos.app integration** — pick directly from Photos library via `PhotosPicker` (up to 20 at once)
 - [x] Multi-select file picker — JPEG, PNG, HEIC, TIFF supported
 - [x] Launch at Login via `SMAppService`
@@ -91,15 +92,15 @@
 - [x] **Global hotkey** — a system-wide shortcut hides every photo, then brings them all back. Opt-in, rebindable, defaults to `⌥⌘P`. Uses Carbon `RegisterEventHotKey`, so it needs no Accessibility permission
 
 ### Placement
-- [x] **Snap to edges** — magnetic snapping to screen edges/centers and to other photos while dragging
-- [x] **Alignment guides** — temporary 1px guides appear whenever a drag lines up with something
+- [x] **Snap to edges** — magnetic snapping to screen edges/centres, the 8pt gutter the system's desktop widgets use, other photos, other applications' windows, and the desktop-widget grid. Snapping works on the photo's visible edge, not its window; ⌘ suspends it mid-drag and ⇧ constrains to one axis
+- [x] **No permission needed to snap to other apps** — window *bounds* are readable without Screen Recording; window titles are the gated part and are never read
+- [x] **Alignment guides** — temporary 1px guides drawn as CALayers on the render server, solid for a real edge and dotted for an extrapolated grid line
 - [x] **Per-display profiles** — each photo remembers its display and exact frame there; it hides when that monitor disconnects and returns to the same spot when it comes back
 - [x] **Space binding** — pin a photo to the Space it currently sits on instead of joining all Spaces
 
 ### Content & Portability
 - [x] **Animated GIF playback** — GIFs and APNGs animate natively, driven by a `CAKeyframeAnimation` on the render server so idle CPU stays at zero
 - [x] **Export/import layout** — save a `.tableau` bundle (a real zip: manifest + images) and restore it on another Mac, with a merge-or-replace choice on import. Positions are stored **relative to the screen**, so a layout keeps its shape on a Mac with different displays. Optionally carries app settings (shortcut, snapping, launch at login), off by default on export and opt-in on import so a shared layout can never silently rebind someone's system-wide shortcut. Display bindings are deliberately dropped on import — they fingerprint the exporting Mac's monitors and would otherwise arrive as an unresolvable hidden state
-- [x] **Automatic theme adaptation** — opt-in per photo. In Dark Mode it dims the photo to ~80% so a bright image doesn't glare at night, deepens the shadow, and lends a hairline edge to photos that have no border of their own so they don't melt into a dark wallpaper. Adjustments are computed live and never overwrite your stored values, so switching back to Light Mode restores exactly what you configured
 
 ### Automation & Import
 - [x] **Apple Shortcuts (App Intents)** — seven actions: add a photo, toggle all visibility, show/hide a named photo, set opacity, and step a Space forward or back. Spotlight phrases included
@@ -129,10 +130,10 @@ the new Aesthetic Controls, and the tabbed window. That is the next release.
 
 | Done (13) | Deliberately dropped (5) | Still open (4) |
 |---|---|---|
-| Per-display profiles · Space binding · Snap to edges · Alignment guides · Global hotkey · Animated GIF · Paste from clipboard · Drag & drop onto menu bar · Theme adaptation · Export/import layout · VoiceOver · **Apple Shortcuts** · **PDF pages** | URL scheme · CLI · AppleScript · Raycast extension · iCloud sync — reasoning recorded below | Grid builder (Living Collage) · Live web preview · Wallpaper-aware placement · Accent colour |
+| Per-display profiles · Space binding · Snap to edges · Alignment guides · Global hotkey · Animated GIF · Paste from clipboard · Drag & drop onto menu bar · Export/import layout · VoiceOver · **Apple Shortcuts** · **PDF pages** | URL scheme · CLI · AppleScript · Raycast extension · iCloud sync — reasoning recorded below | Grid builder (Living Collage) · Live web preview · Wallpaper-aware placement · Accent colour |
 
 Beyond the original list: an in-app updater, screen-region capture, the privacy
-and presence suite, six frame-styling features, Dock/⌘Tab presence, and a tabbed
+and presence suite, six frame-styling features, and a tabbed
 settings window.
 
 ---
@@ -461,7 +462,7 @@ Sources/App/
 ├── PDFImport.swift              # PDFKit page rendering
 │
 │   # App-level behaviour
-├── AppActivation.swift          # Dock / ⌘Tab policy + main menu
+├── AppActivation.swift          # menu bar agent policy + main menu
 ├── MenuBarCustomization.swift   # Which optional menu commands appear
 ├── PresenceManager.swift        # Schedules, fullscreen and capture detection
 ├── LayoutArchive.swift          # .tableau export/import (zip writer/reader)

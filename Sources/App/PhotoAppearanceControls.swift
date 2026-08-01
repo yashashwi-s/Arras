@@ -1,18 +1,15 @@
 import AppKit
 
-// MARK: - Borders, frames & depth (v2.1)
+// MARK: - Borders, frames & depth
 //
-// PhotoManager.windows and .persist() are both `private` to ImageManager.swift, which this
-// file must not edit (another agent owns it concurrently). Every DesktopPhotoWindow is
-// stamped with its owning photo's id at creation (`window.photoId = item.id`, see
-// createWindow), so `liveWindow(for:)` below finds the same window ImageManager would have
-// looked up in its private dictionary, just via NSApp.windows instead. persistAppearance()
-// mirrors ImageManager.persist() exactly (same encoder, same file) for the same reason.
-
-@MainActor
-private func liveWindow(for id: UUID) -> DesktopPhotoWindow? {
-    NSApp.windows.first { ($0 as? DesktopPhotoWindow)?.photoId == id } as? DesktopPhotoWindow
-}
+// These setters look up the live window through `PhotoManager.windows`, the same dictionary
+// every other setter uses. They used to scan `NSApp.windows` for a window whose `photoId`
+// matched, which looked equivalent and was not: widget windows are created with
+// `isReleasedWhenClosed = false` on purpose, so a closed one stays in `NSApp.windows` for the
+// life of the process. After a single hide/show cycle — or a monitor unplug, or a privacy
+// auto-hide — the scan returned the corpse, and mat, shape, stroke, gradient, tilt and every
+// style preset silently stopped applying while the four setters that live in ImageManager
+// carried on working.
 
 extension PhotoManager {
     // MARK: - Mat (passe-partout)
@@ -21,9 +18,13 @@ extension PhotoManager {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].matWidth = max(0, width)
         photos[index].matColorHex = colorHex
-        (liveWindow(for: id)?.contentView as? DraggablePhotoView)?
-            .setMat(width: photos[index].matWidth, color: photos[index].matColor)
-        persistAppearance()
+        if let window = windows[id] {
+            (window.contentView as? DraggablePhotoView)?
+                .setMat(width: photos[index].matWidth, color: photos[index].matColor)
+            // The mat grows the widget outward, so the window has to grow with it.
+            window.refreshCanvasInset()
+        }
+        persist()
     }
 
     // MARK: - Shape mask
@@ -31,8 +32,8 @@ extension PhotoManager {
     func setShapeMask(_ id: UUID, _ shape: PhotoShapeMask) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].shapeMask = shape.rawValue
-        (liveWindow(for: id)?.contentView as? DraggablePhotoView)?.setShapeMask(shape)
-        persistAppearance()
+        (windows[id]?.contentView as? DraggablePhotoView)?.setShapeMask(shape)
+        persist()
     }
 
     // MARK: - Border style (dashed/dotted) and gradient
@@ -40,17 +41,17 @@ extension PhotoManager {
     func setBorderStyle(_ id: UUID, _ style: PhotoBorderStyle) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].borderStyle = style.rawValue
-        (liveWindow(for: id)?.contentView as? DraggablePhotoView)?.setBorderStyle(style)
-        persistAppearance()
+        (windows[id]?.contentView as? DraggablePhotoView)?.setBorderStyle(style)
+        persist()
     }
 
     func setBorderGradient(_ id: UUID, enabled: Bool, colorHex: String) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].borderGradientEnabled = enabled
         photos[index].borderGradientColorHex = colorHex
-        (liveWindow(for: id)?.contentView as? DraggablePhotoView)?
+        (windows[id]?.contentView as? DraggablePhotoView)?
             .setBorderGradient(enabled: enabled, color: photos[index].borderGradientColor)
-        persistAppearance()
+        persist()
     }
 
     // MARK: - Tilt
@@ -59,8 +60,14 @@ extension PhotoManager {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         let clamped = max(-12, min(12, degrees))
         photos[index].tiltDegrees = clamped
-        (liveWindow(for: id)?.contentView as? DraggablePhotoView)?.setTilt(CGFloat(clamped))
-        persistAppearance()
+        if let window = windows[id] {
+            (window.contentView as? DraggablePhotoView)?.setTilt(CGFloat(clamped))
+            // A rotated photo sweeps a larger box; without this the corners are clipped by
+            // the window's own straight edges.
+            window.refreshCanvasInset()
+        }
+        clearStylePreset(id)
+        persist()
     }
 
     // MARK: - Style presets
@@ -86,16 +93,16 @@ extension PhotoManager {
         photos[index].vignetteEnabled = v.vignetteEnabled
 
         applyLiveAppearance(photos[index])
-        persistAppearance()
+        persist()
     }
 
     /// Marks a photo as hand-tuned rather than following a named preset, so the picker falls
     /// back to showing no selection instead of a stale preset name after any single-field
-    /// edit. Every fine-grained setter in ContentView's Appearance group calls this.
+    /// edit. Every fine-grained setter in the appearance panel calls this.
     func clearStylePreset(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }), photos[index].stylePreset != nil else { return }
         photos[index].stylePreset = nil
-        persistAppearance()
+        persist()
     }
 
     /// Pushes every appearance field of `item` onto its live window in one shot -- used by
@@ -103,7 +110,7 @@ extension PhotoManager {
     /// through its own single-field setter would mean a dozen separate redraw passes for
     /// what the user experiences as one click.
     private func applyLiveAppearance(_ item: PhotoItem) {
-        guard let window = liveWindow(for: item.id),
+        guard let window = windows[item.id],
               let view = window.contentView as? DraggablePhotoView else { return }
         view.setCornerRadius(item.cornerRadius)
         window.applyShadowSettings(enabled: item.shadowEnabled, blur: item.shadowBlur, opacity: item.shadowOpacity)
@@ -118,15 +125,7 @@ extension PhotoManager {
         } else {
             view.removeVignette()
         }
-    }
-
-    /// Mirrors ImageManager.persist(): same JSONEncoder configuration, same destination file.
-    /// Duplicated rather than exposed because `persist()` and `dataFile` are both private to
-    /// ImageManager.swift.
-    private func persistAppearance() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-        guard let data = try? encoder.encode(photos) else { return }
-        try? data.write(to: storageDir.appendingPathComponent("photos.json"), options: .atomic)
+        // Mat, shadow and tilt all changed at once; re-derive the padding once at the end.
+        window.refreshCanvasInset()
     }
 }

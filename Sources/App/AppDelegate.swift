@@ -230,17 +230,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
                 // Float toggle
                 let floatItem = NSMenuItem(
-                    title: item.isFloating ? "Pin to Desktop" : "Float Above Windows",
+                    title: item.depth == .floating ? "Pin to Desktop" : "Float Above Windows",
                     action: #selector(toggleFloating(_:)),
                     keyEquivalent: ""
                 )
                 floatItem.target = self
                 floatItem.tag = index
                 submenu.addItem(floatItem)
-
-                // Click-through toggle
-                if item.isFloating {
-                }
 
                 submenu.addItem(.separator())
 
@@ -329,7 +325,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 var badges: [String] = []
                 if !item.isVisible { badges.append("hidden") }
                 if item.isLocked { badges.append("locked") }
-                if item.isFloating { badges.append("floating") }
+                if item.depth == .floating { badges.append("floating") }
                 if !item.spaceImageFilenames.isEmpty { badges.append("folder") }
 
                 let label = badges.isEmpty ? title : "\(title) — \(badges.joined(separator: ", "))"
@@ -452,12 +448,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.canChooseDirectories = false
         panel.prompt = "Add"
         NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK {
-            for url in panel.urls {
-                if let img = NSImage(contentsOf: url) {
-                    manager.addPhoto(img)
-                }
-            }
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { @MainActor in
+            await manager.addPhotos(urls: urls)
             rebuildMenu()
         }
     }
@@ -471,9 +465,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.prompt = "Add Images to Space"
         panel.message = "Choose multiple images to display as a rotating Space"
 
-        if panel.runModal() == .OK {
-            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
-            manager.addSpace(images: images)
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { @MainActor in
+            await manager.addSpace(urls: urls)
+            rebuildMenu()
         }
     }
 
@@ -492,8 +489,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleFloating(_ sender: NSMenuItem) {
         let index = sender.tag
         guard index < manager.photos.count else { return }
-        let current = manager.photos[index].isFloating
-        manager.setFloating(manager.photos[index].id, !current)
+        // The menu keeps the old two-state flip: desktop <-> floating. The four-way depth
+        // control lives in Settings, where its one non-obvious mode can carry its caveat.
+        let current = manager.photos[index].depth
+        manager.setDepth(manager.photos[index].id, current == .floating ? .onDesktop : .floating)
     }
 
     @objc func renamePhoto(_ sender: NSMenuItem) {
@@ -567,8 +566,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK {
-            let images = panel.urls.compactMap { NSImage(contentsOf: $0) }
-            manager.appendPhotosToSpace(id, images: images)
+            manager.appendPhotosToSpace(id, urls: panel.urls)
         }
     }
 
@@ -724,15 +722,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.runModal()
     }
 
-    @objc func toggleShowInDock() {
-        AppActivation.shared.showsInDock.toggle()
-        rebuildMenu()
-
-        // Turning both off would leave no way back into the app at all.
-        if !AppActivation.shared.showsInDock && statusItem == nil {
-            showStatusItem()
-        }
-    }
 
     @objc func hideMenuBarIcon() {
         hideStatusItem()

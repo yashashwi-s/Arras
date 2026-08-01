@@ -22,8 +22,13 @@ struct PhotoItem: Identifiable, Codable {
     var isVisible: Bool
 
     // v1.1 — Floating Mode
+    /// Superseded by `depth`, but still written on every save so that downgrading to an older
+    /// build doesn't strand a floating widget back on the desktop. Keep the two in sync.
     var isFloating: Bool
     var opacity: CGFloat
+
+    // v2.3 — Desktop stacking
+    var depth: WidgetDepth
 
     // v1.2 — Naming
     var customName: String?
@@ -58,12 +63,11 @@ struct PhotoItem: Identifiable, Codable {
     var customRotationSeconds: Int     // used when rotationInterval == "custom"
     var folderImageConfigs: [String: FolderImageConfig]  // per-image position/size, keyed by filename
 
-    // v1.5 — Per-Display Profiles, Space Binding, Theme Adaptation
+    // v1.5 — Per-Display Profiles, Space Binding
     var displayIdentifier: String?              // stable ID (see DisplayManager) of the display this photo currently belongs to; nil = not yet assigned (e.g. photos saved before this feature existed)
     var savedDisplayFrames: [String: String]    // last known frameString per displayIdentifier, so a photo restores exactly where it was when its display reconnects
     var isHiddenForDisplay: Bool                // true when auto-hidden because displayIdentifier's screen is currently disconnected — distinct from the user-controlled isVisible
     var isSpaceBound: Bool                      // pin to whichever Space the window is on instead of joining all Spaces (see DesktopPhotoWindow.setSpaceBound)
-    var themeAdaptive: Bool                     // opt-in: nudge border/shadow toward higher contrast when macOS switches to Dark Mode
 
     // v1.6 — Schedule (see PresenceManager.Schedule for the active-window math)
     var scheduleEnabled: Bool                   // opt-in: only show this photo during the window below
@@ -85,6 +89,7 @@ struct PhotoItem: Identifiable, Codable {
         // v1.1 defaults
         self.isFloating = false
         self.opacity = 1.0
+        self.depth = .onDesktop
 
         // v1.2 defaults
         self.customName = nil
@@ -121,7 +126,6 @@ struct PhotoItem: Identifiable, Codable {
         self.savedDisplayFrames = [:]
         self.isHiddenForDisplay = false
         self.isSpaceBound = false
-        self.themeAdaptive = false
 
         // v1.6 defaults
         self.scheduleEnabled = false
@@ -135,7 +139,7 @@ struct PhotoItem: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, filename, frameString, widgetWidth, isLocked, isVisible
-        case isFloating, opacity
+        case isFloating, opacity, depth
         case customName
         case cornerRadius, shadowEnabled, shadowBlur, shadowOpacity
         case borderWidth, borderColorHex, vignetteEnabled
@@ -143,7 +147,7 @@ struct PhotoItem: Identifiable, Codable {
         case borderGradientEnabled, borderGradientColorHex, tiltDegrees, stylePreset
         case spaceImageFilenames, folderSizeMode, rotationInterval, folderImageIndex
         case customRotationSeconds, folderImageConfigs
-        case displayIdentifier, savedDisplayFrames, isHiddenForDisplay, isSpaceBound, themeAdaptive
+        case displayIdentifier, savedDisplayFrames, isHiddenForDisplay, isSpaceBound
         case scheduleEnabled, scheduleStartMinutes, scheduleEndMinutes, scheduleWeekdays
         case isHiddenForPresence
     }
@@ -159,6 +163,10 @@ struct PhotoItem: Identifiable, Codable {
 
         isFloating = try c.decodeIfPresent(Bool.self, forKey: .isFloating) ?? false
         opacity = try c.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 1.0
+        // Absent from every photos.json written before 2.3, so fall back to the boolean it
+        // replaced rather than to a bare default — otherwise every existing floating widget
+        // would silently drop back onto the desktop on first launch after updating.
+        depth = try c.decodeIfPresent(WidgetDepth.self, forKey: .depth) ?? (isFloating ? .floating : .onDesktop)
 
         customName = try c.decodeIfPresent(String.self, forKey: .customName)
 
@@ -191,7 +199,6 @@ struct PhotoItem: Identifiable, Codable {
         savedDisplayFrames = try c.decodeIfPresent([String: String].self, forKey: .savedDisplayFrames) ?? [:]
         isHiddenForDisplay = try c.decodeIfPresent(Bool.self, forKey: .isHiddenForDisplay) ?? false
         isSpaceBound = try c.decodeIfPresent(Bool.self, forKey: .isSpaceBound) ?? false
-        themeAdaptive = try c.decodeIfPresent(Bool.self, forKey: .themeAdaptive) ?? false
 
         scheduleEnabled = try c.decodeIfPresent(Bool.self, forKey: .scheduleEnabled) ?? false
         scheduleStartMinutes = try c.decodeIfPresent(Int.self, forKey: .scheduleStartMinutes) ?? 0
