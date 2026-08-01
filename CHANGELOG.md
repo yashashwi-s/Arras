@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.3
+
+**Layering now crosses the desktop stack.** Bring to Front / Send to Back used
+`orderFront`/`orderBack`, which only reorder windows *within* a level — so they
+could never move a photo past a desktop icon or a macOS widget, which live at
+different levels entirely. Each click now moves the photo in front of its own
+siblings first, then steps it up or down through: behind desktop icons, on the
+desktop, above the system's widgets, floating above app windows.
+
+**Frame inspector layout.** The colour wells overflowed their column and painted
+over the value beside them, and the Advanced section was indented by
+`DisclosureGroup` so its wells ran past the edge of the sheet. Every row shares
+one grid now. Clicking the word "Advanced" also expands it — the label was inert,
+so only the chevron worked.
+
 ## 2.3.2
 
 **Backup options you can actually see.** The export dialog offered a set of

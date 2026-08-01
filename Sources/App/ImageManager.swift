@@ -427,22 +427,45 @@ class PhotoManager: ObservableObject {
 
     // MARK: - v1.1 Controls
 
-    /// Moves a widget in front of every sibling at its depth.
+    /// Raises a widget one step: in front of its siblings first, then up past the desktop
+    /// icons, the system's desktop widgets and finally ordinary app windows.
+    ///
+    /// `orderFront` alone only reorders within a window level, so it can never move a photo
+    /// past a desktop icon or a macOS widget — those sit at different levels entirely. Walking
+    /// the depth once the widget already leads its own siblings is what makes repeated
+    /// "Bring to Front" clicks actually climb the whole stack.
     func bringToFront(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let top = photos.map(\.stackOrder).max() ?? 0
-        photos[index].stackOrder = top + 1
-        windows[id]?.orderFront(nil)
-        persist()
+        let depth = photos[index].depth
+        let siblings = photos.filter { $0.id != id && $0.depth == depth }
+
+        if !siblings.allSatisfy({ $0.stackOrder < photos[index].stackOrder }) {
+            photos[index].stackOrder = (photos.map(\.stackOrder).max() ?? 0) + 1
+            windows[id]?.orderFront(nil)
+            persist()
+            return
+        }
+        if let next = WidgetDepth(stackIndex: depth.stackIndex + 1) {
+            setDepth(id, next)
+        }
     }
 
-    /// Moves a widget behind every sibling at its depth.
+    /// The mirror of `bringToFront`: behind its siblings first, then down past the system
+    /// widgets and the desktop icons.
     func sendToBack(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let bottom = photos.map(\.stackOrder).min() ?? 0
-        photos[index].stackOrder = bottom - 1
-        windows[id]?.orderBack(nil)
-        persist()
+        let depth = photos[index].depth
+        let siblings = photos.filter { $0.id != id && $0.depth == depth }
+
+        if !siblings.allSatisfy({ $0.stackOrder > photos[index].stackOrder }) {
+            photos[index].stackOrder = (photos.map(\.stackOrder).min() ?? 0) - 1
+            windows[id]?.orderBack(nil)
+            persist()
+            return
+        }
+        if let next = WidgetDepth(stackIndex: depth.stackIndex - 1) {
+            setDepth(id, next)
+        }
     }
 
     func setDepth(_ id: UUID, _ depth: WidgetDepth) {

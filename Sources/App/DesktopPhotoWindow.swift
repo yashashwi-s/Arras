@@ -107,6 +107,21 @@ enum WidgetDepth: String, Codable, CaseIterable {
 
     /// Whether the widget can receive mouse events at this depth at all.
     var isInteractive: Bool { self != .behindIcons }
+
+    /// Back-to-front order of the four depths, so Bring to Front / Send to Back can walk them.
+    var stackIndex: Int {
+        switch self {
+        case .behindIcons: return 0
+        case .onDesktop: return 1
+        case .aboveWidgets: return 2
+        case .floating: return 3
+        }
+    }
+
+    init?(stackIndex: Int) {
+        guard let match = WidgetDepth.allCases.first(where: { $0.stackIndex == stackIndex }) else { return nil }
+        self = match
+    }
 }
 
 /// A borderless, always-on-desktop panel that displays a photo.

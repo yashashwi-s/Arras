@@ -12,8 +12,10 @@ import AppKit
 /// goes through `settingRow` now, including the switches.
 private enum Metrics {
     static let label: CGFloat = 68
-    static let value: CGFloat = 44
-    static let accessory: CGFloat = 22
+    static let value: CGFloat = 46
+    /// Wide enough for a real `ColorPicker` well. At 22pt the well overflowed its column and
+    /// painted straight over the value to its left.
+    static let accessory: CGFloat = 46
 }
 
 /// label · control · value · optional colour well. The value and accessory columns are always
@@ -41,7 +43,7 @@ struct SettingRow<Control: View, Accessory: View>: View {
                 .accessibilityHidden(true)
 
             accessory()
-                .frame(width: Metrics.accessory)
+                .frame(width: Metrics.accessory, alignment: .trailing)
         }
     }
 }

@@ -62,7 +62,7 @@ struct FrameInspector: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 460, height: 460)
+        .frame(width: 500, height: 470)
     }
 
     // MARK: - Basics
@@ -147,6 +147,7 @@ struct FrameInspector: View {
                 set: { manager.setMat(live.id, width: live.matWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(live.id) }
             ))
             .labelsHidden()
+            .frame(width: 42, height: 22)
             .opacity(live.matWidth > 0 ? 1 : 0.25)
             .disabled(live.matWidth == 0)
             .accessibilityLabel("Mat colour")
@@ -165,6 +166,7 @@ struct FrameInspector: View {
                 set: { manager.setBorder(live.id, width: live.borderWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(live.id) }
             ))
             .labelsHidden()
+            .frame(width: 42, height: 22)
             .opacity(live.borderWidth > 0 ? 1 : 0.25)
             .disabled(live.borderWidth == 0)
             .accessibilityLabel("Border colour")
@@ -175,79 +177,98 @@ struct FrameInspector: View {
 
     @ViewBuilder
     private var advanced: some View {
-        DisclosureGroup(isExpanded: $showingAdvanced) {
-            VStack(alignment: .leading, spacing: 10) {
-                SettingRow("Stroke") {
-                    Picker("", selection: Binding(
-                        get: { PhotoBorderStyle(rawValue: live.borderStyle) ?? .solid },
-                        set: { manager.setBorderStyle(live.id, $0); manager.clearStylePreset(live.id) }
-                    )) {
-                        ForEach(PhotoBorderStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .disabled(live.borderWidth == 0)
-                    .accessibilityLabel("Border stroke style")
-                }
-
-                SettingRow("Gradient", value: live.borderGradientEnabled ? "On" : "Off") {
-                    Toggle("", isOn: Binding(
-                        get: { live.borderGradientEnabled },
-                        set: {
-                            manager.setBorderGradient(live.id, enabled: $0, colorHex: live.borderGradientColorHex)
-                            manager.clearStylePreset(live.id)
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-                    .disabled(live.borderWidth == 0)
-                    .accessibilityLabel("Gradient border")
-                    .help("Sweeps from the border colour to a second colour instead of one flat colour")
-                    Spacer()
-                } accessory: {
-                    ColorPicker("", selection: Binding(
-                        get: { Color(nsColor: live.borderGradientColor) },
-                        set: {
-                            manager.setBorderGradient(live.id, enabled: true, colorHex: NSColor($0).hexString)
-                            manager.clearStylePreset(live.id)
-                        }
-                    ))
-                    .labelsHidden()
-                    .opacity(live.borderGradientEnabled ? 1 : 0.25)
-                    .disabled(!live.borderGradientEnabled)
-                    .accessibilityLabel("Second border colour")
-                }
-
-                SettingRow("Edge Fade", value: live.vignetteEnabled ? "On" : "Off") {
-                    Toggle("", isOn: Binding(
-                        get: { live.vignetteEnabled },
-                        set: { manager.setVignette(live.id, enabled: $0); manager.clearStylePreset(live.id) }
-                    ))
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-                    .accessibilityLabel("Edge fade")
-                    .accessibilityHint("Darkens the photo's edges and corners")
+        // A hand-rolled disclosure rather than DisclosureGroup. DisclosureGroup indents its
+        // content, which pushed the colour-well column past the right edge of the sheet — and
+        // its label is inert, so clicking the word "Advanced" did nothing. This keeps the
+        // advanced rows on exactly the same grid as the basics and makes the whole header row
+        // the hit target.
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showingAdvanced.toggle() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(showingAdvanced ? 90 : 0))
+                    Text("Advanced")
+                        .font(.system(size: 11, weight: .medium))
                     Spacer()
                 }
-
-                SettingRow("Tilt", value: "\(Int(live.tiltDegrees))°") {
-                    Slider(value: Binding(
-                        get: { CGFloat(live.tiltDegrees) },
-                        set: { manager.setTilt(live.id, Double($0)) }
-                    ), in: -12...12, step: 1)
-                    .controlSize(.small)
-                    .accessibilityLabel("Tilt")
-                    .accessibilityValue("\(Int(live.tiltDegrees)) degrees")
-                }
-            }
-            .padding(.top, 10)
-        } label: {
-            Text("Advanced")
-                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Advanced frame settings")
+            .accessibilityValue(showingAdvanced ? "expanded" : "collapsed")
+
+            if showingAdvanced {
+        SettingRow("Stroke") {
+            Picker("", selection: Binding(
+                get: { PhotoBorderStyle(rawValue: live.borderStyle) ?? .solid },
+                set: { manager.setBorderStyle(live.id, $0); manager.clearStylePreset(live.id) }
+            )) {
+                ForEach(PhotoBorderStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .disabled(live.borderWidth == 0)
+            .accessibilityLabel("Border stroke style")
+        }
+
+        SettingRow("Gradient", value: live.borderGradientEnabled ? "On" : "Off") {
+            Toggle("", isOn: Binding(
+                get: { live.borderGradientEnabled },
+                set: {
+                    manager.setBorderGradient(live.id, enabled: $0, colorHex: live.borderGradientColorHex)
+                    manager.clearStylePreset(live.id)
+                }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .disabled(live.borderWidth == 0)
+            .accessibilityLabel("Gradient border")
+            .help("Sweeps from the border colour to a second colour instead of one flat colour")
+            Spacer()
+        } accessory: {
+            ColorPicker("", selection: Binding(
+                get: { Color(nsColor: live.borderGradientColor) },
+                set: {
+                    manager.setBorderGradient(live.id, enabled: true, colorHex: NSColor($0).hexString)
+                    manager.clearStylePreset(live.id)
+                }
+            ))
+            .labelsHidden()
+            .frame(width: 42, height: 22)
+            .opacity(live.borderGradientEnabled ? 1 : 0.25)
+            .disabled(!live.borderGradientEnabled)
+            .accessibilityLabel("Second border colour")
+        }
+
+        SettingRow("Edge Fade", value: live.vignetteEnabled ? "On" : "Off") {
+            Toggle("", isOn: Binding(
+                get: { live.vignetteEnabled },
+                set: { manager.setVignette(live.id, enabled: $0); manager.clearStylePreset(live.id) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .accessibilityLabel("Edge fade")
+            .accessibilityHint("Darkens the photo's edges and corners")
+            Spacer()
+        }
+
+        SettingRow("Tilt", value: "\(Int(live.tiltDegrees))°") {
+            Slider(value: Binding(
+                get: { CGFloat(live.tiltDegrees) },
+                set: { manager.setTilt(live.id, Double($0)) }
+            ), in: -12...12, step: 1)
+            .controlSize(.small)
+            .accessibilityLabel("Tilt")
+            .accessibilityValue("\(Int(live.tiltDegrees)) degrees")
+        }
+            }
         }
     }
 }
