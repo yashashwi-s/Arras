@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.3.3",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.3/Arras.app.zip",
+  "latestVersion": "2.3.4",
+  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/download/v2.3.4/Arras.app.zip",
   "sha256": "a9519b91c2be0cf46c4c298e5e56cb3af68a236612451ce8d89439dd6b432bdf",
-  "releaseNotes": "Tableau is now Arras \u2014 same app, same settings, same updates. Right-click a widget to layer it in front of your other photos, behind your desktop icons, above the macOS widgets, or floating over everything. Frame inspector layout fixed, and backup options moved somewhere they actually render.",
+  "releaseNotes": "Tableau is now Arras. Same app, same settings, same updates. Right-click a widget to layer it in front of your other photos, behind your desktop icons, above the macOS widgets, or floating over everything. Available updates now show in Preferences too, on the same button you use to check.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

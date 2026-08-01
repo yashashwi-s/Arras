@@ -53,7 +53,7 @@ enum StorageMigration {
             }
             NSLog("Arras: migrated widget data out of the sandbox container")
         } catch {
-            NSLog("Arras: storage migration failed — \(error.localizedDescription)")
+            NSLog("Arras: storage migration failed. \(error.localizedDescription)")
         }
     }
 }

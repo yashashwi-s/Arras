@@ -59,7 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem?.autosaveName = "TableauStatusItem"
         statusItem?.button?.image = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: Constants.appName)
-        statusItem?.button?.toolTip = "\(Constants.appName) — drop images here to add them"
+        statusItem?.button?.toolTip = "\(Constants.appName). drop images here to add them"
         statusItem?.button?.image?.size = NSSize(width: 18, height: 18)
 
         attachDropTarget()
@@ -328,7 +328,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if item.depth == .floating { badges.append("floating") }
                 if !item.spaceImageFilenames.isEmpty { badges.append("folder") }
 
-                let label = badges.isEmpty ? title : "\(title) — \(badges.joined(separator: ", "))"
+                let label = badges.isEmpty ? title : "\(title). \(badges.joined(separator: ", "))"
                 photoItem.title = label   // plain text still backs VoiceOver and menu search
 
                 // The thumbnail rides in the title as a text attachment rather than

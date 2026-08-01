@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.4
+
+**An available update now shows in Preferences.** The card only ever appeared
+above the Photos footer, so the Updates section, the place you go when you are
+actually looking for an update, was the one screen that never mentioned one was
+waiting.
+
+**"Last checked in 0 seconds."** The timestamp is written a moment after the
+clock is sampled, so the relative formatter read it as the future and used future
+tense. Anything inside a minute now says "just now".
+
+**Redesigned the update card.** Release notes had roughly forty characters of
+width beside the button and were permanently truncated; they get the full width
+underneath now. Em dashes are gone from the interface copy.
+
 ## 2.3.3
 
 **Layering now crosses the desktop stack.** Bring to Front / Send to Back used

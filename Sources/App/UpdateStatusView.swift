@@ -1,157 +1,127 @@
 import SwiftUI
 
-/// Prominent card shown above the footer when the updater needs the user's
-/// attention — an update is ready, downloading, or something failed.
+/// Human phrasing for "when did we last look".
 ///
-/// Separate from the footer's compact control because these states are
-/// actionable: an available update rendered as 9pt grey text beside the version
-/// number reads as decoration and gets ignored.
-struct UpdateBanner: View {
+/// `RelativeDateTimeFormatter` alone produced "in 0 seconds" for a check that had just
+/// finished: the timestamp is written a hair after `Date()` is sampled, so the formatter reads
+/// it as the future and uses future tense. Anything inside a minute is just "just now".
+enum UpdateCheckPhrasing {
+    static func lastChecked(_ date: Date?) -> String {
+        guard let date else { return "Never checked for updates." }
+        let elapsed = Date().timeIntervalSince(date)
+        guard elapsed >= 60 else { return "Checked just now." }
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return "Checked \(formatter.localizedString(for: date, relativeTo: Date()))."
+    }
+}
+
+/// The one control that both checks for updates and installs one.
+///
+/// There used to be a separate card that slid in above the footer when an update was waiting.
+/// It was a second place to look, in a different visual language to everything around it. This
+/// is the Software Update shape instead: the button you already press to check turns into the
+/// button you press to install, in the same spot.
+struct UpdateActionButton: View {
     @ObservedObject private var updater = Updater.shared
 
     var body: some View {
         Group {
             switch updater.phase {
-            case .available(let version, let notes):
-                // Naming both versions matters. The previous design put the *available*
-                // version in the footer's version slot, so the one place that tells you
-                // which build you are running read "v2.2.0" while you were on 2.1.0.
-                banner(
-                    icon: "arrow.down.circle.fill",
-                    tint: Color.accentColor,
-                    title: "Update available — \(Constants.version) → \(version)",
-                    detail: notes
-                ) {
-                    Button("Update Now") {
-                        Task { await updater.installPendingUpdate() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+            case .available(let version, _):
+                Button("Update to \(version)") {
+                    Task { await updater.installPendingUpdate() }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
 
             case .downloading(let progress):
-                banner(
-                    icon: "arrow.down.circle.fill",
-                    tint: Color.accentColor,
-                    title: "Downloading update…",
-                    detail: nil
-                ) {
-                    HStack(spacing: 8) {
-                        ProgressView(value: progress)
-                            .progressViewStyle(.linear)
-                            .frame(width: 90)
-                        Text("\(Int(progress * 100))%")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
+                HStack(spacing: 6) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 80)
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
 
             case .installing:
-                banner(
-                    icon: "shippingbox.fill",
-                    tint: Color.accentColor,
-                    title: "Installing…",
-                    detail: "\(Constants.appName) will relaunch in a moment."
-                ) {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                    Text("Installing").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
 
-            case .installed(let version):
-                banner(
-                    icon: "checkmark.circle.fill",
-                    tint: .green,
-                    title: "Updated to version \(version)",
-                    detail: "You're running the latest release."
-                ) {
-                    EmptyView()
+            case .checking:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                    Text("Checking").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
 
-            case .failed(let reason):
-                banner(
-                    icon: "exclamationmark.triangle.fill",
-                    tint: .orange,
-                    title: "Update failed",
-                    detail: reason
-                ) {
-                    Button("Try Again") {
-                        Task { await updater.check(userInitiated: true) }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            case .failed:
+                Button("Try Again") {
+                    Task { await updater.check(userInitiated: true) }
                 }
+                .controlSize(.small)
 
-            case .idle, .checking, .upToDate:
-                EmptyView()
+            case .idle, .upToDate, .installed:
+                Button("Check Now") {
+                    Task { await updater.check(userInitiated: true) }
+                }
+                .controlSize(.small)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: updater.phase)
-    }
-
-    // MARK: - Card
-
-    private func banner<Trailing: View>(
-        icon: String,
-        tint: Color,
-        title: String,
-        detail: String?,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundStyle(tint)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-                if let detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            trailing()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.opacity(0.10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(tint.opacity(0.25), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .animation(.easeInOut(duration: 0.2), value: updater.phase)
     }
 }
 
-/// The compact version label and check control that live in the settings footer.
-///
-/// Deliberately quiet: anything the user needs to act on is promoted to
-/// `UpdateBanner` rather than competing for space down here.
+/// One line of plain text under the control, saying where things stand.
+struct UpdateStatusLine: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var text: String {
+        switch updater.phase {
+        case .available(let version, _):
+            return "Version \(version) is available. You have \(Constants.version)."
+        case .installed(let version):
+            return "Updated to \(version)."
+        case .failed(let reason):
+            return reason
+        case .upToDate:
+            return "\(Constants.appName) is up to date."
+        case .idle, .checking, .downloading, .installing:
+            return UpdateCheckPhrasing.lastChecked(updater.lastChecked)
+        }
+    }
+}
+
+/// The compact version label and update control in the settings footer.
 struct UpdateStatusView: View {
     @ObservedObject private var updater = Updater.shared
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Text("v\(Constants.version)")
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.quaternary)
-                .help(lastCheckedDescription)
+                .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
 
             switch updater.phase {
+            case .available(let version, _):
+                Button("Update to \(version)") {
+                    Task { await updater.installPendingUpdate() }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
             case .checking:
                 ProgressView()
                     .progressViewStyle(.circular)
@@ -164,10 +134,20 @@ struct UpdateStatusView: View {
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
 
-            case .idle:
-                // A plain button. The cadence setting lives in Preferences —
-                // burying a picker in a footer menu made a one-click action into
-                // a two-level decision for no benefit.
+            case .downloading(let progress):
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+            case .installing:
+                Text("installing")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+
+            case .idle, .installed, .failed:
+                // The cadence setting lives in Preferences; burying a picker in a footer menu
+                // made a one-click action into a two-level decision for no benefit.
                 Button("Check for Updates") {
                     Task { await updater.check(userInitiated: true) }
                 }
@@ -175,20 +155,9 @@ struct UpdateStatusView: View {
                 .buttonStyle(.borderless)
                 .controlSize(.small)
                 .foregroundStyle(Color.accentColor)
-                .help(lastCheckedDescription)
-
-            // Everything actionable is already showing in the banner.
-            case .available, .downloading, .installing, .installed, .failed:
-                EmptyView()
+                .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
             }
         }
         .animation(.easeInOut(duration: 0.2), value: updater.phase)
-    }
-
-    private var lastCheckedDescription: String {
-        guard let date = updater.lastChecked else { return "Never checked for updates" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return "Last checked \(formatter.localizedString(for: date, relativeTo: Date()))"
     }
 }

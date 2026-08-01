@@ -39,7 +39,7 @@ struct PrivacyView: View {
             setting(
                 title: "Also hide them completely during calls",
                 detail: "Hides every photo while Zoom, Teams, QuickTime, OBS or Screenshot is running.",
-                caveat: "Best effort. A running app is not proof of an active share, and calls in a browser — Google Meet, for instance — cannot be detected at all.",
+                caveat: "Best effort. A running app is not proof of an active share, and calls in a browser. Google Meet, for instance. cannot be detected at all.",
                 isReliable: false,
                 isOn: Binding(
                     get: { manager.autoHideForConferencingApps },

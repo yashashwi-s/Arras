@@ -125,15 +125,12 @@ struct PreferencesView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
 
-                Button("Check Now") {
-                    Task { await updater.check(userInitiated: true) }
-                }
-                .controlSize(.small)
+                UpdateActionButton()
 
                 Spacer()
             }
 
-            caption(lastCheckedDescription)
+            UpdateStatusLine()
         }
     }
 
@@ -255,12 +252,6 @@ struct PreferencesView: View {
         alert.runModal()
     }
 
-    private var lastCheckedDescription: String {
-        guard let date = updater.lastChecked else { return "Never checked." }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return "Last checked \(formatter.localizedString(for: date, relativeTo: Date()))."
-    }
 
     // MARK: - Building blocks
 

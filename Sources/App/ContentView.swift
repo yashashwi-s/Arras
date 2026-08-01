@@ -19,11 +19,6 @@ struct ContentView: View {
                 photoList
             }
 
-            // Sits directly above the footer so an available update is adjacent to
-            // the version number it refers to, without shrinking the photo list
-            // when there is nothing to report.
-            UpdateBanner()
-
             Divider()
             footerBar
         }
