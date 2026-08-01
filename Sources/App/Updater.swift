@@ -33,13 +33,11 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     static let shared = Updater()
 
     /// Edit this file in the repo to publish an update to every user.
-    /// Deliberately the `github.com/.../raw/...` form, and deliberately still the old repo
-    /// name. github.com issues redirects for renamed repositories — including sub-paths —
-    /// where raw.githubusercontent.com does not reliably. Every copy of 2.3.0 and earlier
-    /// already has the raw.githubusercontent URL compiled in and cannot be changed, so the
-    /// old repository name has to keep resolving regardless; pointing at it here costs
-    /// nothing and survives the rename either way.
-    private let appcastURL = URL(string: "https://github.com/yashashwi-s/Tableau/raw/main/appcast.json")!
+    /// The `github.com/.../raw/...` form rather than raw.githubusercontent.com directly:
+    /// github.com issues redirects for renamed repositories including sub-paths, so a future
+    /// rename cannot strand anyone. Builds up to 2.4.1 have the old repository name compiled
+    /// in; both forms were checked against the live rename and both resolve.
+    private let appcastURL = URL(string: "https://github.com/yashashwi-s/Arras/raw/main/appcast.json")!
 
     /// How often the app checks on its own.
     ///
@@ -256,10 +254,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     /// Whether we can replace the running bundle without an admin prompt.
     /// False when the app sits somewhere read-only, e.g. still inside a DMG.
-    var canSelfUpdate: Bool {
-        let parent = Bundle.main.bundleURL.deletingLastPathComponent()
-        return FileManager.default.isWritableFile(atPath: parent.path)
-    }
+    var canSelfUpdate: Bool { InstallLocation.canSelfUpdate }
 
     /// Downloads, verifies, and swaps in the pending update, then relaunches.
     /// Returns only on failure — on success the app terminates.
@@ -280,7 +275,11 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         }
 
         guard canSelfUpdate else {
-            phase = .failed("Move \(Constants.appName) to your Applications folder, then try again.")
+            // Moving a *running* bundle doesn't change Bundle.main.bundleURL, so telling the
+            // user to move it and retry sends them into a loop that only quitting escapes.
+            // Offer to do the move and relaunch instead.
+            phase = .failed("\(Constants.appName) can't update from here.")
+            InstallLocation.offerToInstallIfNeeded(force: true)
             return
         }
 

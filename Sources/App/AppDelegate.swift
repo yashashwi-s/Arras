@@ -16,6 +16,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the first frame rather than appearing a moment later.
         AppActivation.shared.apply()
 
+        // Before anything else can fail because of it: an app run from a disk image cannot
+        // replace itself, and discovering that at update time is a dead end.
+        InstallLocation.offerToInstallIfNeeded()
+
         setupStatusItem()
         setupGlobalHotKey()
         setupPasteMonitor()
@@ -59,8 +63,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             attributes: [.font: font, .foregroundColor: NSColor.labelColor, .kern: 0.6]
         )
         let textSize = attributed.size()
-        let height: CGFloat = 34
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: ceil(textSize.width) + 22, height: height))
+        // 28pt is the standard titlebar height. A taller accessory makes AppKit grow the
+        // whole title bar, which pushed the tab pill down and off-centre.
+        let height: CGFloat = 28
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: ceil(textSize.width) + 28, height: height))
         container.wantsLayer = true
 
         // The wordmark is a gradient masked by the glyphs, rather than flat text: it falls off
@@ -84,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         gradient.mask = glyphs
 
-        gradient.frame.origin = CGPoint(x: 2, y: (height - gradient.frame.height) / 2)
+        gradient.frame.origin = CGPoint(x: 4, y: (height - gradient.frame.height) / 2)
         container.layer?.addSublayer(gradient)
 
         container.setAccessibilityRole(.staticText)

@@ -80,9 +80,15 @@ if [ "${1:-}" = "--release" ]; then
     cd ../..
 
     echo "💿 Creating DMG..."
+    # Staged with an /Applications symlink so the image is a drag-to-install.
+    STAGE="$BUILD_DIR/dmg"
+    rm -rf "$STAGE" && mkdir -p "$STAGE"
+    cp -R "$APP_PATH" "$STAGE/"
+    ln -s /Applications "$STAGE/Applications"
+
     hdiutil create \
       -volname "$APP_NAME" \
-      -srcfolder "$APP_PATH" \
+      -srcfolder "$STAGE" \
       -ov -format UDZO \
       "$OUTPUT_DIR/$APP_NAME.dmg" 2>&1 | grep -v "WARNING" || true
 

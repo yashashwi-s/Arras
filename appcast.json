@@ -2,7 +2,7 @@
   "latestVersion": "2.4.1",
   "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.1/Arras.app.zip",
   "sha256": "4b485b713008434405033c43541b40f0c8b43e0d14a4118207ef0a9ba8b666a7",
-  "releaseNotes": "The Arras wordmark moves up into the title bar with a soft vertical fade. Tidier Photos tab, and an available update now appears on the same button you use to check for one.",
+  "releaseNotes": "Arras now offers to install itself into Applications instead of dead-ending when run from the disk image, and clears the quarantine flag so Gatekeeper only interrupts once. The disk image is a proper drag-to-install. Title bar sizing fixed.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

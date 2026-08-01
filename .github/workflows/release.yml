@@ -56,9 +56,17 @@ jobs:
 
       - name: Package DMG
         run: |
+          # A staging folder with an /Applications symlink, so the disk image is a real
+          # drag-to-install rather than a window containing one loose .app. Running the app
+          # straight off the mounted image is what leaves it unable to update itself.
+          STAGE=build/dmg
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          cp -R build/Release/Arras.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+
           hdiutil create \
             -volname "Arras" \
-            -srcfolder build/Release/Arras.app \
+            -srcfolder "$STAGE" \
             -ov -format UDZO \
             build/Release/Arras.dmg
 

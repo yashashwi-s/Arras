@@ -17,6 +17,7 @@
 		28D696A897E7DA9D51108D8B /* PhotoRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD90B4F3420DFFE7834C60A /* PhotoRowView.swift */; };
 		2BD78C42CDC71A7D392C5F36 /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1787B2589BC4882E8036F45C /* SnapGuideOverlay.swift */; };
 		2EA3B8C4BEEE09BDC0B54F02 /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7AEA5E819859422666217C /* AnimatedImage.swift */; };
+		2FEE2113746297DA236F1410 /* InstallLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD824CCB2FEBC83F9AD88A35 /* InstallLocation.swift */; };
 		34F4F91CC6C62C7F19A6226A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4868990D1CCCE3B60E72B59A /* Assets.xcassets */; };
 		413749B9849073EEDF63129B /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0573D96CEEB4166F8C965D78 /* DisplayManager.swift */; };
 		41B9913510A6AF8035512E55 /* UpdateStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D2F553D5CE44A0C65253CBC /* UpdateStatusView.swift */; };
@@ -73,6 +74,7 @@
 		A142EA0B926CCAB851AC811D /* Arras.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Arras.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A7EAC70C978A7B51B9308849 /* DesktopPhotoWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPhotoWindow.swift; sourceTree = "<group>"; };
 		A914B1EA65C5028E58B217CA /* DownloadTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadTask.swift; sourceTree = "<group>"; };
+		BD824CCB2FEBC83F9AD88A35 /* InstallLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallLocation.swift; sourceTree = "<group>"; };
 		D4B1C31D0557ED5747D42802 /* PhotoWidgetOSXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoWidgetOSXApp.swift; sourceTree = "<group>"; };
 		E52B9FE0B69EDA19F9D1B572 /* PDFImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImport.swift; sourceTree = "<group>"; };
 		EA137CB222ADF934AE92BF46 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -120,6 +122,7 @@
 				3A508370E55D73DFCEF08D7A /* FrameStyle.swift */,
 				926E15ED454C8BD67F582BFD /* HotKeyManager.swift */,
 				FD98EBA0424FD6FF2812E0CB /* ImageManager.swift */,
+				BD824CCB2FEBC83F9AD88A35 /* InstallLocation.swift */,
 				5CAC56D3B15FF195A007DA0A /* LayoutArchive.swift */,
 				FF188E798C95551C52A8B46E /* MainWindowView.swift */,
 				EE23412E99E4D8B532F328A2 /* MenuBarCustomization.swift */,
@@ -238,6 +241,7 @@
 				A2D51935B71B40A4563CEDA1 /* FrameStyle.swift in Sources */,
 				12CBC8E2115853AE48552186 /* HotKeyManager.swift in Sources */,
 				DA318DE745FA1C306EE51124 /* ImageManager.swift in Sources */,
+				2FEE2113746297DA236F1410 /* InstallLocation.swift in Sources */,
 				1544699675F42733B91DC98F /* LayoutArchive.swift in Sources */,
 				0473928D3D15D87EF7042E85 /* MainWindowView.swift in Sources */,
 				B4AADA5C1B952D386E36C772 /* MenuBarCustomization.swift in Sources */,
@@ -274,7 +278,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -286,7 +290,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;
@@ -420,7 +424,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -432,7 +436,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;

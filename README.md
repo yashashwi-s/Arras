@@ -22,31 +22,47 @@ Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and c
 
 ## Download
 
-**[⬇️ Download latest release](https://github.com/yashashwi-s/Tableau/releases/latest)**
+**[⬇️ Download latest release](https://github.com/yashashwi-s/Arras/releases/latest)**
 
 ## Installation
 
-Since Arras is free and open source (not distributed through the App Store), macOS Gatekeeper blocks it on first launch. This is normal for any app downloaded outside the App Store.
+Arras is ad-hoc signed, not notarized, so the first launch is blocked by Gatekeeper with
+**"Apple could not verify Arras.app is free of malware."** Nothing is wrong with the
+download. Notarizing requires Apple's $99/year Developer ID certificate, and Arras is free.
 
-**On macOS 15 Sequoia and later you must use the Terminal step below.** Arras is ad-hoc signed, so macOS reports it as *"damaged and can't be opened"* rather than offering an **Open Anyway** button. The app is not damaged — the message is what Gatekeeper shows for any app without a paid Developer ID certificate.
+Pick whichever route you prefer. Both are one-time.
 
-### Install
+### Homebrew (no Gatekeeper prompt)
 
-1. Download and unzip `Arras.app.zip` from the [latest release](https://github.com/yashashwi-s/Tableau/releases/latest)
-2. Drag `Arras.app` to your **Applications** folder
-3. Open Terminal and run:
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Arras.app
-   ```
-4. Double-click the app — it opens normally from now on
+```bash
+brew tap yashashwi-s/tap
+brew install --cask --no-quarantine arras
+```
 
-Arras lives in your **menu bar** — look for the 📷 icon at the top right. It also appears in the Dock and ⌘Tab by default, which you can turn off in Preferences.
+`--no-quarantine` is what skips the prompt: Homebrew tells macOS the download is trusted, so
+the app opens straight away.
 
-### On macOS 14 Sonoma and earlier
+### Direct download
 
-Right-click (or Control-click) the app → **Open** → **Open** again. Apple removed this shortcut in macOS 15, which is why newer versions need the Terminal command.
+1. Download `Arras.dmg` from the [latest release](https://github.com/yashashwi-s/Arras/releases/latest)
+2. Open it and drag **Arras** onto the **Applications** shortcut in the same window
+3. Launch it from Applications. macOS blocks it and shows the "could not verify" dialog. Click **Done**
+4. Open **System Settings → Privacy & Security**, scroll to Security, and click **Open Anyway**
+   next to the message about Arras
+5. Confirm with **Open Anyway**. It launches normally from then on
 
-> **Why does this happen?** Apple charges $99/year for a Developer ID certificate, and notarizing an app requires one. Since Arras is free and open source, we use ad-hoc signing instead. The app is fully open source — you can audit every line of code and [build it yourself](#building-from-source) if you prefer.
+Prefer the Terminal? This does the same thing in one step, before you ever launch it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Arras.app
+```
+
+> **Run it from Applications, not from the disk image.** Arras updates itself by replacing its
+> own bundle, which a read-only disk image cannot do. If you do launch it from the image, it
+> offers to move itself to Applications and relaunch.
+
+Arras lives in your **menu bar**: look for the 📷 icon at the top right. It has no Dock icon
+and does not appear in ⌘Tab.
 
 ## Quick Start
 
@@ -174,7 +190,7 @@ None of the competitors offer Arras's workflow integration. Pin a photo above al
 brew install xcodegen
 
 # Clone the repo
-git clone https://github.com/yashashwi-s/Tableau.git
+git clone https://github.com/yashashwi-s/Arras.git
 cd Arras
 
 # Generate Xcode project
@@ -193,7 +209,7 @@ Arras checks [`appcast.json`](appcast.json) on this branch at launch and every 6
 ```json
 {
   "latestVersion": "2.1.0",
-  "downloadURL": "https://github.com/yashashwi-s/Tableau/releases/latest",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/latest",
   "releaseNotes": "Adds per-photo rotation intervals.",
   "announcement": null
 }

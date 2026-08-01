@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.4.2
+
+**Running from the disk image no longer dead-ends.** Arras replaces its own bundle
+to update, which a read-only disk image cannot do, and moving a *running* app does
+not change where it thinks it lives. So the old advice, move it and try again, kept
+failing until you quit and reopened. Arras now offers to copy itself into
+Applications and relaunch, at first launch and again if an update is attempted from
+somewhere it cannot write.
+
+**The disk image is a real drag-to-install** with an Applications shortcut, instead
+of a window holding a loose app.
+
+**Installing clears the quarantine flag** on the copy it places in Applications, so
+Gatekeeper only interrupts once.
+
+**Title bar height.** The wordmark accessory was taller than a standard title bar,
+which made AppKit grow the whole bar and pushed the tab pill off centre.
+
 ## 2.4.1
 
 **The Arras wordmark sits in the title bar**, level with the tabs, set as a
