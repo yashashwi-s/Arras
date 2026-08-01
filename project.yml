@@ -26,8 +26,8 @@ targetTemplates:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Arras"
         GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 16
-        MARKETING_VERSION: 2.4.3
+        CURRENT_PROJECT_VERSION: 17
+        MARKETING_VERSION: 2.4.4
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES

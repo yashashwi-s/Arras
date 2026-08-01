@@ -47,61 +47,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
-    /// The app name, sitting in the titlebar to the right of the tab pill.
-    ///
-    /// A titlebar accessory rather than a row inside the content: level with the tabs is where
-    /// it reads as the window's identity, and anywhere in the content area it reads as a
-    /// heading for whatever sits under it.
-    private static func wordmarkAccessory() -> NSTitlebarAccessoryViewController {
-        let size: CGFloat = 17
-        let rounded = NSFont.systemFont(ofSize: size, weight: .bold).fontDescriptor.withDesign(.rounded)
-        let font = rounded.flatMap { NSFont(descriptor: $0, size: size) }
-            ?? .systemFont(ofSize: size, weight: .bold)
-
-        let attributed = NSAttributedString(
-            string: Constants.appName,
-            attributes: [.font: font, .foregroundColor: NSColor.labelColor, .kern: 0.6]
-        )
-        let textSize = attributed.size()
-        // 28pt is the standard titlebar height. A taller accessory makes AppKit grow the
-        // whole title bar, which pushed the tab pill down and off-centre.
-        let height: CGFloat = 28
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: ceil(textSize.width) + 28, height: height))
-        container.wantsLayer = true
-
-        // The wordmark is a gradient masked by the glyphs, rather than flat text: it falls off
-        // toward the baseline so it reads as a mark instead of another label in the title bar.
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
-
-        let glyphs = CATextLayer()
-        glyphs.string = attributed
-        glyphs.contentsScale = scale
-        glyphs.frame = CGRect(x: 0, y: 0, width: ceil(textSize.width) + 2, height: ceil(textSize.height))
-
-        let gradient = CAGradientLayer()
-        gradient.frame = glyphs.frame
-        gradient.contentsScale = scale
-        gradient.colors = [
-            NSColor.labelColor.cgColor,
-            NSColor.labelColor.withAlphaComponent(0.55).cgColor
-        ]
-        // CALayer geometry is not flipped here, so (0.5, 1) is the top edge.
-        gradient.startPoint = CGPoint(x: 0.5, y: 1)
-        gradient.endPoint = CGPoint(x: 0.5, y: 0)
-        gradient.mask = glyphs
-
-        gradient.frame.origin = CGPoint(x: 4, y: (height - gradient.frame.height) / 2)
-        container.layer?.addSublayer(gradient)
-
-        container.setAccessibilityRole(.staticText)
-        container.setAccessibilityLabel(Constants.appName)
-
-        let accessory = NSTitlebarAccessoryViewController()
-        accessory.layoutAttribute = .right
-        accessory.view = container
-        return accessory
-    }
-
     // MARK: - Status Item (Menu Bar Icon)
 
     func setupStatusItem() {
@@ -493,7 +438,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.minSize = NSSize(width: 420, height: 400)
         window.contentView = NSHostingView(rootView: contentView)
         window.isReleasedWhenClosed = false
-        window.addTitlebarAccessoryViewController(Self.wordmarkAccessory())
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window

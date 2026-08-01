@@ -2,7 +2,7 @@
   "latestVersion": "2.4.3",
   "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.3/Arras.app.zip",
   "sha256": "88c1693f63a0f8acafa8766e08857d4124e14e060e7ac6a6c427f971c658cbd3",
-  "releaseNotes": "Widgets take their name from the file you added, and renaming happens inline in the row instead of in a dialog box.",
+  "releaseNotes": "Restores the translucent tab bar in Settings. The title bar wordmark was changing how macOS drew the whole title bar, so it is gone.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
