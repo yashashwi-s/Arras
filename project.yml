@@ -1,4 +1,4 @@
-name: Tableau
+name: Arras
 options:
   bundleIdPrefix: com.yashashwi
   deploymentTarget:
@@ -13,7 +13,7 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 targetTemplates:
-  TableauApp:
+  ArrasApp:
     type: application
     platform: macOS
     sources:
@@ -22,19 +22,19 @@ targetTemplates:
           - "*.entitlements"
     settings:
       base:
-        PRODUCT_NAME: "Tableau"
+        PRODUCT_NAME: "Arras"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
-        INFOPLIST_KEY_CFBundleDisplayName: "Tableau"
+        INFOPLIST_KEY_CFBundleDisplayName: "Arras"
         GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 8
-        MARKETING_VERSION: 2.3.0
+        CURRENT_PROJECT_VERSION: 9
+        MARKETING_VERSION: 2.3.1
         INFOPLIST_KEY_LSUIElement: true
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Tableau needs access to your Photos library so you can pick images to display on your desktop."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES
 
 targets:
-  Tableau:
-    templates: [TableauApp]
+  Arras:
+    templates: [ArrasApp]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau

@@ -1,20 +1,24 @@
-# Tableau
+# Arras
+
+> **Arras was called Tableau until v2.3.1.** Same app, same settings, same
+> updates — only the name changed. The bundle identifier and your photo library
+> are untouched, so updating in place keeps everything.
 
 > Place any photo on your macOS desktop as a perfectly fitted, borderless widget — exactly the right aspect ratio, no cropping, no black bars.
 > 
-> *Note: Tableau was formerly named as **Photo Widget OSX**.*
+> *Note: Arras was formerly named as **Photo Widget OSX**.*
 
 <p align="center">
-  <img src="assets/demo.gif" alt="Tableau Action Demo" width="100%" />
+  <img src="assets/demo.gif" alt="Arras Action Demo" width="100%" />
 </p>
 
 ![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.2.1-green?style=flat-square)
 
 ## What is this?
 
-Tableau is a lightweight macOS menu bar app that places photos directly on your desktop as **borderless, always-on-desktop overlays** that perfectly match each image's native aspect ratio.
+Arras is a lightweight macOS menu bar app that places photos directly on your desktop as **borderless, always-on-desktop overlays** that perfectly match each image's native aspect ratio.
 
-Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and crop your images), Tableau creates a custom-sized window for each photo — so a 16:9 landscape stays 16:9, a 3:4 portrait stays 3:4, and a panorama stays a panorama.
+Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and crop your images), Arras creates a custom-sized window for each photo — so a 16:9 landscape stays 16:9, a 3:4 portrait stays 3:4, and a panorama stays a panorama.
 
 ## Download
 
@@ -22,27 +26,27 @@ Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and c
 
 ## Installation
 
-Since Tableau is free and open source (not distributed through the App Store), macOS Gatekeeper blocks it on first launch. This is normal for any app downloaded outside the App Store.
+Since Arras is free and open source (not distributed through the App Store), macOS Gatekeeper blocks it on first launch. This is normal for any app downloaded outside the App Store.
 
-**On macOS 15 Sequoia and later you must use the Terminal step below.** Tableau is ad-hoc signed, so macOS reports it as *"damaged and can't be opened"* rather than offering an **Open Anyway** button. The app is not damaged — the message is what Gatekeeper shows for any app without a paid Developer ID certificate.
+**On macOS 15 Sequoia and later you must use the Terminal step below.** Arras is ad-hoc signed, so macOS reports it as *"damaged and can't be opened"* rather than offering an **Open Anyway** button. The app is not damaged — the message is what Gatekeeper shows for any app without a paid Developer ID certificate.
 
 ### Install
 
-1. Download and unzip `Tableau.zip` from the [latest release](https://github.com/yashashwi-s/Tableau/releases/latest)
-2. Drag `Tableau.app` to your **Applications** folder
+1. Download and unzip `Arras.app.zip` from the [latest release](https://github.com/yashashwi-s/Tableau/releases/latest)
+2. Drag `Arras.app` to your **Applications** folder
 3. Open Terminal and run:
    ```bash
-   xattr -dr com.apple.quarantine /Applications/Tableau.app
+   xattr -dr com.apple.quarantine /Applications/Arras.app
    ```
 4. Double-click the app — it opens normally from now on
 
-Tableau lives in your **menu bar** — look for the 📷 icon at the top right. It also appears in the Dock and ⌘Tab by default, which you can turn off in Preferences.
+Arras lives in your **menu bar** — look for the 📷 icon at the top right. It also appears in the Dock and ⌘Tab by default, which you can turn off in Preferences.
 
 ### On macOS 14 Sonoma and earlier
 
 Right-click (or Control-click) the app → **Open** → **Open** again. Apple removed this shortcut in macOS 15, which is why newer versions need the Terminal command.
 
-> **Why does this happen?** Apple charges $99/year for a Developer ID certificate, and notarizing an app requires one. Since Tableau is free and open source, we use ad-hoc signing instead. The app is fully open source — you can audit every line of code and [build it yourself](#building-from-source) if you prefer.
+> **Why does this happen?** Apple charges $99/year for a Developer ID certificate, and notarizing an app requires one. Since Arras is free and open source, we use ad-hoc signing instead. The app is fully open source — you can audit every line of code and [build it yourself](#building-from-source) if you prefer.
 
 ## Quick Start
 
@@ -111,12 +115,12 @@ Right-click (or Control-click) the app → **Open** → **Open** again. Apple re
 
 ## Why not the App Store?
 
-Apple's WidgetKit (what powers desktop widgets) only supports 4 fixed sizes. Tableau
+Apple's WidgetKit (what powers desktop widgets) only supports 4 fixed sizes. Arras
 bypasses this entirely using borderless desktop windows.
 
 Contrary to a common assumption, that part is perfectly App Store legal — sandboxing
-places no restriction on window levels, and Tableau uses no private APIs. The actual
-blocker is **updates**. Tableau updates itself from GitHub, and doing that requires
+places no restriction on window levels, and Arras uses no private APIs. The actual
+blocker is **updates**. Arras updates itself from GitHub, and doing that requires
 replacing its own bundle and spawning a helper process, both of which the App Sandbox
 forbids. Guideline 2.4.5(iv) also reserves updating for the App Store itself.
 
@@ -127,30 +131,30 @@ was dead code. `FEATURES.md` records what reinstating it would take.
 
 ## Competitive Landscape
 
-If you are looking for a macOS photo widget, you'll likely run into a few common alternatives. Here is exactly why Tableau was built to replace them:
+If you are looking for a macOS photo widget, you'll likely run into a few common alternatives. Here is exactly why Arras was built to replace them:
 
 ### 1. Apple's Native Sonoma Widgets
 Apple introduced desktop widgets in macOS Sonoma, but they are deeply flawed for photography:
 - **Forced Cropping:** They only support 4 fixed sizes (small square, medium rectangle, large square, extra-large rectangle). If your photo is a 16:9 landscape or an ultra-wide panorama, Apple will aggressively chop the edges off to force it into their predetermined box.
 - **Invisible Grid:** Native widgets snap to a rigid, invisible grid on your desktop. You cannot freely overlap them or place them pixel-perfectly where you want.
-- **Tableau's Solution:** Tableau dynamically scales its window to mathematically match the *exact* aspect ratio of your image file. A 16:9 image stays 16:9. You can also drag them anywhere on the screen without grid restrictions.
+- **Arras's Solution:** Arras dynamically scales its window to mathematically match the *exact* aspect ratio of your image file. A 16:9 image stays 16:9. You can also drag them anywhere on the screen without grid restrictions.
 
 ### 2. WidgetWall & Color Widgets
 These are bloated, "all-in-one" widget suites designed to give you weather, calculators, and system stats.
 - **Heavy Footprint:** Because they do so much, they consume significant memory and CPU.
 - **Rigid Frames:** Just like Apple's native widgets, their photo features are an afterthought that force your images into rigid, predefined aesthetic frames.
-- **Tableau's Solution:** Tableau does one thing: photos. It consumes ~20MB of RAM and 0% CPU at idle, utilizing native `NSWindow` structures.
+- **Arras's Solution:** Arras does one thing: photos. It consumes ~20MB of RAM and 0% CPU at idle, utilizing native `NSWindow` structures.
 
 ### 3. PhotoStickies
 A classic app for placing photos on your desktop.
 - **Outdated Tech:** It lacks modern GPU acceleration for transitions, doesn't support advanced SwiftUI aesthetic controls (like drop shadows and edge fades), and doesn't dynamically remember window sizes per-image inside a rotating folder.
-- **Tableau's Solution:** Tableau leverages modern Core Animation crossfades, a deeply integrated SwiftUI settings panel, and advanced per-photo spatial memory so your images always remember exactly where you placed them.
+- **Arras's Solution:** Arras leverages modern Core Animation crossfades, a deeply integrated SwiftUI settings panel, and advanced per-photo spatial memory so your images always remember exactly where you placed them.
 
 ### 4. Workflow Integration
-None of the competitors offer Tableau's workflow integration. Pin a photo above all your windows as a floating reference, snap it flush against a screen edge or another photo, and clear the whole desktop with a single global shortcut when you need the space back.
+None of the competitors offer Arras's workflow integration. Pin a photo above all your windows as a floating reference, snap it flush against a screen edge or another photo, and clear the whole desktop with a single global shortcut when you need the space back.
 | App | Custom Ratio | Floating | Per-Photo Controls | Free | Method |
 |-----|:---:|:---:|:---:|:---:|--------|
-| **Tableau** | ✅ Any ratio | ✅ | ✅ Full suite | ✅ Free & OSS | Desktop overlay |
+| **Arras** | ✅ Any ratio | ✅ | ✅ Full suite | ✅ Free & OSS | Desktop overlay |
 | Apple Photos Widget | ❌ 4 fixed sizes | ❌ | ❌ None | ✅ Built-in | WidgetKit |
 | Photo Widget (Sorhus)| ❌ Fixed sizes | ❌ | ❌ None | ✅ Free | WidgetKit |
 | WidgetWall | ❌ Fixed sizes | ❌ | ❌ None | Freemium | WidgetKit |
@@ -171,18 +175,18 @@ brew install xcodegen
 
 # Clone the repo
 git clone https://github.com/yashashwi-s/Tableau.git
-cd Tableau
+cd Arras
 
 # Generate Xcode project
 xcodegen generate
 
 # Open in Xcode and hit ⌘R
-open Tableau.xcodeproj
+open Arras.xcodeproj
 ```
 
 ### Pushing a notification to all users
 
-Tableau checks [`appcast.json`](appcast.json) on this branch at launch and every 6 hours. Editing that file on `main` is what notifies everyone — no server, no App Store review.
+Arras checks [`appcast.json`](appcast.json) on this branch at launch and every 6 hours. Editing that file on `main` is what notifies everyone — no server, no App Store review.
 
 **To announce a new version**, bump `latestVersion` after publishing the release:
 
@@ -201,7 +205,7 @@ Tableau checks [`appcast.json`](appcast.json) on this branch at launch and every
 "announcement": {
   "id": "2026-08-migration",
   "title": "Heads up",
-  "body": "Tableau has moved to a new download page.",
+  "body": "Arras has moved to a new download page.",
   "url": "https://yashashwi.me"
 }
 ```

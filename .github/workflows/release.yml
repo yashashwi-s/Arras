@@ -26,8 +26,8 @@ jobs:
       - name: Build Release
         run: |
           xcodebuild \
-            -project Tableau.xcodeproj \
-            -scheme Tableau \
+            -project Arras.xcodeproj \
+            -scheme Arras \
             -configuration Release \
             CONFIGURATION_BUILD_DIR=build/Release \
             CODE_SIGN_IDENTITY="-" \
@@ -37,13 +37,13 @@ jobs:
 
       - name: Validate Build
         run: |
-          APP_PATH="build/Release/Tableau.app"
+          APP_PATH="build/Release/Arras.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "❌ Tableau.app not found"
+            echo "❌ Arras.app not found"
             exit 1
           fi
           SIZE=$(du -sm "$APP_PATH" | cut -f1)
-          echo "✅ Tableau.app size: ${SIZE}MB"
+          echo "✅ Arras.app size: ${SIZE}MB"
           if [ "$SIZE" -lt 1 ]; then
             echo "❌ Build output too small"
             exit 1
@@ -52,26 +52,26 @@ jobs:
       - name: Package Zip
         run: |
           cd build/Release
-          ditto -c -k --sequesterRsrc --keepParent Tableau.app Tableau.app.zip
+          ditto -c -k --sequesterRsrc --keepParent Arras.app Arras.app.zip
 
       - name: Package DMG
         run: |
           hdiutil create \
-            -volname "Tableau" \
-            -srcfolder build/Release/Tableau.app \
+            -volname "Arras" \
+            -srcfolder build/Release/Arras.app \
             -ov -format UDZO \
-            build/Release/Tableau.dmg
+            build/Release/Arras.dmg
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Tableau ${{ github.ref_name }}
+          name: Arras ${{ github.ref_name }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: |
-            build/Release/Tableau.app.zip
-            build/Release/Tableau.dmg
+            build/Release/Arras.app.zip
+            build/Release/Arras.dmg
 
       # The checksum must come from the artifact this job just uploaded, never
       # from a local build.
@@ -85,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA=$(shasum -a 256 build/Release/Tableau.app.zip | cut -d' ' -f1)
+          SHA=$(shasum -a 256 build/Release/Arras.app.zip | cut -d' ' -f1)
           echo "Publishing $VERSION with sha256 $SHA"
 
           git fetch origin main
@@ -97,7 +97,7 @@ jobs:
           path = pathlib.Path("appcast.json")
           data = json.loads(path.read_text())
           data["latestVersion"] = version
-          data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Tableau.app.zip"
+          data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Arras.app.zip"
           data["sha256"] = sha
           # releaseNotes is written by a human before tagging; leave it alone.
           path.write_text(json.dumps(data, indent=2) + "\n")

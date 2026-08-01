@@ -141,7 +141,12 @@ class PhotoManager: ObservableObject {
 
         // A photo that was auto-hidden because its display was disconnected stays invisible
         // on relaunch until that display reconnects (window presence == isVisible && !isHiddenForDisplay).
-        for item in photos where item.isVisible && !item.isHiddenForDisplay && !item.isHiddenForPresence {
+        // Ascending stackOrder: each orderFront puts the next one nearer the front, so the
+        // saved front-to-back arrangement is rebuilt exactly.
+        let ordered = photos
+            .filter { $0.isVisible && !$0.isHiddenForDisplay && !$0.isHiddenForPresence }
+            .sorted { $0.stackOrder < $1.stackOrder }
+        for item in ordered {
             guard let content = loadDisplayContent(for: item) else { continue }
             createWindow(for: item, content: content)
             if !item.spaceImageFilenames.isEmpty {
@@ -402,6 +407,9 @@ class PhotoManager: ObservableObject {
             self.persist()
         }
 
+        window.onBringToFront = { [weak self] in self?.bringToFront(item.id) }
+        window.onSendToBack = { [weak self] in self?.sendToBack(item.id) }
+
         // Click-to-advance for folder photos
         window.onClickAdvance = { [weak self] in
             guard let self else { return }
@@ -418,6 +426,24 @@ class PhotoManager: ObservableObject {
     }
 
     // MARK: - v1.1 Controls
+
+    /// Moves a widget in front of every sibling at its depth.
+    func bringToFront(_ id: UUID) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let top = photos.map(\.stackOrder).max() ?? 0
+        photos[index].stackOrder = top + 1
+        windows[id]?.orderFront(nil)
+        persist()
+    }
+
+    /// Moves a widget behind every sibling at its depth.
+    func sendToBack(_ id: UUID) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let bottom = photos.map(\.stackOrder).min() ?? 0
+        photos[index].stackOrder = bottom - 1
+        windows[id]?.orderBack(nil)
+        persist()
+    }
 
     func setDepth(_ id: UUID, _ depth: WidgetDepth) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
@@ -606,6 +632,7 @@ class PhotoManager: ObservableObject {
     private func copyAppearanceSettings(from src: PhotoItem, to dst: inout PhotoItem) {
         dst.isFloating = src.isFloating
         dst.depth = src.depth
+        dst.stackOrder = src.stackOrder
         dst.opacity = src.opacity
         dst.cornerRadius = src.cornerRadius
         dst.shadowEnabled = src.shadowEnabled

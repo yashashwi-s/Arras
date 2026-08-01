@@ -24,8 +24,8 @@ jobs:
       - name: Build
         run: |
           xcodebuild \
-            -project Tableau.xcodeproj \
-            -scheme Tableau \
+            -project Arras.xcodeproj \
+            -scheme Arras \
             -configuration Release \
             CONFIGURATION_BUILD_DIR=build/Release \
             CODE_SIGN_IDENTITY="-" \
@@ -35,13 +35,13 @@ jobs:
 
       - name: Validate Build
         run: |
-          APP_PATH="build/Release/Tableau.app"
+          APP_PATH="build/Release/Arras.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "❌ Tableau.app not found"
+            echo "❌ Arras.app not found"
             exit 1
           fi
           SIZE=$(du -sm "$APP_PATH" | cut -f1)
-          echo "✅ Tableau.app size: ${SIZE}MB"
+          echo "✅ Arras.app size: ${SIZE}MB"
           if [ "$SIZE" -lt 1 ]; then
             echo "❌ Build output too small (${SIZE}MB)"
             exit 1

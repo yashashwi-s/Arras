@@ -29,6 +29,10 @@ struct PhotoItem: Identifiable, Codable {
 
     // v2.3 — Desktop stacking
     var depth: WidgetDepth
+    /// Front-to-back order among widgets sharing a depth. Higher is nearer the front.
+    /// Windows are created in ascending order on launch, so this survives a relaunch —
+    /// AppKit's own ordering does not.
+    var stackOrder: Int
 
     // v1.2 — Naming
     var customName: String?
@@ -90,6 +94,7 @@ struct PhotoItem: Identifiable, Codable {
         self.isFloating = false
         self.opacity = 1.0
         self.depth = .onDesktop
+        self.stackOrder = 0
 
         // v1.2 defaults
         self.customName = nil
@@ -139,7 +144,7 @@ struct PhotoItem: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, filename, frameString, widgetWidth, isLocked, isVisible
-        case isFloating, opacity, depth
+        case isFloating, opacity, depth, stackOrder
         case customName
         case cornerRadius, shadowEnabled, shadowBlur, shadowOpacity
         case borderWidth, borderColorHex, vignetteEnabled
@@ -167,6 +172,7 @@ struct PhotoItem: Identifiable, Codable {
         // replaced rather than to a bare default — otherwise every existing floating widget
         // would silently drop back onto the desktop on first launch after updating.
         depth = try c.decodeIfPresent(WidgetDepth.self, forKey: .depth) ?? (isFloating ? .floating : .onDesktop)
+        stackOrder = try c.decodeIfPresent(Int.self, forKey: .stackOrder) ?? 0
 
         customName = try c.decodeIfPresent(String.self, forKey: .customName)
 

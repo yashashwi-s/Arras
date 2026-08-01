@@ -33,7 +33,13 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     static let shared = Updater()
 
     /// Edit this file in the repo to publish an update to every user.
-    private let appcastURL = URL(string: "https://raw.githubusercontent.com/yashashwi-s/Tableau/main/appcast.json")!
+    /// Deliberately the `github.com/.../raw/...` form, and deliberately still the old repo
+    /// name. github.com issues redirects for renamed repositories — including sub-paths —
+    /// where raw.githubusercontent.com does not reliably. Every copy of 2.3.0 and earlier
+    /// already has the raw.githubusercontent URL compiled in and cannot be changed, so the
+    /// old repository name has to keep resolving regardless; pointing at it here costs
+    /// nothing and survives the rename either way.
+    private let appcastURL = URL(string: "https://github.com/yashashwi-s/Tableau/raw/main/appcast.json")!
 
     /// How often the app checks on its own.
     ///

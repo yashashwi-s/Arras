@@ -1,4 +1,4 @@
-# Tableau — Features & Roadmap
+# Arras — Features & Roadmap
 
 ## Current Version
 
@@ -163,7 +163,7 @@ Ordered by what actually matters, not by effort.
 ### Carried over from the original roadmap — reassessed
 
 These were written before the app had users or a clear identity. Re-reading them
-against what Tableau actually is (a desktop photo widget you set up once and then
+against what Arras actually is (a desktop photo widget you set up once and then
 mostly look at), several are weaker than they first appeared. Honest triage:
 
 **Worth building**
@@ -180,7 +180,7 @@ mostly look at), several are weaker than they first appeared. Honest triage:
 
 **Reconsidered — low value for the cost**
 
-- [ ] ~~**URL scheme**~~ — `tableau://add?path=...` sounds useful but nothing would call it. Shortcuts covers scripted adding, and drag-and-drop plus ⌘V already cover manual adding. Ship only if something concrete needs it
+- [ ] ~~**URL scheme**~~ — `arras://add?path=...` sounds useful but nothing would call it. Shortcuts covers scripted adding, and drag-and-drop plus ⌘V already cover manual adding. Ship only if something concrete needs it
 - [ ] ~~**CLI interface**~~ — a GUI desktop-decoration app has essentially no CLI audience, and installing a binary outside the bundle is exactly the kind of thing that breaks on update and trips Gatekeeper. Hard to justify
 - [ ] ~~**AppleScript dictionary**~~ — largely superseded by App Intents. Meaningful work (an `sdef`, an Apple Event surface to maintain) for a shrinking user base. Do Shortcuts instead
 - [ ] ~~**Raycast extension**~~ — not this repo's job. It's a separate project in a different language, and it can be built by anyone once Shortcuts or a URL scheme exists. Better as a community contribution than a roadmap item
@@ -195,7 +195,7 @@ Relative positions, app settings, and provenance shipped; these are what's left.
 
 - [ ] **Store originals** — images are the app's re-encoded 90% JPEGs (and re-encoded GIFs), so export → import → export compounds the loss. A `.tableau` is a layout backup, not a photo archive. Offer "archive quality" vs "layout only" so it can be either
 - [ ] **Per-widget export** — share one photo or one Space, instead of all-or-nothing
-- [ ] **Registered UTI + document icon** — so a `.tableau` is identifiable in Finder and double-clicking it opens Tableau
+- [ ] **Registered UTI + document icon** — so a `.tableau` is identifiable in Finder and double-clicking it opens Arras
 - [ ] **Thumbnail contact sheet in the manifest** — preview a bundle's contents without importing
 - [ ] **Preflight item selection** — the import dialog now reports widget count, source version and export date, but is still all-or-nothing; let the user deselect individual widgets before committing
 
@@ -229,7 +229,7 @@ The features most likely to be missed once you've had them.
 
 ### Living Collage — dynamic grids
 
-The single biggest feature left, and the one that would most change what Tableau
+The single biggest feature left, and the one that would most change what Arras
 *is*: instead of N independent photos, one widget that holds many images in a
 composed arrangement and quietly rotates them. A photo wall that's alive rather
 than a slideshow.
@@ -394,13 +394,13 @@ Built and run against macOS 27.0 (SDK 27.0, deployment target 14.0).
 
 Ships as a Developer ID / direct-download build only, and is **not sandboxed**.
 
-That is forced rather than chosen: replacing `Tableau.app` and spawning a helper
+That is forced rather than chosen: replacing `Arras.app` and spawning a helper
 that outlives the process are both forbidden under App Sandbox, so an app cannot
 both update itself and be sandboxed. Notarization does not require the sandbox,
 so nothing else is affected — it only rules out the App Store, which also
 separately forbids a second update path (Review Guideline 2.4.5(iv)).
 
-A sandboxed `Tableau-MAS` target existed briefly and was removed; without a paid
+A sandboxed `Arras-MAS` target existed briefly and was removed; without a paid
 Apple Developer account it could not be signed or submitted, so it was dead code.
 Reinstating it means restoring the `#if !MAS` guards around `Updater`,
 `DownloadTask`, and `UpdateStatusView`, plus a sandboxed entitlements file.
@@ -457,7 +457,7 @@ Sources/App/
 ├── PhotoImport.swift            # Shared pasteboard / drag import path
 ├── StatusItemDropView.swift     # Drop target overlaid on the menu bar button
 ├── HotKeyManager.swift          # Carbon global hotkey + Shortcut model
-├── TableauIntents.swift         # App Intents for Shortcuts and Spotlight
+├── ArrasIntents.swift         # App Intents for Shortcuts and Spotlight
 ├── ScreenshotCapture.swift      # screencapture -i region grab
 ├── PDFImport.swift              # PDFKit page rendering
 │

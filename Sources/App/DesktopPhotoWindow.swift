@@ -127,6 +127,8 @@ class DesktopPhotoWindow: NSPanel {
     var onResize: ((CGFloat) -> Void)?
     var onOpacityChanged: ((CGFloat) -> Void)?
     var onClickAdvance: (() -> Void)?
+    var onBringToFront: (() -> Void)?
+    var onSendToBack: (() -> Void)?
 
     /// Padding between the window frame and the photo rect, on every side.
     private(set) var canvasInset: CGFloat = 0
@@ -245,6 +247,8 @@ class DesktopPhotoWindow: NSPanel {
         container.onRemove = { [weak self] in self?.onRemove?() }
         container.onResizeFinished = { [weak self] newWidth in self?.onResize?(newWidth) }
         container.onOpacityChanged = { [weak self] newOpacity in self?.onOpacityChanged?(newOpacity) }
+        container.onBringToFront = { [weak self] in self?.onBringToFront?() }
+        container.onSendToBack = { [weak self] in self?.onSendToBack?() }
 
         contentView = container
         setContentSize(canvasSize)
@@ -550,6 +554,8 @@ class DraggablePhotoView: NSView {
     var onResizeFinished: ((CGFloat) -> Void)?
     var onOpacityChanged: ((CGFloat) -> Void)?
     var onClickAdvance: (() -> Void)?
+    var onBringToFront: (() -> Void)?
+    var onSendToBack: (() -> Void)?
     private var lastAdvanceTime: TimeInterval = 0
 
     private var dragMode: DragMode = .none
@@ -1196,6 +1202,17 @@ class DraggablePhotoView: NSView {
 
         menu.addItem(.separator())
 
+        // Overlapping photos had no way to be reordered at all short of hiding one.
+        let frontItem = NSMenuItem(title: "Bring to Front", action: #selector(handleBringToFront), keyEquivalent: "")
+        frontItem.target = self
+        menu.addItem(frontItem)
+
+        let backItem = NSMenuItem(title: "Send to Back", action: #selector(handleSendToBack), keyEquivalent: "")
+        backItem.target = self
+        menu.addItem(backItem)
+
+        menu.addItem(.separator())
+
         let removeItem = NSMenuItem(
             title: "Remove from Desktop",
             action: #selector(handleRemove),
@@ -1209,6 +1226,8 @@ class DraggablePhotoView: NSView {
 
     @objc private func handleLockToggle() { onLockToggle?() }
     @objc private func handleRemove() { onRemove?() }
+    @objc private func handleBringToFront() { onBringToFront?() }
+    @objc private func handleSendToBack() { onSendToBack?() }
 
     // MARK: - Lock flash
 

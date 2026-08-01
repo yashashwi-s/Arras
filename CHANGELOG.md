@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased — 2.3.0
+## 2.3.1 — Tableau is now Arras
+
+**New name.** Same app, same bundle identifier, same photo library, same update
+channel. Nothing on your Mac moves. If you installed via Homebrew the cask still
+works; the app in your Applications folder keeps whatever filename it already had
+when it updates in place, and fresh downloads arrive as `Arras.app`.
+
+**Layer overlapping photos.** Right-click any widget: *Bring to Front* and *Send
+to Back*. The order is saved, so it survives a relaunch — AppKit's own window
+ordering does not.
+
+## 2.3.0
 
 **Widgets no longer steal focus.** Every photo window used to take key status
-the moment it appeared, so simply having widgets on screen put Tableau's menu
+the moment it appeared, so simply having widgets on screen put Arras's menu
 bar in front of whatever you were working in. They are non-activating panels
 now: you can still drag, resize, scroll and right-click them, and the app never
 comes forward.
@@ -38,7 +49,7 @@ so the crosshair cursor never fired — installing a tracking area does not set
 that for you. Four corner grips now appear on hover as well.
 
 **Depth control.** Per photo: behind desktop icons, on the desktop, above the
-system's desktop widgets, or floating above app windows. Tableau previously sat
+system's desktop widgets, or floating above app windows. Arras previously sat
 one level *below* the system's desktop widgets, so those always drew on top.
 Behind-icons is inert by construction — Finder's desktop window swallows every
 click — so choosing it locks the widget and says why.
@@ -62,10 +73,10 @@ five of them.
 endpoint ellipse, so it drew a dark ring inside the photo and left all four
 corners bright — the inverse of a vignette.
 
-**Removed: Dock & ⌘Tab presence.** 2.2 added a setting that put Tableau in the
+**Removed: Dock & ⌘Tab presence.** 2.2 added a setting that put Arras in the
 Dock and the app switcher. It is gone — a desktop ornament asking for a Dock slot
 and an app-switcher card is asking for attention it never needs, and there is
-exactly one window worth returning to, a click away in the menu bar. Tableau is a
+exactly one window worth returning to, a click away in the menu bar. Arras is a
 menu bar app again, full stop. ⌘Q and the other standard shortcuts still work,
 because the menu is installed even though the app never appears in the Dock.
 
@@ -76,7 +87,7 @@ switches fading a widget away.
 **A real settings window.** Photos, Preferences and Privacy are separate tabs
 now. The photo list had quietly become the home for every app-wide switch.
 
-**Reachable with ⌘Tab.** Tableau can take a Dock slot and appear in the app
+**Reachable with ⌘Tab.** Arras can take a Dock slot and appear in the app
 switcher, with a proper App/Edit/Window menu bar. macOS ties the Dock icon and
 ⌘Tab to a single setting, so it is one toggle rather than two. *(Reverted in
 2.3.0 — see above.)*
@@ -140,7 +151,7 @@ Adding a widget used to mean the file picker. Now:
   exactly where. Unplug that monitor and the photo hides; plug it back in and it
   returns to the same spot
 - **Pin to a Space** — keep a photo on one Space instead of all of them
-- **Dock & ⌘Tab presence** — Tableau can now be reached from the app switcher.
+- **Dock & ⌘Tab presence** — Arras can now be reached from the app switcher.
   (macOS ties this to the Dock icon; they are one setting, not two.) On by
   default, toggleable from the menu bar. *(Reverted in 2.3.0.)*
 
@@ -163,7 +174,7 @@ Adding a widget used to mean the file picker. Now:
 
 ### Updates
 
-- **Update in place.** Tableau checks a manifest on GitHub, verifies the download
+- **Update in place.** Arras checks a manifest on GitHub, verifies the download
   against a SHA-256, swaps itself out, and relaunches — no dragging to
   Applications. If the swap fails it rolls back, so a botched update can never
   leave you with no app

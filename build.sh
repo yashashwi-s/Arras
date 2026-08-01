@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh — Build, test, and package Tableau for macOS
+# build.sh — Build, test, and package Arras for macOS
 # Usage:
 #   ./build.sh           # Just build
 #   ./build.sh --run     # Build + install to /Applications + launch
@@ -7,8 +7,8 @@
 
 set -euo pipefail
 
-APP_NAME="Tableau"
-SCHEME="Tableau"
+APP_NAME="Arras"
+SCHEME="Arras"
 BUILD_DIR="build"
 OUTPUT_DIR="dist"
 
