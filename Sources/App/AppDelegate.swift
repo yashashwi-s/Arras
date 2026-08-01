@@ -43,6 +43,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
+    /// The app name, sitting in the titlebar to the right of the tab pill.
+    ///
+    /// A titlebar accessory rather than a row inside the content: level with the tabs is where
+    /// it reads as the window's identity, and anywhere in the content area it reads as a
+    /// heading for whatever sits under it.
+    private static func wordmarkAccessory() -> NSTitlebarAccessoryViewController {
+        let size: CGFloat = 17
+        let rounded = NSFont.systemFont(ofSize: size, weight: .bold).fontDescriptor.withDesign(.rounded)
+        let font = rounded.flatMap { NSFont(descriptor: $0, size: size) }
+            ?? .systemFont(ofSize: size, weight: .bold)
+
+        // Kerned and set in the label colour so it reads as a wordmark rather than a caption.
+        let label = NSTextField(labelWithAttributedString: NSAttributedString(
+            string: Constants.appName,
+            attributes: [
+                .font: font,
+                .foregroundColor: NSColor.labelColor,
+                .kern: 0.6
+            ]
+        ))
+        label.sizeToFit()
+
+        let height: CGFloat = 34
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 20, height: height))
+        label.frame.origin = NSPoint(x: 2, y: (height - label.frame.height) / 2)
+        container.addSubview(label)
+
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .right
+        accessory.view = container
+        return accessory
+    }
+
     // MARK: - Status Item (Menu Bar Icon)
 
     func setupStatusItem() {
@@ -434,6 +467,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.minSize = NSSize(width: 420, height: 400)
         window.contentView = NSHostingView(rootView: contentView)
         window.isReleasedWhenClosed = false
+        window.addTitlebarAccessoryViewController(Self.wordmarkAccessory())
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window

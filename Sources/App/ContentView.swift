@@ -57,20 +57,6 @@ struct ContentView: View {
             .accessibilityHint("Pick up to 20 photos from your Photos library")
 
             Spacer()
-
-            // The wordmark sits opposite the controls rather than competing with them for the
-            // left edge, where it read as a heading for the list below it.
-            Text(Constants.appName)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.primary, Color.primary.opacity(0.55)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .kerning(0.4)
-                .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
