@@ -322,7 +322,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 submenu.addItem(.separator())
 
                 // Rename
-                let renameItem = NSMenuItem(title: "Rename…", action: #selector(renamePhoto(_:)), keyEquivalent: "")
+                let renameItem = NSMenuItem(title: "Rename in Settings…", action: #selector(renamePhoto(_:)), keyEquivalent: "")
                 renameItem.target = self
                 renameItem.tag = index
                 submenu.addItem(renameItem)
@@ -555,28 +555,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manager.setDepth(manager.photos[index].id, current == .floating ? .onDesktop : .floating)
     }
 
+    /// Opens Settings so the name can be edited in the row itself.
+    ///
+    /// This used to put up a modal alert with a text field in it, which is a lot of ceremony
+    /// for changing a label, and a second place renaming could happen.
     @objc func renamePhoto(_ sender: NSMenuItem) {
-        let index = sender.tag
-        guard index < manager.photos.count else { return }
-        let item = manager.photos[index]
-
-        let alert = NSAlert()
-        alert.messageText = "Rename Photo"
-        alert.informativeText = "Enter a new name for this widget."
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        textField.stringValue = manager.label(for: item)
-        textField.isEditable = true
-        textField.isBezeled = true
-        textField.bezelStyle = .roundedBezel
-        alert.accessoryView = textField
-
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            manager.renamePhoto(item.id, to: textField.stringValue)
-        }
+        showSettingsWindow()
     }
 
     @objc func replacePhoto(_ sender: NSMenuItem) {

@@ -68,6 +68,9 @@ struct PhotoRowView: View {
     var onMenuUpdate: (() -> Void)?
 
     @State private var isExpanded = false
+    @State private var isRenaming = false
+    @State private var draftName = ""
+    @FocusState private var nameFocused: Bool
     @State private var isHovering = false
     @State private var showingFrameSheet = false
 
@@ -110,10 +113,25 @@ struct PhotoRowView: View {
                     thumbnailView
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(manager.label(for: item))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(item.isVisible ? .primary : .secondary)
-                            .lineLimit(1)
+                        if isRenaming {
+                            // Editing happens where the name already is. It used to open a
+                            // modal alert, which is a lot of ceremony for changing a label.
+                            TextField("", text: $draftName)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 12, weight: .medium))
+                                .focused($nameFocused)
+                                .onSubmit(commitRename)
+                                .onExitCommand { isRenaming = false }
+                                .onChange(of: nameFocused) { _, focused in
+                                    if !focused { commitRename() }
+                                }
+                                .accessibilityLabel("Photo name")
+                        } else {
+                            Text(manager.label(for: item))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(item.isVisible ? .primary : .secondary)
+                                .lineLimit(1)
+                        }
                         Text(collapsedStatus)
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
@@ -124,6 +142,7 @@ struct PhotoRowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .allowsHitTesting(!isRenaming)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(manager.label(for: item))
@@ -155,7 +174,7 @@ struct PhotoRowView: View {
                 }
 
                 Menu {
-                    Button("Rename…") { rename() }
+                    Button("Rename") { beginRename() }
                     if item.spaceImageFilenames.isEmpty {
                         Button("Replace Image…") { replace() }
                     }
@@ -410,20 +429,20 @@ struct PhotoRowView: View {
 
     // MARK: Actions
 
-    private func rename() {
-        let alert = NSAlert()
-        alert.messageText = "Rename"
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        field.stringValue = manager.label(for: item)
-        field.isEditable = true; field.isBezeled = true; field.bezelStyle = .roundedBezel
-        alert.accessoryView = field
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            manager.renamePhoto(item.id, to: field.stringValue)
-            onMenuUpdate?()
-        }
+    private func beginRename() {
+        draftName = manager.label(for: item)
+        isRenaming = true
+        // Focus has to wait a turn: the field does not exist until the view re-renders.
+        DispatchQueue.main.async { nameFocused = true }
+    }
+
+    private func commitRename() {
+        guard isRenaming else { return }
+        isRenaming = false
+        let trimmed = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != manager.label(for: item) else { return }
+        manager.renamePhoto(item.id, to: trimmed)
+        onMenuUpdate?()
     }
 
     private func replace() {

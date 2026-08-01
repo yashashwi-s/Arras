@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.3
+
+**Widgets are named after the file they came from.** A photo added as
+`Beach House 2019.png` shows up as "Beach House 2019" instead of "Photo 4".
+Stored files are still named by UUID; the original is captured at import.
+Photos-library picks have no filename to take, so those still fall back.
+
+**Renaming happens in the row.** Click Rename and the name becomes an editable
+field where it already sits. Return commits, Escape cancels, clicking away
+commits. The modal alert is gone, and so is the second one behind the menu bar's
+Rename, which now just opens Settings.
+
 ## 2.4.2
 
 **Running from the disk image no longer dead-ends.** Arras replaces its own bundle

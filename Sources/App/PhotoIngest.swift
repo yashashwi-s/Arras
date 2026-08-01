@@ -20,6 +20,9 @@ enum PhotoIngest {
     struct Prepared {
         let filename: String
         let url: URL
+        /// The file's own name, kept so a widget can be labelled with it. Stored files are
+        /// named by UUID, so without capturing this at import the original is gone.
+        let originalName: String?
     }
 
     /// Writes `data` into `directory` and returns what to record for it.
@@ -27,12 +30,12 @@ enum PhotoIngest {
     /// - Animated sources keep their original bytes, so they still animate.
     /// - Stills are downsampled if oversized, and otherwise written through untouched when
     ///   they are already in a format `PhotoContent.load` can read — no decode, no re-encode.
-    nonisolated static func prepare(data: Data, in directory: URL) -> Prepared? {
+    nonisolated static func prepare(data: Data, in directory: URL, originalName: String? = nil) -> Prepared? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0 else { return nil }
 
         if CGImageSourceGetCount(source) > 1, AnimatedImageIO.decodeForPlayback(data: data) != nil {
-            return write(data, extension: "gif", in: directory)
+            return write(data, extension: "gif", in: directory, originalName: originalName)
         }
 
         let type = CGImageSourceGetType(source) as String?
@@ -42,22 +45,23 @@ enum PhotoIngest {
 
         // Already a reasonable size and a format we can read back: keep the original bytes.
         if longestEdge <= maxPixelSize, let ext = passthroughExtension(for: type) {
-            return write(data, extension: ext, in: directory)
+            return write(data, extension: ext, in: directory, originalName: originalName)
         }
 
         guard let downsampled = downsample(source) else {
             // Couldn't resize — better to store the original than to lose the import.
             if let ext = passthroughExtension(for: type) {
-                return write(data, extension: ext, in: directory)
+                return write(data, extension: ext, in: directory, originalName: originalName)
             }
             return nil
         }
-        return write(downsampled, extension: "jpg", in: directory)
+        return write(downsampled, extension: "jpg", in: directory, originalName: originalName)
     }
 
     nonisolated static func prepare(contentsOf url: URL, in directory: URL) -> Prepared? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return prepare(data: data, in: directory)
+        return prepare(data: data, in: directory,
+                       originalName: url.deletingPathExtension().lastPathComponent)
     }
 
     // MARK: - Helpers
@@ -101,12 +105,13 @@ enum PhotoIngest {
         return output as Data
     }
 
-    private nonisolated static func write(_ data: Data, extension ext: String, in directory: URL) -> Prepared? {
+    private nonisolated static func write(_ data: Data, extension ext: String, in directory: URL,
+                                          originalName: String?) -> Prepared? {
         let filename = UUID().uuidString + "." + ext
         let url = directory.appendingPathComponent(filename)
         do {
             try data.write(to: url)
-            return Prepared(filename: filename, url: url)
+            return Prepared(filename: filename, url: url, originalName: originalName)
         } catch {
             return nil
         }
@@ -167,7 +172,9 @@ extension PhotoManager {
     private func adopt(_ prepared: [PhotoIngest.Prepared]) -> Int {
         guard !prepared.isEmpty else { return 0 }
         for file in prepared {
-            let item = PhotoItem(filename: file.filename)
+            var item = PhotoItem(filename: file.filename)
+            // A widget called "beach-house" beats "Photo 4".
+            item.customName = file.originalName
             photos.append(item)
             if let content = PhotoContent.load(from: file.url) {
                 createWindow(for: item, content: content)
