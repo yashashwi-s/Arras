@@ -1,36 +1,34 @@
 # Arras
 
-> **Arras was called Tableau until v2.3.1.** Same app, same settings, same
-> updates — only the name changed. The bundle identifier and your photo library
-> are untouched, so updating in place keeps everything.
-
-> Place any photo on your macOS desktop as a perfectly fitted, borderless widget — exactly the right aspect ratio, no cropping, no black bars.
-> 
-> *Note: Arras was formerly named as **Photo Widget OSX**.*
+Put any photo on your macOS desktop as a borderless widget sized to that photo.
+No cropping, no black bars, no fixed grid.
 
 <p align="center">
-  <img src="assets/demo.gif" alt="Arras Action Demo" width="100%" />
+  <img src="assets/demo.gif" alt="Arras widgets on a macOS desktop" width="100%" />
 </p>
 
 ![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.4-green?style=flat-square)
 
-## What is this?
+> Arras was **Photo Widget OSX**, then **Tableau** until v2.3.1. Only the name
+> changed. The bundle identifier and your photo library are untouched, so
+> updating in place keeps everything.
 
-Arras is a lightweight macOS menu bar app that places photos directly on your desktop as **borderless, always-on-desktop overlays** that perfectly match each image's native aspect ratio.
+## Why
 
-Unlike Apple's built-in WidgetKit widgets (which lock you to 4 fixed sizes and crop your images), Arras creates a custom-sized window for each photo — so a 16:9 landscape stays 16:9, a 3:4 portrait stays 3:4, and a panorama stays a panorama.
+Apple's desktop widgets come in four fixed sizes and crop your image to fit
+whichever one you pick. A 16:9 landscape loses its edges, a portrait loses its
+top and bottom, and a panorama is not really a thing WidgetKit believes in.
 
-## Download
+Arras gives every photo its own window at its own proportions, then stays out of
+the way: about 20 MB of memory, effectively no CPU while nothing moves, no Dock
+icon, and clicking a widget never takes focus from what you were doing.
 
-**[⬇️ Download latest release](https://github.com/yashashwi-s/Arras/releases/latest)**
+## Install
 
-## Installation
-
-Arras is ad-hoc signed, not notarized, so the first launch is blocked by Gatekeeper with
-**"Apple could not verify Arras.app is free of malware."** Nothing is wrong with the
-download. Notarizing requires Apple's $99/year Developer ID certificate, and Arras is free.
-
-Pick whichever route you prefer. Both are one-time.
+Arras is ad-hoc signed rather than notarized, so macOS blocks the first launch
+with **"Apple could not verify Arras.app is free of malware."** Nothing is wrong
+with the download — notarizing needs Apple's $99/year certificate and Arras is
+free. Either route below clears that once.
 
 ### Homebrew
 
@@ -40,172 +38,139 @@ brew install --cask arras
 xattr -dr com.apple.quarantine /Applications/Arras.app
 ```
 
-Homebrew 6 removed the `--no-quarantine` flag that used to skip the prompt outright, and
-there is no replacement — casks are quarantined unconditionally now. The third line clears
-the flag, so Arras opens without the dialog. Skip it and you get the prompt described below.
+Homebrew 6 removed the `--no-quarantine` flag that used to skip the prompt, with
+no replacement — casks are quarantined unconditionally now. The third line clears
+the flag. Skip it and you get the dialog described below.
 
 ### Direct download
 
 1. Download `Arras.dmg` from the [latest release](https://github.com/yashashwi-s/Arras/releases/latest)
-2. Open it and drag **Arras** onto the **Applications** shortcut in the same window
-3. Launch it from Applications. macOS blocks it and shows the "could not verify" dialog. Click **Done**
-4. Open **System Settings → Privacy & Security**, scroll to Security, and click **Open Anyway**
-   next to the message about Arras
-5. Confirm with **Open Anyway**. It launches normally from then on
+2. Open it and drag **Arras** onto the **Applications** shortcut
+3. Launch it. macOS shows the "could not verify" dialog — click **Done**
+4. Open **System Settings → Privacy & Security**, scroll to Security, click
+   **Open Anyway** next to the message about Arras, and confirm
 
-Prefer the Terminal? This does the same thing in one step, before you ever launch it:
+Or clear the flag up front and skip steps 3 and 4:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Arras.app
 ```
 
-> **Run it from Applications, not from the disk image.** Arras updates itself by replacing its
-> own bundle, which a read-only disk image cannot do. If you do launch it from the image, it
-> offers to move itself to Applications and relaunch.
+> **Run it from Applications, not from the disk image.** Arras updates itself by
+> replacing its own bundle, which a read-only disk image cannot do. Launch it
+> from the image and it offers to move itself and relaunch.
 
-Arras lives in your **menu bar**: look for the 📷 icon at the top right. It has no Dock icon
-and does not appear in ⌘Tab.
+## First run
 
-## Quick Start
+Arras lives in the menu bar and has no Dock icon, so it will not appear in ⌘Tab.
+Look for the photo icon at the top right.
 
-1. Launch the app — a 📷 icon appears in your **menu bar**
-2. Click **Add Photo…** to pick images from Finder, **Add Space…** for a rotating set, or **Photos** to pick from your Photos library
-3. Your photos appear on your desktop — **drag them anywhere**
-4. **Right-click** any photo to lock its position or remove it
-5. **Drag corners** to resize (aspect ratio is always maintained)
-6. **Scroll** on a photo to adjust its opacity
-7. Click **Settings…** in the menu to customize each photo individually
+Add a photo from the menu, or press ⌘V with an image on the clipboard. Then, on
+the desktop widget itself:
+
+- **Drag** to move. It snaps to screen edges, to your other photos, and to other
+  apps' windows, with guides while you drag
+- **Drag a corner** to resize. The aspect ratio stays locked
+- **Scroll** to fade it between 10% and 100%
+- **Right-click** for lock, remove, and layering
+- **Double-click** a Space to advance to its next image
 
 ## Features
 
-### Core
-- 🖼️ **Any aspect ratio** — no cropping, no black bars, ever
-- 📌 **Multiple photos** — add as many as you want, each fully independent
-- 🔒 **Lock position** — right-click photo or use menu bar to lock/unlock
-- ↔️ **Corner resize** — drag any corner to resize (aspect ratio locked)
-- 💾 **Remembers everything** — photos, positions, sizes, all settings persist across relaunches
-- 🪶 **Ultra lightweight** — ~20MB RAM, zero CPU when idle
+**Placement.** Each widget is its own window at its own dimensions. Layer any
+photo behind your desktop icons, above them, over macOS's own widgets, or
+floating above every app. Snapping works against other applications' windows too,
+with no accessibility permissions. A photo whose display disconnects hides, then
+returns to the same spot when that display comes back.
 
-### Floating Mode
-- 🪟 **Float above windows** — turn any photo into a floating reference (above all windows)
-- 🎚️ **Per-photo opacity** — scroll wheel on any photo to adjust (10%–100%)
-- 🧲 **Snap & guides** — photos snap to screen edges and to each other, with alignment guides while dragging
-- 🖥️ **Per-display memory** — a photo hides when its monitor disconnects and returns to the same spot when it reconnects
+**Getting photos in.** ⌘V pastes a copied image straight onto the desktop. Drag
+files onto the menu bar icon. Pick up to 20 from your Photos library. Drag a
+rectangle to capture part of the screen and pin it. Import PDF pages. GIFs and
+APNGs animate, and cost no CPU while they do — the animation runs on the render
+server rather than a timer in the app.
 
-### Getting Photos In
-- 📋 **Paste** — `⌘V` turns a copied image into a widget instantly
-- 🫳 **Drag onto the menu bar** — drop image files right onto the icon
-- ⌨️ **Global hotkey** — one shortcut hides every photo and brings them back (default `⌥⌘P`)
-- 🎞️ **Animated GIFs** — GIFs and APNGs play natively, with no CPU cost when idle
-- 🤖 **Shortcuts & Siri** — add photos, toggle visibility, set opacity from the Shortcuts app
-- 📸 **Screen region capture** — drag a rectangle and pin it as a reference
-- 📦 **Export/import layouts** — move your whole desktop setup to another Mac as a `.arras` file
+**Spaces.** Pick several images and they become one widget that crossfades
+between them: on click, every 30 seconds, hourly, daily, or an interval you set
+down to 5 seconds. Each image keeps its own size and position. Sizing is either
+Dynamic, where each image takes its true ratio, or Fixed, where images fill a
+locked frame.
 
-### Style
-- 🖼️ **Presets** — Gallery, Polaroid, Minimal, Modern in one click
-- ⭕ **Shape masks** — rounded rectangle, circle, squircle or arch
-- 🎞️ **Photo mat** — an inset border like a mounted print
-- 🌑 **Two-layer shadow** — contact plus ambient, the way real elevation reads
-- 📐 **Tilt** — a few degrees so a cluster looks scattered, not gridded
+**Style.** Gallery, Polaroid, Minimal and Modern presets in one click, or set your
+own: shape mask (rounded rectangle, circle, squircle, arch), photo mat, two-layer
+shadow, border, vignette, and a few degrees of tilt so a cluster looks scattered
+rather than gridded.
 
-### Privacy
-- 🙈 **Hide from screen sharing** — photos stay visible to you but stay out of screen shares and recordings
-- 📵 **Auto-hide during calls** — best effort, for Zoom, Teams, QuickTime and OBS
-- 🖥️ **Hide behind fullscreen apps** — frees memory and stops rotation timers
+**Privacy.** Photos can stay visible to you while staying out of screen shares
+and recordings. Optional auto-hide during calls, best effort, for Zoom, Teams,
+QuickTime and OBS. Optional hide behind fullscreen apps, which also stops
+rotation timers.
 
-### Smart Canvas (Spaces)
-- 🗂️ **Multi-image Spaces** — pick several images and they rotate inside one widget
-- 🔄 **Rotation** — on click, 30s, 5m, hourly, daily, or custom interval (minimum 5s)
-- 🖱️ **Double-click to advance** — double-click any Space to go to the next image
-- 📐 **Per-image position & size** — each image in a Space remembers its own layout independently
-- ✨ **GPU crossfade** — smooth Core Animation transition between images
-- 🔲 **Sizing modes** — Dynamic (each image resizes to its true ratio) or Fixed Frame (images crop to fill a locked frame)
-- ⬅️ **Previous/Next navigation** — step through a Space's images from settings or menu bar
+**Automation.** A global hotkey hides every photo and brings them back, `⌥⌘P` by
+default. Seven App Intents drive Arras from Shortcuts and Siri. Export your whole
+desktop setup as a `.arras` file and import it on another Mac.
 
-### App Shell
-- 🚀 **Launch at Login** — starts automatically with your Mac
-- 🖥️ **Mission Control** — photos fly away naturally in Mission Control and App Exposé
-- 📱 **Photos.app integration** — pick directly from your Photos library (up to 20 at once)
-- 🔽 **Hide menu bar icon** — reopen from Spotlight to restore
-- 🔄 **Live menu sync** — menu bar always reflects current state with thumbnails and status badges
-- 🔍 **Reveal in Finder** — right-click any photo row to jump to the source file or folder
+`FEATURES.md` has the exhaustive list, including what is built but not yet
+reachable.
 
-## Why not the App Store?
+## Why not the App Store
 
-Apple's WidgetKit (what powers desktop widgets) only supports 4 fixed sizes. Arras
-bypasses this entirely using borderless desktop windows.
+Apple's WidgetKit only supports four fixed sizes. Arras bypasses it with
+borderless desktop windows.
 
-Contrary to a common assumption, that part is perfectly App Store legal — sandboxing
-places no restriction on window levels, and Arras uses no private APIs. The actual
-blocker is **updates**. Arras updates itself from GitHub, and doing that requires
-replacing its own bundle and spawning a helper process, both of which the App Sandbox
-forbids. Guideline 2.4.5(iv) also reserves updating for the App Store itself.
+That part is perfectly App Store legal, contrary to a common assumption —
+sandboxing places no restriction on window levels, and Arras uses no private
+APIs. The actual blocker is **updates**. Arras updates itself from GitHub, which
+means replacing its own bundle and spawning a helper process that outlives it.
+App Sandbox forbids both, and guideline 2.4.5(iv) reserves updating for the App
+Store itself.
 
-So it's genuinely either/or: a sandboxed App Store build, or a self-updating free one.
-We chose self-updating and free. A sandboxed App Store target existed briefly and was
-removed — without a paid developer account it could not be signed or submitted, so it
-was dead code. `FEATURES.md` records what reinstating it would take.
+So it is genuinely either/or: a sandboxed App Store build, or a self-updating
+free one. This is the second. A sandboxed App Store target existed briefly and
+was removed — without a paid developer account it could not be signed or
+submitted, so it was dead code. `FEATURES.md` records what reinstating it would
+take.
 
-## Competitive Landscape
+## Alternatives
 
-If you are looking for a macOS photo widget, you'll likely run into a few common alternatives. Here is exactly why Arras was built to replace them:
+Everything WidgetKit-based inherits the same four fixed sizes and the same
+desktop grid, which is the constraint Arras exists to avoid. The table is about
+that structural difference, not about quality.
 
-### 1. Apple's Native Sonoma Widgets
-Apple introduced desktop widgets in macOS Sonoma, but they are deeply flawed for photography:
-- **Forced Cropping:** They only support 4 fixed sizes (small square, medium rectangle, large square, extra-large rectangle). If your photo is a 16:9 landscape or an ultra-wide panorama, Apple will aggressively chop the edges off to force it into their predetermined box.
-- **Invisible Grid:** Native widgets snap to a rigid, invisible grid on your desktop. You cannot freely overlap them or place them pixel-perfectly where you want.
-- **Arras's Solution:** Arras dynamically scales its window to mathematically match the *exact* aspect ratio of your image file. A 16:9 image stays 16:9. You can also drag them anywhere on the screen without grid restrictions.
+| App | Aspect ratio | Float above windows | Per-photo controls | Price | Built on |
+|---|---|---|---|---|---|
+| **Arras** | any | yes | full | free, MIT | desktop overlay |
+| Apple Photos Widget | 4 fixed sizes | no | none | built in | WidgetKit |
+| Photo Widget (Sorhus) | fixed sizes | no | none | free | WidgetKit |
+| WidgetWall | fixed sizes | no | none | freemium | WidgetKit |
+| Color Widgets | fixed sizes | no | limited | ~$5 | WidgetKit |
+| Widgetsmith | fixed sizes | no | limited | ~$20/yr | WidgetKit |
+| Superlayer | limited | yes | limited | subscription | desktop overlay |
 
-### 2. WidgetWall & Color Widgets
-These are bloated, "all-in-one" widget suites designed to give you weather, calculators, and system stats.
-- **Heavy Footprint:** Because they do so much, they consume significant memory and CPU.
-- **Rigid Frames:** Just like Apple's native widgets, their photo features are an afterthought that force your images into rigid, predefined aesthetic frames.
-- **Arras's Solution:** Arras does one thing: photos. It consumes ~20MB of RAM and 0% CPU at idle, utilizing native `NSWindow` structures.
-
-### 3. PhotoStickies
-A classic app for placing photos on your desktop.
-- **Outdated Tech:** It lacks modern GPU acceleration for transitions, doesn't support advanced SwiftUI aesthetic controls (like drop shadows and edge fades), and doesn't dynamically remember window sizes per-image inside a rotating folder.
-- **Arras's Solution:** Arras leverages modern Core Animation crossfades, a deeply integrated SwiftUI settings panel, and advanced per-photo spatial memory so your images always remember exactly where you placed them.
-
-### 4. Workflow Integration
-None of the competitors offer Arras's workflow integration. Pin a photo above all your windows as a floating reference, snap it flush against a screen edge or another photo, and clear the whole desktop with a single global shortcut when you need the space back.
-| App | Custom Ratio | Floating | Per-Photo Controls | Free | Method |
-|-----|:---:|:---:|:---:|:---:|--------|
-| **Arras** | ✅ Any ratio | ✅ | ✅ Full suite | ✅ Free & OSS | Desktop overlay |
-| Apple Photos Widget | ❌ 4 fixed sizes | ❌ | ❌ None | ✅ Built-in | WidgetKit |
-| Photo Widget (Sorhus)| ❌ Fixed sizes | ❌ | ❌ None | ✅ Free | WidgetKit |
-| WidgetWall | ❌ Fixed sizes | ❌ | ❌ None | Freemium | WidgetKit |
-| Color Widgets | ❌ Fixed sizes | ❌ | ⚠️ Limited | ~$5 | WidgetKit |
-| Widgetsmith | ❌ Fixed sizes | ❌ | ⚠️ Limited | ~$20/yr | WidgetKit |
-| Superlayer | ⚠️ Limited | ✅ | ⚠️ Limited | 💰 Paid sub | Desktop overlay |
-
-## System Requirements
+## Requirements
 
 - macOS 14.0 Sonoma or later
 - Apple Silicon. The released build is arm64-only; building from source works on Intel
 
-## Building from Source
+## Building from source
 
 ```bash
-# Install XcodeGen
 brew install xcodegen
-
-# Clone the repo
 git clone https://github.com/yashashwi-s/Arras.git
 cd Arras
-
-# Generate Xcode project
 xcodegen generate
-
-# Open in Xcode and hit ⌘R
-open Arras.xcodeproj
+open Arras.xcodeproj      # then hit ⌘R
 ```
 
-### Pushing a notification to all users
+`Arras.xcodeproj` is generated. Never hand-edit it; re-run `xcodegen generate`
+instead. `./build.sh` does the same thing from the command line, with `--run` to
+install into Applications and launch.
 
-Arras checks [`appcast.json`](appcast.json) on this branch at launch and every 6 hours. Editing that file on `main` is what notifies everyone — no server, no App Store review.
+## Notifying users
 
-**To announce a new version**, bump `latestVersion` after publishing the release:
+Arras reads [`appcast.json`](appcast.json) from `main` at launch and every six
+hours. Editing that file is what reaches everyone — no server, no review.
+
+Bump `latestVersion` after publishing a release:
 
 ```json
 {
@@ -216,7 +181,8 @@ Arras checks [`appcast.json`](appcast.json) on this branch at launch and every 6
 }
 ```
 
-**To broadcast any other message**, fill in `announcement`. Change the `id` every time — each `id` notifies a given user exactly once, so reusing one means nobody sees it:
+Fill in `announcement` to broadcast anything else. Change the `id` every time —
+each `id` reaches a given user exactly once, so reusing one means nobody sees it:
 
 ```json
 "announcement": {
@@ -227,12 +193,14 @@ Arras checks [`appcast.json`](appcast.json) on this branch at launch and every 6
 }
 ```
 
-Clicking the notification opens `url`. Both fields work together — a release bump and an announcement can go out in the same edit. Users who have denied notification permission still see updates via **Check for Updates…** in the menu bar.
+Both work together; a release bump and an announcement can go out in one edit.
+Anyone who denied notification permission still sees updates through **Check for
+Updates…** in the menu.
+
+Do not put a locally computed checksum in `appcast.json`. Pushing the tag makes
+CI rebuild and overwrite the release assets, so a local hash describes a binary
+nobody downloads and every update then fails verification.
 
 ## License
 
-MIT — use it, fork it, do whatever you want.
-
-## Roadmap
-
-See [FEATURES.md](FEATURES.md) for the full feature list and future roadmap, including multi-monitor support, keyboard shortcuts, grid builder, smart wallpaper integration, and more.
+MIT. Use it, fork it, ship your own build.
