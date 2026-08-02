@@ -1,4 +1,4 @@
-# CLAUDE.md — Tableau
+# CLAUDE.md — Arras
 
 Guidance for AI coding agents working in this repo.
 
@@ -70,21 +70,13 @@ For this repo the verification bar is concrete: **`./build.sh` prints
 A macOS menu bar agent (`LSUIElement`) that puts photo widgets on the desktop.
 Swift + AppKit, with SwiftUI for the settings panel. No dependencies.
 
-```
-Sources/App/
-├── AppDelegate.swift        # status item menu + settings window lifecycle
-├── ContentView.swift        # SwiftUI settings UI
-├── DesktopPhotoWindow.swift # borderless NSWindow + drag/resize/snap/crossfade
-├── ImageManager.swift       # PhotoManager: state, persistence, window creation
-├── PhotoItem.swift          # Codable per-photo model
-└── ...                      # one file per feature; see FEATURES.md
-```
+One file per feature under `Sources/App/`; see FEATURES.md.
 
 **Build:** `./build.sh` (xcodegen + xcodebuild). `--run` installs to
 `/Applications` and launches; `--release` packages and prints the appcast fields.
 
 **New files are picked up automatically by xcodegen** — never hand-edit
-`Tableau.xcodeproj`, it's generated. If it conflicts in a merge, run
+`Arras.xcodeproj`, it's generated. If it conflicts in a merge, run
 `xcodegen generate` instead of resolving it by hand.
 
 ---
@@ -125,7 +117,7 @@ two releases doing nothing. Check SourceKit diagnostics against the current SDK.
 
 ### The app is deliberately not sandboxed
 
-The updater has to replace `Tableau.app` and spawn a helper that outlives the
+The updater has to replace `Arras.app` and spawn a helper that outlives the
 process; App Sandbox forbids both. Don't "fix" this by re-adding the entitlement
 — it would break updates and silently move Application Support back into
 `~/Library/Containers`, orphaning everyone's data. See `StorageMigration.swift`.

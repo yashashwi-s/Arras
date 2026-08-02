@@ -12,7 +12,7 @@
   <img src="assets/demo.gif" alt="Arras Action Demo" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.2.1-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.4-green?style=flat-square)
 
 ## What is this?
 
@@ -110,7 +110,6 @@ and does not appear in ⌘Tab.
 - 🙈 **Hide from screen sharing** — photos stay visible to you but stay out of screen shares and recordings
 - 📵 **Auto-hide during calls** — best effort, for Zoom, Teams, QuickTime and OBS
 - 🖥️ **Hide behind fullscreen apps** — frees memory and stops rotation timers
-- ⏰ **Schedules** — show a photo only during certain hours or days
 
 ### Smart Canvas (Spaces)
 - 🗂️ **Multi-image Spaces** — pick several images and they rotate inside one widget
