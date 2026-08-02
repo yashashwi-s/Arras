@@ -32,15 +32,17 @@ download. Notarizing requires Apple's $99/year Developer ID certificate, and Arr
 
 Pick whichever route you prefer. Both are one-time.
 
-### Homebrew (no Gatekeeper prompt)
+### Homebrew
 
 ```bash
 brew tap yashashwi-s/tap
-brew install --cask --no-quarantine arras
+brew install --cask arras
+xattr -dr com.apple.quarantine /Applications/Arras.app
 ```
 
-`--no-quarantine` is what skips the prompt: Homebrew tells macOS the download is trusted, so
-the app opens straight away.
+Homebrew 6 removed the `--no-quarantine` flag that used to skip the prompt outright, and
+there is no replacement — casks are quarantined unconditionally now. The third line clears
+the flag, so Arras opens without the dialog. Skip it and you get the prompt described below.
 
 ### Direct download
 
@@ -180,7 +182,7 @@ None of the competitors offer Arras's workflow integration. Pin a photo above al
 ## System Requirements
 
 - macOS 14.0 Sonoma or later
-- Apple Silicon or Intel Mac
+- Apple Silicon. The released build is arm64-only; building from source works on Intel
 
 ## Building from Source
 
