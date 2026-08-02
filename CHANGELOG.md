@@ -7,7 +7,8 @@ wordmark in the title bar as an `NSTitlebarAccessoryViewController` made AppKit
 render the whole title bar differently: the tab control lost its translucency and
 rounded pill and came out flat and squared off. The wordmark is now a plain
 subview of the title bar instead of an accessory, which leaves that layout alone.
-Same position, level with the tabs, and the pill is native again.
+Same gradient mark in the same position, level with the tabs, and the pill is
+native again.
 
 ## 2.4.3
 

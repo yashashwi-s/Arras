@@ -47,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
-    /// Puts the app name in the title bar, level with the tab pill.
+    /// Puts the gradient app wordmark in the title bar, level with the tab pill.
     ///
     /// Added straight into the title bar's own view hierarchy rather than through
     /// `addTitlebarAccessoryViewController`. Installing an accessory changes how AppKit lays
@@ -61,25 +61,56 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let font = descriptor.flatMap { NSFont(descriptor: $0, size: size) }
             ?? .systemFont(ofSize: size, weight: .bold)
 
-        let label = NSTextField(labelWithAttributedString: NSAttributedString(
+        let attributed = NSAttributedString(
             string: Constants.appName,
             attributes: [.font: font, .foregroundColor: NSColor.labelColor, .kern: 0.6]
-        ))
-        label.sizeToFit()
-        label.tag = wordmarkTag
-
-        let inset: CGFloat = 18
-        label.frame.origin = NSPoint(
-            x: titlebar.bounds.maxX - label.frame.width - inset,
-            y: (titlebar.bounds.height - label.frame.height) / 2
         )
-        label.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+        let textSize = attributed.size()
+        let height: CGFloat = 28
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: ceil(textSize.width) + 28, height: height))
+        container.wantsLayer = true
+        container.identifier = wordmarkID
 
-        titlebar.viewWithTag(wordmarkTag)?.removeFromSuperview()
-        titlebar.addSubview(label)
+        // The wordmark is a gradient masked by the glyphs, rather than flat text: it falls off
+        // toward the baseline so it reads as a mark instead of another label in the title bar.
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+
+        let glyphs = CATextLayer()
+        glyphs.string = attributed
+        glyphs.contentsScale = scale
+        glyphs.frame = CGRect(x: 0, y: 0, width: ceil(textSize.width) + 2, height: ceil(textSize.height))
+
+        let gradient = CAGradientLayer()
+        gradient.frame = glyphs.frame
+        gradient.contentsScale = scale
+        gradient.colors = [
+            NSColor.labelColor.cgColor,
+            NSColor.labelColor.withAlphaComponent(0.55).cgColor
+        ]
+        // CALayer geometry is not flipped here, so (0.5, 1) is the top edge.
+        gradient.startPoint = CGPoint(x: 0.5, y: 1)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        gradient.mask = glyphs
+
+        gradient.frame.origin = CGPoint(x: 4, y: (height - gradient.frame.height) / 2)
+        container.layer?.addSublayer(gradient)
+
+        container.setAccessibilityRole(.staticText)
+        container.setAccessibilityLabel(Constants.appName)
+
+        // The container carries 22pt of empty space to the right of the glyphs, which is the
+        // trailing margin the titlebar accessory used to give it. Flush right reproduces it.
+        container.frame.origin = NSPoint(
+            x: titlebar.bounds.maxX - container.frame.width,
+            y: (titlebar.bounds.height - height) / 2
+        )
+        container.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+
+        titlebar.subviews.first { $0.identifier == wordmarkID }?.removeFromSuperview()
+        titlebar.addSubview(container)
     }
 
-    private static let wordmarkTag = 0x4152
+    private static let wordmarkID = NSUserInterfaceItemIdentifier("ArrasWordmark")
 
     // MARK: - Status Item (Menu Bar Icon)
 
