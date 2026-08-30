@@ -25,6 +25,18 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
+      - name: Validate Documentation
+        run: |
+          set -euo pipefail
+          README_LINES="$(wc -l < README.md | tr -d ' ')"
+          if [ "$README_LINES" -gt 200 ]; then
+            echo "README.md has ${README_LINES} lines; the project limit is 200."
+            exit 1
+          fi
+          test -f FEATURES.md
+          test -f ARCHITECTURE.md
+          test -f CHANGELOG.md
+
       - name: Test
         run: |
           xcodebuild \

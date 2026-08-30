@@ -73,7 +73,10 @@ Swift + AppKit, with SwiftUI for the settings panel. No dependencies.
 One file per feature under `Sources/App/`; see FEATURES.md.
 
 **Build:** `./build.sh` (xcodegen + xcodebuild). `--run` installs to
-`/Applications` and launches; `--release` packages and prints the appcast fields.
+`/Applications` and launches; `--release` packages local ZIP and DMG artifacts.
+
+The ownership and dependency contract lives in `ARCHITECTURE.md`; update it when
+a change moves persistence, window, import, rendering, or UI responsibility.
 
 **New files are picked up automatically by xcodegen** — never hand-edit
 `Arras.xcodeproj`, it's generated. If it conflicts in a merge, run
@@ -131,11 +134,11 @@ declarative and on the render server.
 
 ### Don't test against the user's real data
 
-`PhotoManager.storageDir` is hardcoded to
+Production `PhotoManager.storageDir` points at
 `~/Library/Application Support/PhotoWidget/`, which holds real photos and
-`photos.json`. Running the live class from a harness writes junk there and spawns
-real desktop windows. Compile the model types against a scratch directory
-instead.
+`photos.json`. Tests must pass `storageDirectory:` or set
+`ARRAS_UI_TEST_STORAGE_DIR`, keep imported items invisible unless window behavior
+is the subject, and delete their scratch directory afterward.
 
 ---
 
@@ -150,6 +153,8 @@ instead.
 - `@MainActor` on anything touching windows or `PhotoManager`
 - Keep `FEATURES.md` truthful. It documented click-through as shipped for two
   releases after it was removed
+- Keep `README.md` at or below 200 lines. Move durable detail into
+  `FEATURES.md` or `ARCHITECTURE.md` instead of growing the front page
 
 ## 9. Releasing
 
