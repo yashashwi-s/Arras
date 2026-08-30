@@ -68,8 +68,9 @@ Arras is a menu bar agent. It has no Dock icon and does not appear in Command-Ta
   Command-V.
 - Drag a widget to move it; drag any corner to resize without changing ratio.
 - Scroll over a widget to change opacity.
-- Right-click for visibility, lock, layering, rename, replacement, duplication,
-  navigation, and removal actions.
+- Right-click a desktop widget for lock, layering, and removal actions; use its
+  Settings row or menu bar submenu for rename, replacement, duplication, and
+  Space navigation.
 - Double-click a Space to advance when its interval is set to On Click.
 - Open Settings for full frame, global behavior, backup, and privacy controls.
 

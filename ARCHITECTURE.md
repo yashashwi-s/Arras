@@ -92,8 +92,9 @@ manage media files, or construct desktop windows independently.
 
 ## Import and archive contract
 
-- Import prepares bytes off the main actor and commits model/window changes on
-  the main actor.
+- Multi-image ingest prepares file bytes concurrently before committing model
+  and window changes on the main actor. Archive import separately validates and
+  stages its complete replacement payload before touching the current layout.
 - A portable archive contains a versioned manifest plus referenced stored media.
 - Imported items receive new IDs and filenames to prevent collisions.
 - Relative frames are preferred when restoring onto different displays;
