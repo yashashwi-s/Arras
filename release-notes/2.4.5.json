@@ -1,0 +1,9 @@
+{
+  "version": "2.4.5",
+  "title": "UI changes",
+  "summary": "Native glass Settings, the Arras wordmark, and active-Space window placement make the app feel at home on macOS.",
+  "details": [
+    "Settings uses one AppKit-managed window that opens on the active desktop Space.",
+    "The release includes the native glass presentation and Arras wordmark throughout Settings."
+  ]
+}

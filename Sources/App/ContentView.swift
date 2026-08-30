@@ -21,7 +21,7 @@ struct ContentView: View {
             Divider()
             footerBar
         }
-        .frame(minWidth: 380)
+        .frame(minWidth: Constants.settingsMinimumWidth)
     }
 
     // MARK: - Header
@@ -217,6 +217,11 @@ struct ContentView: View {
                 return collected
             }
 
+            if payloads.count < items.count {
+                manager.recordMediaImportFailure(
+                    "\(items.count - payloads.count) selected photo\((items.count - payloads.count) == 1 ? "" : "s") could not be downloaded from Photos."
+                )
+            }
             let added = await manager.addPhotos(data: payloads)
             onMenuUpdate?()
 

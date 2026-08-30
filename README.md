@@ -8,14 +8,14 @@ display placement without using WidgetKit's fixed grid or fixed sizes.
   <img src="assets/demo.gif" alt="Arras photo widgets on a macOS desktop" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.5-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.6-green?style=flat-square)
 
 Arras was previously Photo Widget OSX and Tableau. The bundle identifier and
 storage location stayed the same, so existing layouts remain compatible.
 
 ## Current build
 
-Version 2.4.5 is the current public build:
+Version 2.4.6 is the current release:
 
 - native glass Settings with Photos, Preferences, and Privacy tabs;
 - one Settings window that opens on the active desktop Space;
@@ -28,6 +28,8 @@ Version 2.4.5 is the current public build:
   GIF, and APNG input;
 - global visibility shortcut, Shortcuts actions, privacy controls, and portable
   `.arras` layout backups;
+- daily verified automatic updates, local layout recovery, per-photo schedules,
+  and durable replacement of the current image in a Space;
 - unit, persistence-integration, compatibility, and real-app Settings UI tests.
 
 The exhaustive shipped contract and honest remaining work live in
@@ -59,6 +61,19 @@ xattr -dr com.apple.quarantine /Applications/Arras.app
 
 Arras is ad-hoc signed and not notarized because the project does not currently
 have a paid Apple Developer certificate.
+
+### Updates
+
+In current source, verified automatic updates default on and check daily. Turn
+automatic installation off to keep background checks without installation; the
+default cadence is daily, and a newly available version produces one macOS
+notification containing its human-authored release summary. The cadence can
+also be changed or disabled in Settings, and Check Now remains available.
+
+Every public version owns `release-notes/<version>.json`; CI rejects missing or
+placeholder copy. The same metadata becomes the GitHub release body, and the
+release workflow stamps its validated title and summary into `appcast.json`
+after uploading the artifact.
 
 ## Use
 
@@ -142,8 +157,8 @@ persistence. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full contract.
 
 ## What remains
 
-The next work is the reachable per-photo schedule UI, recoverable automatic
-layout backups, persistent replacement of an individual image inside a Space,
-and broader accessibility/manual coverage. Larger product work—Living Collage,
-multi-selection and alignment, saved scenes, and richer content sources—stays
-explicitly deferred until those correctness gaps are closed.
+The researched near-term candidates are rotation policies, click actions,
+captions, format validation, energy-aware behavior, richer import reporting,
+image metadata, and stronger Shortcuts. Living Collage, multi-selection, saved
+scenes, live albums/video, wallpaper engines, and the widget-platform roadmap
+remain deferred product work.

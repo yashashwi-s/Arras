@@ -158,11 +158,17 @@ is the subject, and delete their scratch directory afterward.
 
 ## 9. Releasing
 
-1. Bump `MARKETING_VERSION` in `project.yml`, write `releaseNotes` in `appcast.json`
+1. Bump `MARKETING_VERSION` in `project.yml` and add
+   `release-notes/X.Y.Z.json` with a deliberate `version`, `title`, and
+   non-placeholder `summary` (optional `details` entries can hold longer copy).
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`
 
-CI builds, attaches the artifacts, and stamps `appcast.json` with the checksum of
-the zip it uploaded.
+CI validates the release metadata before testing, builds and attaches the artifacts,
+uses the validated metadata as the GitHub release body, and stamps `appcast.json`
+with the checksum of the zip it uploaded plus the validated `title: summary` text
+consumed by updater notifications. Do not edit `appcast.json`'s release notes by
+hand for a new version; the release workflow is the source of that generated
+field.
 
 **Never put a locally computed checksum in `appcast.json`.** Pushing the tag
 makes the Release workflow rebuild on its own runner and *overwrite* the release

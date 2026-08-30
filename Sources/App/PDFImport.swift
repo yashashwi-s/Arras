@@ -9,7 +9,11 @@ extension PhotoManager {
     /// use this to decide whether a page picker is needed at all -- most PDFs
     /// pinned as reference material are a single page.
     func pdfPageCount(at url: URL) -> Int {
-        PDFDocument(url: url)?.pageCount ?? 0
+        guard let document = PDFDocument(url: url) else {
+            recordMediaImportFailure("The selected PDF could not be opened.")
+            return 0
+        }
+        return document.pageCount
     }
 
     /// Renders `pageIndex` (zero-based) of the PDF at `url` and adds it as a
@@ -17,9 +21,18 @@ extension PhotoManager {
     /// - Returns: true if a widget was created.
     @discardableResult
     func addPDFPage(at url: URL, pageIndex: Int) -> Bool {
-        guard let document = PDFDocument(url: url),
-              let page = document.page(at: pageIndex),
-              let image = Self.renderPDFPage(page) else { return false }
+        guard let document = PDFDocument(url: url) else {
+            recordMediaImportFailure("The selected PDF could not be opened.")
+            return false
+        }
+        guard let page = document.page(at: pageIndex) else {
+            recordMediaImportFailure("The selected PDF page could not be read.")
+            return false
+        }
+        guard let image = Self.renderPDFPage(page) else {
+            recordMediaImportFailure("The selected PDF page could not be rendered.")
+            return false
+        }
         addPhoto(image)
         return true
     }

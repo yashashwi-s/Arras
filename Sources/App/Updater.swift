@@ -38,11 +38,10 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     /// How often the app checks on its own.
     ///
-    /// Sparkle, the de facto standard for Mac apps outside the App Store,
-    /// defaults to daily and refuses anything under an hour. The same floor
-    /// applies here: a shorter interval would hammer GitHub without ever
-    /// finding an update sooner in practice.
-    enum CheckFrequency: TimeInterval, CaseIterable, Identifiable {
+    /// Daily is the automatic default. Manual-install mode can use a different
+    /// cadence, but anything shorter than an hour would needlessly hammer the
+    /// update feed.
+    enum CheckFrequency: TimeInterval, CaseIterable, Identifiable, Equatable {
         case hourly = 3600
         case everySixHours = 21600
         case daily = 86400
@@ -63,19 +62,40 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     }
 
     private let frequencyKey = "updateCheckFrequency"
+    private let automaticUpdatesKey = "automaticUpdatesEnabled"
 
-    /// Defaults to every six hours — frequent enough that a fix reaches people
-    /// the same day, infrequent enough to stay invisible.
+    /// The cadence used when automatic installation is disabled. Automatic installation has
+    /// its own fixed daily cadence so changing this value remains a useful, preserved choice
+    /// rather than changing the update policy behind the user's back.
     var checkFrequency: CheckFrequency {
         get {
             let stored = UserDefaults.standard.object(forKey: frequencyKey) as? TimeInterval
-            return stored.flatMap(CheckFrequency.init(rawValue:)) ?? .everySixHours
+            return stored.flatMap(CheckFrequency.init(rawValue:)) ?? .daily
         }
         set {
             objectWillChange.send()
             UserDefaults.standard.set(newValue.rawValue, forKey: frequencyKey)
             rescheduleTimer()
         }
+    }
+
+    /// Automatic installation is the default for any installation with no stored preference. The
+    /// explicit stored-value check is important because `UserDefaults.bool(forKey:)` would turn
+    /// an absent key into `false`.
+    var automaticUpdatesEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: automaticUpdatesKey) as? Bool ?? true }
+        set {
+            guard automaticUpdatesEnabled != newValue else { return }
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue, forKey: automaticUpdatesKey)
+            rescheduleTimer()
+        }
+    }
+
+    /// Automatic updates always check daily; manual-install mode retains the user's chosen
+    /// cadence, including Never for users who only check from the Settings button.
+    var activeCheckFrequency: CheckFrequency {
+        automaticUpdatesEnabled ? .daily : checkFrequency
     }
 
     enum Phase: Equatable {
@@ -101,14 +121,21 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     private var pending: Appcast?
     private var timer: Timer?
     private var idleResetTask: Task<Void, Never>?
+    private var notificationRequestsInFlight = Set<String>()
 
     /// Set just before the swap; the relaunched copy consumes it to confirm the update.
     static let justUpdatedKey = "justUpdatedToVersion"
+
+    /// Path to a temporary marker the replacement writes after it reaches app startup. The swap
+    /// helper keeps the previous bundle until this breadcrumb exists; LaunchServices accepting an
+    /// `open` request alone is not enough to prove that the new copy actually launched.
+    static let updateHealthMarkerKey = "updateHealthMarkerPath"
 
     private let lastCheckKey = "lastUpdateCheck"
     private let latestVersionKey = "latestKnownVersion"
     private let notifiedVersionKey = "lastNotifiedVersion"
     private let notifiedAnnouncementKey = "lastNotifiedAnnouncementID"
+    private let automaticFailureNotifiedVersionKey = "lastAutomaticUpdateFailureVersion"
 
     var currentVersion: String { Constants.version }
 
@@ -121,17 +148,19 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     // MARK: - Lifecycle
 
     func start() {
-        guard notificationsAvailable else { return }
+        // Register the delegate as soon as the updater starts so a later notification tap can be
+        // delivered even when the first check finds nothing. This intentionally does not ask for
+        // permission; authorization is requested only by postNotification when needed.
+        if notificationsAvailable {
+            UNUserNotificationCenter.current().delegate = self
+        }
 
-        UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-
-        let interval = checkFrequency.rawValue
+        let interval = activeCheckFrequency.rawValue
         guard interval > 0 else { return }
 
         // Only reach for the network if we haven't looked in a while.
         let due = lastChecked.map { Date().timeIntervalSince($0) >= interval } ?? true
-        if due {
+        if due, phase == .idle {
             Task { await check(userInitiated: false) }
         }
 
@@ -143,7 +172,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         timer?.invalidate()
         timer = nil
 
-        let interval = checkFrequency.rawValue
+        let interval = activeCheckFrequency.rawValue
         guard interval > 0 else { return }
 
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
@@ -165,6 +194,42 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         scheduleReturnToIdle(after: 5)
     }
 
+    /// Consumes the swap helper's breadcrumb only after confirming that the relaunched bundle
+    /// is actually the version that was advertised. A rollback or failed launch must remain
+    /// visible as a failure instead of being reported as a successful update.
+    func announceInstallResult(expectedVersion: String) {
+        guard expectedVersion == currentVersion else {
+            phase = .failed(
+                "Update to \(expectedVersion) did not complete. \(Constants.appName) is still running \(currentVersion). Check for Updates to retry."
+            )
+            return
+        }
+        announceInstalled(version: expectedVersion)
+    }
+
+    /// Called at the very beginning of app startup. A matching version proves that the replacement
+    /// bundle reached its own process, so the helper can safely discard its rollback copy. The
+    /// marker is deliberately written before update UI/network work, keeping the health handshake
+    /// bounded even if a later startup task fails.
+    static func markUpdateHealthyIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: justUpdatedKey) == Constants.version,
+              let path = defaults.string(forKey: updateHealthMarkerKey), !path.isEmpty else {
+            return
+        }
+
+        do {
+            try Data("healthy\n".utf8).write(
+                to: URL(fileURLWithPath: path),
+                options: .atomic
+            )
+            defaults.removeObject(forKey: updateHealthMarkerKey)
+        } catch {
+            // Leave the breadcrumb in defaults so the swap helper times out and restores the
+            // previous bundle rather than declaring a launch healthy without proof.
+        }
+    }
+
     /// Drops a transient result back to `.idle` so the Check for Updates control
     /// comes back. Cancelled if the phase changes in the meantime.
     private func scheduleReturnToIdle(after seconds: TimeInterval = 5) {
@@ -183,7 +248,12 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         // Launch-time and manual checks can overlap when Settings is opened immediately.
         // The first request is already fetching the same manifest; a duplicate only adds
         // another redirect/network wait and lets the slower response win the UI state.
-        guard phase != .checking else { return }
+        switch phase {
+        case .checking, .downloading, .installing:
+            return
+        default:
+            break
+        }
         phase = .checking
 
         var request = URLRequest(url: Self.appcastURL)
@@ -196,6 +266,13 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             return
         }
 
+        // The release workflow publishes SemVer versions. Reject malformed values instead of
+        // treating an unparseable prerelease as "not newer" and silently ignoring an update.
+        guard Self.isValidVersion(appcast.latestVersion) else {
+            phase = userInitiated ? .failed("The update manifest contained an invalid version.") : .idle
+            return
+        }
+
         let now = Date()
         lastChecked = now
         UserDefaults.standard.set(now, forKey: lastCheckKey)
@@ -203,7 +280,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         UserDefaults.standard.set(appcast.latestVersion, forKey: latestVersionKey)
 
         if let announcement = appcast.announcement {
-            deliverAnnouncement(announcement)
+            await deliverAnnouncement(announcement)
         }
 
         guard Self.compare(appcast.latestVersion, isNewerThan: currentVersion) else {
@@ -219,25 +296,31 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         // Refuse an update the current OS can't run — installing it would leave
         // the user with an app that won't launch and no way back.
         if let minimum = appcast.minimumOSVersion, !Self.osMeets(minimum) {
-            phase = .failed("Version \(appcast.latestVersion) needs macOS \(minimum) or later.")
+            let message = "Version \(appcast.latestVersion) needs macOS \(minimum) or later."
+            phase = .failed(message)
+            if automaticUpdatesEnabled {
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: message)
+            }
             return
         }
 
         pending = appcast
         phase = .available(version: appcast.latestVersion, notes: appcast.releaseNotes)
 
-        if !userInitiated {
-            // Only nag once per version, so a launch loop isn't a notification loop.
-            guard UserDefaults.standard.string(forKey: notifiedVersionKey) != appcast.latestVersion else { return }
-            UserDefaults.standard.set(appcast.latestVersion, forKey: notifiedVersionKey)
-
-            var body = "Version \(appcast.latestVersion) is available."
-            if let notes = appcast.releaseNotes, !notes.isEmpty { body += " \(notes)" }
-            postNotification(
-                identifier: "update-\(appcast.latestVersion)",
-                title: "\(Constants.appName) update available",
-                body: body
-            )
+        if automaticUpdatesEnabled {
+            // The toggle is the user's standing consent. Keep the explicit available phase for
+            // one render pass so Settings can explain what is happening, then use the same
+            // checksum, archive, bundle, and rollback gates as a manual install.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.automaticUpdatesEnabled else {
+                    if !userInitiated { await self.notifyAvailableUpdate(appcast) }
+                    return
+                }
+                await self.installPendingUpdate(automatically: true)
+            }
+        } else if !userInitiated {
+            await notifyAvailableUpdate(appcast)
         }
     }
 
@@ -259,19 +342,35 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     /// Downloads, verifies, and swaps in the pending update, then relaunches.
     /// Returns only on failure — on success the app terminates.
-    func installPendingUpdate() async {
+    func installPendingUpdate(automatically: Bool = false) async {
+        switch phase {
+        case .downloading, .installing:
+            return
+        default:
+            break
+        }
         guard let appcast = pending else { return }
 
         guard let url = URL(string: appcast.downloadURL), url.scheme == "https" else {
-            phase = .failed("The update link isn't a secure URL.")
+            let message = "The update link isn't a secure URL."
+            phase = .failed(message)
+            if automatically {
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: message)
+            }
             return
         }
 
-        // A manifest pointing at a release *page* rather than an archive can't be
-        // installed automatically; hand it to the browser instead of failing.
+        // A manifest pointing at a release *page* rather than an archive is still useful for a
+        // manual check, but automatic mode must not open a browser or treat it as an install.
         guard url.pathExtension.lowercased() == "zip" else {
-            NSWorkspace.shared.open(url)
-            phase = .idle
+            if automatically {
+                let message = "The available update is not a downloadable archive."
+                phase = .failed(message)
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: message)
+            } else {
+                NSWorkspace.shared.open(url)
+                phase = .idle
+            }
             return
         }
 
@@ -279,7 +378,11 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             // Moving a *running* bundle doesn't change Bundle.main.bundleURL, so telling the
             // user to move it and retry sends them into a loop that only quitting escapes.
             // Offer to do the move and relaunch instead.
-            phase = .failed("\(Constants.appName) can't update from here.")
+            let message = "\(Constants.appName) can't update from here."
+            phase = .failed(message)
+            if automatically {
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: message)
+            }
             InstallLocation.offerToInstallIfNeeded(force: true)
             return
         }
@@ -288,38 +391,83 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         // have: without a paid Developer ID certificate the new bundle carries
         // no signature we could validate against the running one.
         guard let expectedHash = appcast.sha256?.lowercased(), !expectedHash.isEmpty else {
-            phase = .failed("This update is missing its checksum, so it can't be verified.")
+            let message = "This update is missing its checksum, so it can't be verified."
+            phase = .failed(message)
+            if automatically {
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: message)
+            }
             return
         }
 
+        var installBreadcrumbWasSet = false
         do {
             phase = .downloading(progress: 0)
-            let archive = try await download(Self.trackedDownloadURL(url))
+            let download = try await download(Self.trackedDownloadURL(url))
+            var handedOffToHelper = false
+            defer {
+                if !handedOffToHelper {
+                    Self.cleanupUpdateWorkDirectory(download.workDirectory)
+                }
+            }
+
+            // Revoking automatic-update consent while the archive is in flight must stop before
+            // the verified bundle is staged or the running app is relaunched. A download already
+            // in progress is allowed to finish because DownloadTask has no destructive cancel
+            // path, but it is never installed after consent is withdrawn.
+            guard !automatically || automaticUpdatesEnabled else {
+                phase = .available(version: appcast.latestVersion, notes: appcast.releaseNotes)
+                await notifyAvailableUpdate(appcast)
+                return
+            }
 
             phase = .installing
-            try verify(archive, matches: expectedHash)
+            try verify(download.archive, matches: expectedHash)
 
-            let staged = try unpack(archive, expecting: appcast.latestVersion)
+            let staged = try unpack(download.archive, expecting: appcast.latestVersion)
 
-            // Leave a breadcrumb the relaunched copy reads on startup, so the update
-            // visibly lands instead of the app appearing to just close and reopen.
+            // Leave breadcrumbs the relaunched copy reads on startup, so the update visibly lands
+            // instead of the app appearing to just close and reopen. The health marker is unique
+            // to this work directory and is written only after the replacement reaches startup.
+            let healthMarker = download.workDirectory.appendingPathComponent("update-health")
+            try? FileManager.default.removeItem(at: healthMarker)
+            UserDefaults.standard.set(healthMarker.path, forKey: Self.updateHealthMarkerKey)
             UserDefaults.standard.set(appcast.latestVersion, forKey: Self.justUpdatedKey)
+            installBreadcrumbWasSet = true
 
-            try launchSwapHelper(replacing: Bundle.main.bundleURL, with: staged)
+            try launchSwapHelper(
+                replacing: Bundle.main.bundleURL,
+                with: staged,
+                workDirectory: download.workDirectory,
+                healthMarker: healthMarker
+            )
+            handedOffToHelper = true
 
             // The helper waits for this process to exit before swapping.
             NSApp.terminate(nil)
         } catch {
+            if installBreadcrumbWasSet {
+                UserDefaults.standard.removeObject(forKey: Self.justUpdatedKey)
+                UserDefaults.standard.removeObject(forKey: Self.updateHealthMarkerKey)
+            }
             phase = .failed(error.localizedDescription)
+            if automatically {
+                await notifyAutomaticInstallFailure(version: appcast.latestVersion, reason: error.localizedDescription)
+            }
         }
     }
 
-    private func download(_ url: URL) async throws -> URL {
-        let destination = try Self.makeWorkDirectory().appendingPathComponent("update.zip")
-        try await DownloadTask.run(url: url, to: destination) { [weak self] fraction in
-            Task { @MainActor in self?.phase = .downloading(progress: fraction) }
+    private func download(_ url: URL) async throws -> (archive: URL, workDirectory: URL) {
+        let workDirectory = try Self.makeWorkDirectory()
+        let destination = workDirectory.appendingPathComponent("update.zip")
+        do {
+            try await DownloadTask.run(url: url, to: destination) { [weak self] fraction in
+                Task { @MainActor in self?.phase = .downloading(progress: fraction) }
+            }
+            return (destination, workDirectory)
+        } catch {
+            Self.cleanupUpdateWorkDirectory(workDirectory)
+            throw error
         }
-        return destination
     }
 
     /// Forces every install attempt to begin at GitHub's release endpoint instead of reusing
@@ -386,8 +534,13 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     ///
     /// A process cannot reliably replace its own bundle while running, so the
     /// actual move happens in a shell script that waits for us to exit first.
-    private func launchSwapHelper(replacing destination: URL, with staged: URL) throws {
-        let workDir = staged.deletingLastPathComponent().deletingLastPathComponent()
+    private func launchSwapHelper(
+        replacing destination: URL,
+        with staged: URL,
+        workDirectory: URL,
+        healthMarker: URL
+    ) throws {
+        let workDir = workDirectory
         let scriptURL = workDir.appendingPathComponent("swap.sh")
         let backup = workDir.appendingPathComponent("previous.app")
 
@@ -400,28 +553,68 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         DEST="$3"
         BACKUP="$4"
         WORK="$5"
+        HEALTH="$6"
+
+        cleanup() {
+            rm -rf "$WORK"
+        }
+
+        restore_previous() {
+            rm -rf "$DEST"
+            if mv "$BACKUP" "$DEST"; then
+                /usr/bin/open "$DEST" >/dev/null 2>&1 || true
+            fi
+            cleanup
+        }
 
         # Wait for the old app to exit, but never hang forever.
         i=0
         while kill -0 "$PID" 2>/dev/null; do
             sleep 0.1
             i=$((i + 1))
-            if [ "$i" -gt 300 ]; then exit 1; fi
+            if [ "$i" -gt 300 ]; then
+                /usr/bin/open "$DEST" >/dev/null 2>&1 || true
+                cleanup
+                exit 1
+            fi
         done
 
-        rm -rf "$BACKUP"
-        mv "$DEST" "$BACKUP" || exit 1
+        if ! mv "$DEST" "$BACKUP"; then
+            /usr/bin/open "$DEST" >/dev/null 2>&1 || true
+            cleanup
+            exit 1
+        fi
 
         if ! /usr/bin/ditto "$NEW" "$DEST"; then
-            rm -rf "$DEST"
-            mv "$BACKUP" "$DEST"
+            restore_previous
             exit 1
         fi
 
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+
+        # Keep the rollback copy until the replacement has reached its own startup. `open`
+        # returning zero only means LaunchServices accepted the request; the health breadcrumb
+        # is written by the relaunched app after it has confirmed its bundle version.
+        if ! /usr/bin/open "$DEST" >/dev/null 2>&1; then
+            restore_previous
+            exit 1
+        fi
+
+        i=0
+        while [ ! -f "$HEALTH" ]; do
+            sleep 0.1
+            i=$((i + 1))
+            if [ "$i" -gt 300 ]; then
+                # The replacement never reached startup. Restore the known-good bundle and
+                # reopen it; the old process will surface the stale breadcrumb as a failure.
+                restore_previous
+                exit 1
+            fi
+        done
+
         rm -rf "$BACKUP"
-        /usr/bin/open "$DEST"
-        rm -rf "$WORK"
+        cleanup
+        exit 0
         """
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -435,9 +628,14 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             staged.path,
             destination.path,
             backup.path,
-            workDir.path
+            workDir.path,
+            healthMarker.path
         ]
         try process.run()
+    }
+
+    private static func cleanupUpdateWorkDirectory(_ directory: URL) {
+        try? FileManager.default.removeItem(at: directory)
     }
 
     // MARK: - Helpers
@@ -479,19 +677,73 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     // MARK: - Notifications
 
-    private func deliverAnnouncement(_ announcement: Appcast.Announcement) {
-        guard UserDefaults.standard.string(forKey: notifiedAnnouncementKey) != announcement.id else { return }
-        UserDefaults.standard.set(announcement.id, forKey: notifiedAnnouncementKey)
+    private func notifyAvailableUpdate(_ appcast: Appcast) async {
+        let identifier = "update-\(appcast.latestVersion)"
+        guard reserveNotification(identifier: identifier, key: notifiedVersionKey, value: appcast.latestVersion) else { return }
 
-        postNotification(
-            identifier: "announcement-\(announcement.id)",
+        let body = Self.updateNotificationBody(version: appcast.latestVersion, releaseNotes: appcast.releaseNotes)
+        let accepted = await postNotification(
+            identifier: identifier,
+            title: "\(Constants.appName) update available",
+            body: body
+        )
+        finishNotification(identifier: identifier, key: notifiedVersionKey, value: appcast.latestVersion, accepted: accepted)
+    }
+
+    static func updateNotificationBody(version: String, releaseNotes: String?) -> String {
+        let statement = releaseNotes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usefulStatement = statement.flatMap { $0.isEmpty ? nil : $0 }
+            ?? "This release includes the latest fixes and improvements."
+        return "Version \(version) is available. \(usefulStatement)"
+    }
+
+    private func notifyAutomaticInstallFailure(version: String, reason: String) async {
+        // A persistent bad release or an unwritable install location can survive many daily
+        // checks. Keep the failure visible in Settings, but do not turn that into a repeated
+        // notification for the same version.
+        let identifier = "update-failed-\(version)"
+        guard reserveNotification(identifier: identifier, key: automaticFailureNotifiedVersionKey, value: version) else { return }
+
+        let accepted = await postNotification(
+            identifier: identifier,
+            title: "\(Constants.appName) couldn't install the update",
+            body: "Version \(version) was found, but it could not be installed. \(reason)"
+        )
+        finishNotification(identifier: identifier, key: automaticFailureNotifiedVersionKey, value: version, accepted: accepted)
+    }
+
+    private func deliverAnnouncement(_ announcement: Appcast.Announcement) async {
+        let identifier = "announcement-\(announcement.id)"
+        guard reserveNotification(identifier: identifier, key: notifiedAnnouncementKey, value: announcement.id) else { return }
+
+        let accepted = await postNotification(
+            identifier: identifier,
             title: announcement.title,
             body: announcement.body,
             url: announcement.url.flatMap(URL.init(string:))
         )
+        finishNotification(identifier: identifier, key: notifiedAnnouncementKey, value: announcement.id, accepted: accepted)
     }
 
-    private func postNotification(identifier: String, title: String, body: String, url: URL? = nil) {
+    private func reserveNotification(identifier: String, key: String, value: String) -> Bool {
+        guard UserDefaults.standard.string(forKey: key) != value,
+              notificationRequestsInFlight.insert(identifier).inserted else { return false }
+        return true
+    }
+
+    private func finishNotification(identifier: String, key: String, value: String, accepted: Bool) {
+        notificationRequestsInFlight.remove(identifier)
+        if accepted {
+            UserDefaults.standard.set(value, forKey: key)
+        }
+    }
+
+    private func postNotification(identifier: String, title: String, body: String, url: URL? = nil) async -> Bool {
+        guard notificationsAvailable else { return false }
+        let center = UNUserNotificationCenter.current()
+        guard await ensureNotificationAuthorization(center) else { return false }
+
+        center.delegate = self
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -499,7 +751,28 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         if let url { content.userInfo = ["url": url.absoluteString] }
 
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        return await withCheckedContinuation { continuation in
+            center.add(request) { error in
+                continuation.resume(returning: error == nil)
+            }
+        }
+    }
+
+    private func ensureNotificationAuthorization(_ center: UNUserNotificationCenter) async -> Bool {
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                switch settings.authorizationStatus {
+                case .authorized, .provisional:
+                    continuation.resume(returning: true)
+                case .notDetermined:
+                    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
+                default:
+                    continuation.resume(returning: false)
+                }
+            }
+        }
     }
 
     /// Menu bar app is always "frontmost-less", but show the banner regardless.
@@ -525,16 +798,135 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     // MARK: - Version comparison
 
-    /// Numeric component-wise compare, so "2.0.10" correctly beats "2.0.9".
-    static func compare(_ lhs: String, isNewerThan rhs: String) -> Bool {
-        let a = lhs.split(separator: ".").map { Int($0) ?? 0 }
-        let b = rhs.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(a.count, b.count) {
-            let l = i < a.count ? a[i] : 0
-            let r = i < b.count ? b[i] : 0
-            if l != r { return l > r }
+    /// SemVer precedence, matching the release workflow: numeric core components, prerelease
+    /// identifiers (numeric identifiers sort before text), and stable releases above prereleases.
+    /// Build metadata is accepted but intentionally ignored for precedence.
+    private struct SemanticVersion {
+        private enum Identifier {
+            case numeric(String)
+            case text(String)
         }
-        return false
+
+        private let major: String
+        private let minor: String
+        private let patch: String
+        private let prerelease: [Identifier]
+
+        init?(_ raw: String) {
+            let buildParts = raw.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)
+            guard buildParts.count <= 2 else { return nil }
+
+            if buildParts.count == 2 {
+                let build = String(buildParts[1])
+                guard !build.isEmpty,
+                      build.split(separator: ".", omittingEmptySubsequences: false)
+                        .allSatisfy({ Self.isIdentifier(String($0)) }) else {
+                    return nil
+                }
+            }
+
+            let releaseParts = buildParts[0].split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+            guard releaseParts.count <= 2 else { return nil }
+
+            let core = releaseParts[0].split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+            guard core.count == 3,
+                  core.allSatisfy(Self.isCoreNumber) else {
+                return nil
+            }
+
+            major = core[0]
+            minor = core[1]
+            patch = core[2]
+
+            guard releaseParts.count == 2 else {
+                prerelease = []
+                return
+            }
+
+            let rawIdentifiers = releaseParts[1].split(separator: ".", omittingEmptySubsequences: false)
+            guard !rawIdentifiers.isEmpty else { return nil }
+
+            var parsed: [Identifier] = []
+            for rawIdentifier in rawIdentifiers {
+                let identifier = String(rawIdentifier)
+                guard Self.isIdentifier(identifier) else { return nil }
+
+                if Self.isDigits(identifier) {
+                    // Numeric prerelease identifiers must not contain leading zeroes in SemVer.
+                    guard identifier.count == 1 || !identifier.hasPrefix("0") else { return nil }
+                    parsed.append(.numeric(identifier))
+                } else {
+                    parsed.append(.text(identifier))
+                }
+            }
+            prerelease = parsed
+        }
+
+        private static func isDigits(_ value: String) -> Bool {
+            !value.isEmpty && value.unicodeScalars.allSatisfy { scalar in
+                (48...57).contains(scalar.value)
+            }
+        }
+
+        private static func isCoreNumber(_ value: String) -> Bool {
+            isDigits(value) && (value.count == 1 || !value.hasPrefix("0"))
+        }
+
+        private static func isIdentifier(_ value: String) -> Bool {
+            !value.isEmpty && value.unicodeScalars.allSatisfy { scalar in
+                switch scalar.value {
+                case 45, 48...57, 65...90, 97...122: return true
+                default: return false
+                }
+            }
+        }
+
+        private static func numericComparison(_ lhs: String, _ rhs: String) -> Int {
+            if lhs.count != rhs.count { return lhs.count < rhs.count ? -1 : 1 }
+            if lhs == rhs { return 0 }
+            return lhs < rhs ? -1 : 1
+        }
+
+        private static func identifierComparison(_ lhs: Identifier, _ rhs: Identifier) -> Int {
+            switch (lhs, rhs) {
+            case let (.numeric(left), .numeric(right)):
+                return numericComparison(left, right)
+            case (.numeric, .text):
+                return -1
+            case (.text, .numeric):
+                return 1
+            case let (.text(left), .text(right)):
+                if left == right { return 0 }
+                return left < right ? -1 : 1
+            }
+        }
+
+        func comparison(to other: SemanticVersion) -> Int {
+            for (left, right) in [(major, other.major), (minor, other.minor), (patch, other.patch)] {
+                let result = Self.numericComparison(left, right)
+                if result != 0 { return result }
+            }
+
+            if prerelease.isEmpty && other.prerelease.isEmpty { return 0 }
+            if prerelease.isEmpty { return 1 }
+            if other.prerelease.isEmpty { return -1 }
+
+            for (left, right) in zip(prerelease, other.prerelease) {
+                let result = Self.identifierComparison(left, right)
+                if result != 0 { return result }
+            }
+            if prerelease.count == other.prerelease.count { return 0 }
+            return prerelease.count < other.prerelease.count ? -1 : 1
+        }
+    }
+
+    static func isValidVersion(_ version: String) -> Bool {
+        SemanticVersion(version) != nil
+    }
+
+    static func compare(_ lhs: String, isNewerThan rhs: String) -> Bool {
+        guard let left = SemanticVersion(lhs), let right = SemanticVersion(rhs) else { return false }
+        return left.comparison(to: right) > 0
     }
 
     /// Whether the running OS satisfies a "14.0"-style minimum.

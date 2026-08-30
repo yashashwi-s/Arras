@@ -17,6 +17,18 @@ enum UpdateCheckPhrasing {
     }
 }
 
+/// Readable, testable wording for an available update. Keep the release statement in the same
+/// status line as the version so Settings exposes useful context to VoiceOver as one value.
+enum UpdateStatusPhrasing {
+    static func availableUpdate(version: String, notes: String?, currentVersion: String) -> String {
+        let prefix = "Version \(version) is available. You have \(currentVersion)."
+        guard let notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty else {
+            return prefix
+        }
+        return "\(prefix) \(notes)"
+    }
+}
+
 /// The one control that both checks for updates and installs one.
 ///
 /// There used to be a separate card that slid in above the footer when an update was waiting.
@@ -85,19 +97,30 @@ struct UpdateStatusLine: View {
             .font(.system(size: 10))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(text)
     }
 
     private var text: String {
         switch updater.phase {
-        case .available(let version, _):
-            return "Version \(version) is available. You have \(Constants.version)."
+        case .available(let version, let notes):
+            return UpdateStatusPhrasing.availableUpdate(
+                version: version,
+                notes: notes,
+                currentVersion: Constants.version
+            )
         case .installed(let version):
             return "Updated to \(version)."
         case .failed(let reason):
             return reason
         case .upToDate:
             return "\(Constants.appName) is up to date."
-        case .idle, .checking, .downloading, .installing:
+        case .checking:
+            return "Checking for updates…"
+        case .downloading(let progress):
+            return "Downloading verified update (\(Int(progress * 100))%)…"
+        case .installing:
+            return "Installing verified update…"
+        case .idle:
             return UpdateCheckPhrasing.lastChecked(updater.lastChecked)
         }
     }

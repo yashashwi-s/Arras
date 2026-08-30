@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: arras-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -28,11 +32,17 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
+      - name: Verify Generated Project Is Current
+        run: git diff --exit-code -- Arras.xcodeproj
+
       - name: Verify Tag and Test
         run: |
           set -euo pipefail
           VERSION="$(xcodebuild -project Arras.xcodeproj -scheme Arras -showBuildSettings | awk '/MARKETING_VERSION/ { print $3; exit }')"
           test "v${VERSION}" = "$GITHUB_REF_NAME"
+          python3 scripts/validate_release_notes.py \
+            --version "$VERSION" \
+            --all
           xcodebuild \
             -project Arras.xcodeproj \
             -scheme Arras \
@@ -87,49 +97,125 @@ jobs:
             -ov -format UDZO \
             build/Release/Arras.dmg
 
+      - name: Prepare GitHub Release Body
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 scripts/validate_release_notes.py \
+            --version "$VERSION" \
+            --print-markdown > release-body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Arras ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          body_path: release-body.md
+          generate_release_notes: false
           files: |
             build/Release/Arras.app.zip
             build/Release/Arras.dmg
 
       # The checksum must come from the artifact this job just uploaded, never
-      # from a local build.
-      #
-      # This workflow rebuilds the app on its own runner and overwrites whatever
-      # was attached to the release, so a checksum computed on a developer's Mac
-      # describes a different binary. The in-app updater refuses any download
-      # that doesn't match, which silently broke every update until the appcast
-      # was stamped here instead.
+      # from a local build. The appcast update is made in a temporary worktree
+      # based on origin/main so generated-project changes in this checkout can
+      # never be accidentally committed or collide with the appcast commit.
       - name: Stamp appcast with the published checksum
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA=$(shasum -a 256 build/Release/Arras.app.zip | cut -d' ' -f1)
+          SHA="$(shasum -a 256 build/Release/Arras.app.zip | awk '{print $1}')"
           echo "Publishing $VERSION with sha256 $SHA"
 
-          git fetch origin main
-          git checkout main
+          NOTES_FILE="${RUNNER_TEMP}/arras-release-notes-${VERSION}.json"
+          python3 scripts/validate_release_notes.py \
+            --version "$VERSION" \
+            --print-json > "$NOTES_FILE"
 
-          python3 - "$VERSION" "$SHA" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" <<'PY'
-          import json, pathlib, sys
-          version, sha, tag, repo = sys.argv[1:5]
-          path = pathlib.Path("appcast.json")
-          data = json.loads(path.read_text())
+          # The workflow-level concurrency group serializes release jobs. Each
+          # attempt fetches main and creates a fresh isolated worktree, so this
+          # detached tag checkout stays untouched and a normal main commit can
+          # never be overwritten by a dirty-checkout push. If main moves during
+          # the push, regenerate from its new tip rather than force-pushing.
+          cleanup_worktree() {
+            if [ -n "${APPCAST_WORKTREE:-}" ]; then
+              git worktree remove --force "$APPCAST_WORKTREE" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup_worktree EXIT
+
+          for attempt in 1 2 3; do
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            APPCAST_WORKTREE="${RUNNER_TEMP}/arras-appcast-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            git worktree add --detach "$APPCAST_WORKTREE" origin/main
+
+            python3 - "$APPCAST_WORKTREE" "$VERSION" "$SHA" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$NOTES_FILE" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          worktree, version, sha, tag, repo, notes_path = sys.argv[1:7]
+          path = pathlib.Path(worktree) / "appcast.json"
+          data = json.loads(path.read_text(encoding="utf-8"))
+          notes = json.loads(pathlib.Path(notes_path).read_text(encoding="utf-8"))
+
+          semver = re.compile(
+              r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
+          )
+
+          def version_key(raw):
+              match = semver.fullmatch(raw)
+              if match is None:
+                  raise SystemExit(f"appcast version is not comparable: {raw!r}")
+              numbers = tuple(int(match.group(index)) for index in range(1, 4))
+              prerelease = match.group(4)
+              if prerelease is None:
+                  return numbers + (1, ())
+              identifiers = []
+              for identifier in prerelease.split("."):
+                  if not identifier:
+                      raise SystemExit(f"appcast version has an empty prerelease identifier: {raw!r}")
+                  if identifier.isdigit():
+                      identifiers.append((0, int(identifier)))
+                  else:
+                      identifiers.append((1, identifier))
+              return numbers + (0, tuple(identifiers))
+
+          current_version = data.get("latestVersion")
+          if not isinstance(current_version, str) or not current_version.strip():
+              raise SystemExit("appcast.json has no valid latestVersion")
+          if version_key(current_version) > version_key(version):
+              raise SystemExit(
+                  f"refusing to downgrade appcast from {current_version} to {version}"
+              )
+
           data["latestVersion"] = version
           data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Arras.app.zip?source=arras-updater&version={version}"
           data["sha256"] = sha
-          # releaseNotes is written by a human before tagging; leave it alone.
-          path.write_text(json.dumps(data, indent=2) + "\n")
+          data["releaseNotes"] = f"{notes['title']}: {notes['summary']}"
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
           PY
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appcast.json
-          git diff --staged --quiet || git commit -m "chore: appcast checksum for ${GITHUB_REF_NAME} [skip ci]"
-          git push origin main
+            git -C "$APPCAST_WORKTREE" config user.name "github-actions[bot]"
+            git -C "$APPCAST_WORKTREE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$APPCAST_WORKTREE" add appcast.json
+            if git -C "$APPCAST_WORKTREE" diff --cached --quiet; then
+              echo "appcast.json already contains the published state for $VERSION"
+              git worktree remove --force "$APPCAST_WORKTREE"
+              exit 0
+            fi
+
+            git -C "$APPCAST_WORKTREE" commit -m "chore: appcast checksum for ${GITHUB_REF_NAME} [skip ci]"
+            if git -C "$APPCAST_WORKTREE" push origin HEAD:refs/heads/main; then
+              git worktree remove --force "$APPCAST_WORKTREE"
+              exit 0
+            fi
+
+            echo "main moved during appcast push; retrying isolated update (attempt ${attempt}/3)"
+            git worktree remove --force "$APPCAST_WORKTREE"
+          done
+
+          echo "unable to publish appcast after three race-safe attempts" >&2
+          exit 1

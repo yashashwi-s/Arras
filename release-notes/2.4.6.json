@@ -1,0 +1,11 @@
+{
+  "version": "2.4.6",
+  "title": "Recovery and updates",
+  "summary": "Daily verified automatic updates, clearer layout recovery, durable Space-image replacement, and safer persistence make Arras easier to trust.",
+  "details": [
+    "Recent Layout History is now clearly separated from portable .arras backups and explains exactly what restoring will replace.",
+    "Per-photo schedules support weekday, daytime, and overnight windows with a useful summary in each photo row.",
+    "Space-image replacement, archive import, revision retention, and persistence failures now follow one durable model path.",
+    "Every release must provide deliberate human-authored notes that CI uses for both the GitHub release and updater message."
+  ]
+}

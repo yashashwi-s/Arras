@@ -20,6 +20,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the first frame rather than appearing a moment later.
         AppActivation.shared.apply()
 
+        // Let the swap helper know that this bundle reached its own startup before any update
+        // UI or network work can delay it. A matching version is required by the helper's health
+        // breadcrumb, so a rollback cannot accidentally acknowledge the replacement.
+        Updater.markUpdateHealthyIfNeeded()
+
         // Before anything else can fail because of it: an app run from a disk image cannot
         // replace itself, and discovering that at update time is a dead end.
         if !isUITesting {
@@ -30,23 +35,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupGlobalHotKey()
         setupPasteMonitor()
 
-        // Asks for notification permission, then polls the appcast on launch and
-        // weekly, so updates and announcements reach existing users.
-        if !isUITesting {
-            Updater.shared.start()
-        }
-
-        // Show settings after an update landed, so the new version is visible rather
+        // Show settings after an update attempt, so success or rollback is visible rather
         // than the app appearing to have closed and reopened for no reason.
         if isUITesting {
             showSettingsWindow()
         } else if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
+            // The swap helper is launched before this process exits, so a failed helper can
+            // leave the breadcrumb behind while the old bundle is opened again. Consume it in
+            // both cases and let Updater distinguish a real install from a rollback.
             UserDefaults.standard.removeObject(forKey: Updater.justUpdatedKey)
+            UserDefaults.standard.removeObject(forKey: Updater.updateHealthMarkerKey)
             showSettingsWindow()
-            Updater.shared.announceInstalled(version: installed)
+            Updater.shared.announceInstallResult(expectedVersion: installed)
         } else if manager.photos.isEmpty {
             // First launch — there is nothing on the desktop yet to explain the app.
             showSettingsWindow()
+        }
+
+        // Polls the appcast on launch and at the configured cadence (daily for automatic
+        // installs). Notification permission is requested only if a notification is needed.
+        if !isUITesting {
+            Updater.shared.start()
         }
     }
 
@@ -123,6 +132,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let wordmarkID = NSUserInterfaceItemIdentifier("ArrasWordmark")
 
     // MARK: - Status Item (Menu Bar Icon)
+
+    /// Applies the persisted menu-bar icon choice to the live status item and refreshes its
+    /// menu. Importing settings writes UserDefaults through PhotoManager, but AppDelegate owns
+    /// the AppKit status item, so the UI callback must bridge the persisted choice to the live
+    /// object instead of merely rebuilding a possibly hidden menu.
+    func syncStatusItemVisibility() {
+        if UserDefaults.standard.bool(forKey: "hideMenuBarIcon") {
+            hideStatusItem()
+        } else {
+            showStatusItem()
+            rebuildMenu()
+        }
+    }
 
     func setupStatusItem() {
         guard UserDefaults.standard.object(forKey: "hideMenuBarIcon") == nil ||
@@ -347,13 +369,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 renameItem.tag = index
                 submenu.addItem(renameItem)
 
-                // Replace (only for single images)
-                if item.spaceImageFilenames.isEmpty {
-                    let replaceItem = NSMenuItem(title: "Replace Image…", action: #selector(replacePhoto(_:)), keyEquivalent: "")
-                    replaceItem.target = self
-                    replaceItem.tag = index
-                    submenu.addItem(replaceItem)
-                }
+                // Replace the primary image, or the currently selected slot in a Space. The
+                // manager owns the durable slot update; keeping this in the status menu makes
+                // replacement reachable even when a widget is hidden or its Settings row is
+                // collapsed.
+                let replaceTitle = item.spaceImageFilenames.isEmpty
+                    ? "Replace Image…"
+                    : "Replace Current Space Image…"
+                let replaceItem = NSMenuItem(title: replaceTitle, action: #selector(replacePhoto(_:)), keyEquivalent: "")
+                replaceItem.target = self
+                replaceItem.tag = index
+                submenu.addItem(replaceItem)
 
                 // Duplicate
                 let dupItem = NSMenuItem(title: "Duplicate", action: #selector(duplicatePhoto(_:)), keyEquivalent: "")
@@ -512,7 +538,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let contentView = MainWindowView(manager: manager, onMenuUpdate: { [weak self] in
-            self?.rebuildMenu()
+            self?.syncStatusItemVisibility()
         })
 
         let window = NSWindow(
@@ -523,7 +549,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         window.title = Constants.appName
         window.center()
-        window.minSize = NSSize(width: 420, height: 400)
+        window.minSize = NSSize(width: Constants.settingsMinimumWidth, height: Constants.settingsMinimumHeight)
         window.contentView = NSHostingView(rootView: contentView)
         Self.configureSettingsWindow(window)
         Self.installWordmark(in: window)
@@ -601,13 +627,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard index < manager.photos.count else { return }
 
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, .png, .jpeg, .heic, .tiff]
+        panel.allowedContentTypes = PhotoManager.importableTypes
         panel.allowsMultipleSelection = false
         panel.prompt = "Replace"
         NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK, let url = panel.url, let img = NSImage(contentsOf: url) {
-            manager.replacePhoto(manager.photos[index].id, with: img)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let img = NSImage(contentsOf: url) else {
+            manager.recordMediaImportFailure("The replacement image could not be decoded.")
+            return
         }
+        manager.replacePhoto(manager.photos[index].id, with: img)
     }
 
     @objc func duplicatePhoto(_ sender: NSMenuItem) {

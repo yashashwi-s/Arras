@@ -30,6 +30,7 @@ struct PreferencesView: View {
                 shortcut
                 menuBarSection
                 updates
+                layoutRecovery
                 backup
             }
             .padding(16)
@@ -113,6 +114,18 @@ struct PreferencesView: View {
 
     private var updates: some View {
         section("UPDATES") {
+            Toggle("Automatically install verified updates", isOn: Binding(
+                get: { updater.automaticUpdatesEnabled },
+                set: { updater.automaticUpdatesEnabled = $0 }
+            ))
+            .accessibilityHint("When enabled, checks daily and installs updates after checksum and app-bundle validation. When disabled, checks on the selected schedule and notifies you when a new version is found.")
+
+            caption(updater.automaticUpdatesEnabled
+                ? "Checks daily and installs verified updates automatically."
+                : updater.checkFrequency == .never
+                    ? "Automatic checking is off. Use Check Now to look for updates."
+                    : "Checks \(updater.checkFrequency.label.lowercased()) and notifies you when a newer version is found.")
+
             HStack(spacing: 8) {
                 Picker("Check for updates", selection: Binding(
                     get: { updater.checkFrequency },
@@ -124,6 +137,8 @@ struct PreferencesView: View {
                 }
                 .pickerStyle(.menu)
                 .fixedSize()
+                .disabled(updater.automaticUpdatesEnabled)
+                .accessibilityHint("Used when automatic installation is disabled")
 
                 UpdateActionButton()
 
@@ -131,6 +146,15 @@ struct PreferencesView: View {
             }
 
             UpdateStatusLine()
+        }
+    }
+
+    // MARK: - Local recovery
+
+    private var layoutRecovery: some View {
+        section("RECENT LAYOUT HISTORY") {
+            caption("Arras keeps up to five earlier versions of your widgets automatically. Use this only to undo an unwanted layout change; it stays on this Mac and is not a portable backup.")
+            PersistenceStatusView(manager: manager, showFailures: false, showRecoveryWhenHealthy: true)
         }
     }
 
@@ -144,16 +168,16 @@ struct PreferencesView: View {
     /// at all, and silently wrote five of them. People looking for the checkbox looked at the
     /// button that says Settings and did not find it.
     private var backup: some View {
-        section("BACKUP & TRANSFER") {
-            caption("Save your widgets and settings to a single file, or restore them on another Mac.")
+        section("PORTABLE BACKUP") {
+            caption("Export creates one .arras file containing your widgets and their stored images. Import that file to restore them here or move them to another Mac.")
 
             Toggle("Include app settings when exporting", isOn: $includeSettingsInBackup)
-                .accessibilityHint("Adds your login item, global shortcut, menu bar choices, update frequency and privacy switches to the backup file")
+                .accessibilityHint("Adds your login item, global shortcut, menu bar choices, update behavior and privacy switches to the backup file")
 
             Toggle("Apply app settings when importing", isOn: $applySettingsOnImport)
                 .accessibilityHint("Lets an imported backup change this Mac's settings. Off by default, so a shared layout can never rebind your shortcut")
 
-            caption("Both are off by default: a backup you share shouldn't carry your login item or rebind someone else's global shortcut.")
+            caption("App settings are optional and off by default, so a shared backup cannot carry your login item or rebind someone else's shortcut.")
 
             HStack(spacing: 8) {
                 Button("Export Backup…") { exportBackup() }
@@ -233,6 +257,7 @@ struct PreferencesView: View {
             if applySettingsOnImport, let preferences = manifest?.preferences {
                 manager.applyImportedPreferences(preferences)
                 snapEnabled = SnapEngine.shared.isEnabled
+                snapOtherApps = SnapEngine.shared.includesOtherApps
             }
             onMenuUpdate?()
             if count == 0 {

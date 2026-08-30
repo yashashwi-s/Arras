@@ -110,6 +110,7 @@ struct ExportedPreferences: Codable {
 
     // Updates
     var updateCheckFrequency: TimeInterval?
+    var automaticUpdatesEnabled: Bool?
 
     // Privacy
     var excludeFromScreenCapture: Bool?
@@ -128,7 +129,7 @@ struct ExportedPreferences: Codable {
             case .general: return "General (login, snapping, menu bar icon)"
             case .shortcut: return "Global shortcut"
             case .menuBar: return "Menu bar commands"
-            case .updates: return "Update checking"
+            case .updates: return "Update behavior"
             case .privacy: return "Privacy"
             }
         }
@@ -138,7 +139,7 @@ struct ExportedPreferences: Codable {
     ///
     /// The old version of this exported five settings out of roughly seventeen and said
     /// nothing about the omission, so restoring on a new Mac quietly lost the update
-    /// frequency, every menu bar toggle and all three privacy switches.
+    /// frequency, automatic-install choice, every menu bar toggle and all three privacy switches.
     @MainActor
     static func current(launchAtLogin: Bool, groups: Set<Group> = Set(Group.allCases)) -> ExportedPreferences {
         var prefs = ExportedPreferences()
@@ -162,6 +163,7 @@ struct ExportedPreferences: Codable {
         }
         if groups.contains(.updates) {
             prefs.updateCheckFrequency = Updater.shared.checkFrequency.rawValue
+            prefs.automaticUpdatesEnabled = Updater.shared.automaticUpdatesEnabled
         }
         if groups.contains(.privacy) {
             prefs.excludeFromScreenCapture = UserDefaults.standard.bool(forKey: "presence.excludeFromScreenCapture")
@@ -177,7 +179,7 @@ struct ExportedPreferences: Codable {
         if launchAtLogin != nil || snapToEdgesEnabled != nil || hideMenuBarIcon != nil { found.insert(.general) }
         if globalHotKeyEnabled != nil || globalHotKeyShortcut != nil { found.insert(.shortcut) }
         if menuBarItems != nil { found.insert(.menuBar) }
-        if updateCheckFrequency != nil { found.insert(.updates) }
+        if updateCheckFrequency != nil || automaticUpdatesEnabled != nil { found.insert(.updates) }
         if excludeFromScreenCapture != nil || autoHideForConferencingApps != nil || hideWhenFullscreenActive != nil {
             found.insert(.privacy)
         }
@@ -191,16 +193,19 @@ struct ExportedPreferences: Codable {
     }
 }
 
-enum LayoutArchiveError: LocalizedError {
+enum LayoutArchiveError: LocalizedError, Equatable {
     case notAZipFile
     case missingManifest
     case emptyLayout
+    case missingStoredMedia(String)
 
     var errorDescription: String? {
         switch self {
         case .notAZipFile: return "That file isn't a valid .tableau bundle."
         case .missingManifest: return "That bundle is missing its layout data."
         case .emptyLayout: return "There are no photos to export."
+        case .missingStoredMedia(let filename):
+            return "The stored image \(filename) could not be included in the layout bundle."
         }
     }
 }
@@ -226,7 +231,9 @@ extension PhotoManager {
             for name in referencedFilenames(of: item) where !writtenImages.contains(name) {
                 writtenImages.insert(name)
                 let source = storageDir.appendingPathComponent(name)
-                guard let data = try? Data(contentsOf: source) else { continue }
+                guard !name.isEmpty, let data = try? Data(contentsOf: source) else {
+                    throw LayoutArchiveError.missingStoredMedia(name)
+                }
                 writer.addEntry(name: "images/\(name)", data: data)
             }
         }
@@ -267,15 +274,16 @@ extension PhotoManager {
         try writer.write(to: url)
     }
 
-    /// Imports a `.tableau` bundle. In `.replace` mode the current layout is removed
-    /// first (windows closed, files deleted) — callers must confirm this with the user,
-    /// since it can't be undone. In `.merge` mode imported photos are simply appended.
+    /// Imports a `.tableau` bundle. In `.replace` mode the current layout is replaced in one
+    /// durable model commit after every imported media payload has been staged and decoded —
+    /// callers must still confirm this with the user, since a successful replacement can't be
+    /// undone. In `.merge` mode imported photos are appended in the same single commit.
     ///
     /// Every imported item gets a fresh id and fresh image filenames (via
     /// `PhotoItem(filename:)`) so importing the same bundle twice — or into a Mac that
-    /// already has some of these photos — never collides. Entries whose image data is
-    /// missing from the bundle are skipped rather than creating an empty widget, and any
-    /// saved frame that would land completely off every connected screen is recentered
+    /// already has some of these photos — never collides. Entries whose image data is missing
+    /// from the bundle or cannot be decoded are skipped rather than creating an empty widget,
+    /// and any saved frame that would land completely off every connected screen is recentered
     /// onto the main screen instead of appearing there.
     @discardableResult
     func importLayout(from url: URL, mode: LayoutImportMode) throws -> Int {
@@ -295,10 +303,25 @@ extension PhotoManager {
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         var preparedItems: [PhotoItem] = []
         var stagedURLs: [URL] = []
+        var skippedItems = 0
+        var didCommit = false
+        defer {
+            // A staged file is not a library file until the corresponding model commit is
+            // durable. This covers malformed payloads, disk errors, and a failed photos.json
+            // write without deleting any media referenced by the pre-import layout.
+            if !didCommit {
+                for stagedURL in stagedURLs {
+                    try? FileManager.default.removeItem(at: stagedURL)
+                }
+            }
+        }
 
         for sourceItem in manifest.photos {
             let names = referencedFilenames(of: sourceItem)
-            guard !names.isEmpty else { continue }
+            guard !names.isEmpty else {
+                skippedItems += 1
+                continue
+            }
 
             var payloads: [String: Data] = [:]
             var allPresent = true
@@ -309,7 +332,10 @@ extension PhotoManager {
                 }
                 payloads[name] = payload
             }
-            guard allPresent else { continue }   // skip rather than create an empty widget
+            guard allPresent else {
+                skippedItems += 1
+                continue
+            }   // skip rather than create an empty widget
 
             var filenameMap: [String: String] = [:]
             for name in names {
@@ -321,18 +347,28 @@ extension PhotoManager {
                 let ext = (name as NSString).pathExtension
                 filenameMap[name] = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
             }
+            var itemStagedURLs: [URL] = []
             for (oldName, newName) in filenameMap {
-                guard let payload = payloads[oldName] else { continue }
-                let destination = storageDir.appendingPathComponent(newName)
-                do {
-                    try payload.write(to: destination, options: .atomic)
-                    stagedURLs.append(destination)
-                } catch {
-                    for stagedURL in stagedURLs {
-                        try? FileManager.default.removeItem(at: stagedURL)
-                    }
-                    throw error
+                guard let payload = payloads[oldName] else {
+                    throw LayoutArchiveError.missingStoredMedia(oldName)
                 }
+                let destination = storageDir.appendingPathComponent(newName)
+                try payload.write(to: destination, options: .atomic)
+                stagedURLs.append(destination)
+                itemStagedURLs.append(destination)
+            }
+
+            // Presence in the ZIP is not enough: an archive can contain truncated bytes or a
+            // payload whose extension lies about its format. Decode every staged file through
+            // the same PhotoContent path used to create desktop windows before preparing the
+            // model item. Invalid items retain the old skip-and-report behavior.
+            guard itemStagedURLs.allSatisfy({ PhotoContent.load(from: $0) != nil }) else {
+                for stagedURL in itemStagedURLs {
+                    try? FileManager.default.removeItem(at: stagedURL)
+                }
+                stagedURLs.removeAll { itemStagedURLs.contains($0) }
+                skippedItems += 1
+                continue
             }
 
             var newItem = remapped(sourceItem, filenameMap: filenameMap)
@@ -375,15 +411,17 @@ extension PhotoManager {
             preparedItems.append(newItem)
         }
 
+        if skippedItems > 0 {
+            recordMediaImportFailure(
+                "\(skippedItems) widget\(skippedItems == 1 ? "" : "s") in the backup had missing or undecodable media and was skipped."
+            )
+        }
+
         // A damaged or empty backup must never erase a working layout. All archive data is
         // validated and staged before a replacement becomes destructive.
         guard !preparedItems.isEmpty else { return 0 }
-        if mode == .replace {
-            removeAllPhotos()
-        }
-        for item in preparedItems {
-            addImportedItem(item)
-        }
+        guard commitImportedItems(preparedItems, replacing: mode == .replace) else { return 0 }
+        didCommit = true
 
         return preparedItems.count
     }
@@ -413,6 +451,9 @@ extension PhotoManager {
         if let frequency = preferences.updateCheckFrequency,
            let parsed = Updater.CheckFrequency(rawValue: frequency) {
             Updater.shared.checkFrequency = parsed
+        }
+        if let automatic = preferences.automaticUpdatesEnabled {
+            Updater.shared.automaticUpdatesEnabled = automatic
         }
         if let value = preferences.excludeFromScreenCapture {
             setExcludeFromScreenCapture(value)
@@ -470,6 +511,7 @@ extension PhotoManager {
         item.isVisible = source.isVisible
         item.isFloating = source.isFloating
         item.depth = source.depth
+        item.stackOrder = source.stackOrder
         item.opacity = source.opacity
         item.customName = source.customName
         item.cornerRadius = source.cornerRadius
@@ -479,6 +521,18 @@ extension PhotoManager {
         item.borderWidth = source.borderWidth
         item.borderColorHex = source.borderColorHex
         item.vignetteEnabled = source.vignetteEnabled
+
+        // v2.1 appearance is portable user intent. Keep every field, including the optional
+        // named preset, so an imported frame looks exactly like the one that was exported.
+        item.matWidth = source.matWidth
+        item.matColorHex = source.matColorHex
+        item.shapeMask = source.shapeMask
+        item.borderStyle = source.borderStyle
+        item.borderGradientEnabled = source.borderGradientEnabled
+        item.borderGradientColorHex = source.borderGradientColorHex
+        item.tiltDegrees = source.tiltDegrees
+        item.stylePreset = source.stylePreset
+
         item.spaceImageFilenames = source.spaceImageFilenames.map { filenameMap[$0] ?? $0 }
         item.folderSizeMode = source.folderSizeMode
         item.rotationInterval = source.rotationInterval
@@ -494,6 +548,10 @@ extension PhotoManager {
         // Portable per-photo preferences: these describe intent, not hardware, so they
         // travel.
         item.isSpaceBound = source.isSpaceBound
+        item.scheduleEnabled = source.scheduleEnabled
+        item.scheduleStartMinutes = source.scheduleStartMinutes
+        item.scheduleEndMinutes = source.scheduleEndMinutes
+        item.scheduleWeekdays = source.scheduleWeekdays
 
         // Display bindings deliberately do NOT travel.
         //

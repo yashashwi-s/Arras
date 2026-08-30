@@ -25,6 +25,9 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
+      - name: Verify Generated Project Is Current
+        run: git diff --exit-code -- Arras.xcodeproj
+
       - name: Validate Documentation
         run: |
           set -euo pipefail
@@ -36,6 +39,11 @@ jobs:
           test -f FEATURES.md
           test -f ARCHITECTURE.md
           test -f CHANGELOG.md
+          test -f scripts/validate_release_notes.py
+          PROJECT_VERSION="$(awk '/MARKETING_VERSION:/ { print $2; exit }' project.yml)"
+          python3 scripts/validate_release_notes.py \
+            --version "$PROJECT_VERSION" \
+            --all
 
       - name: Test
         run: |

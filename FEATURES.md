@@ -1,8 +1,8 @@
 # Arras feature contract
 
-Status: active. Version 2.4.5 is the current public build. This document records
-what users can reach today, the limits attached to those features, and the next
-work in priority order. It is not a dump of every idea the project has had.
+Status: active for version 2.4.6. This document records reachable behavior, its
+limits, and the next work in priority order. It is not a dump of every idea the
+project has had.
 
 ## Locked product essentials
 
@@ -82,6 +82,13 @@ work in priority order. It is not a dump of every idea the project has had.
   show/hide shortcut that requires no Accessibility permission.
 - Seven App Intents cover add, global visibility, named visibility, opacity,
   and Space navigation.
+- Verified automatic updates default on and check daily. Turning them off
+  preserves a separately configurable background-check cadence that defaults to
+  daily; a newly available version then produces one macOS notification with
+  its version and deliberate release summary.
+- Check Now remains available regardless of background policy. Automatic
+  installation uses the same HTTPS, checksum, archive, bundle-identity,
+  advertised-version, and rollback gates as a manual install.
 
 ### Privacy and presence
 
@@ -93,6 +100,8 @@ work in priority order. It is not a dump of every idea the project has had.
   rotation work.
 - Scheduling engine handles weekdays, daytime windows, overnight windows, and
   next-boundary calculation.
+- Each photo has a Settings editor for enabling its schedule, choosing weekdays,
+  and setting local start/end times; collapsed rows summarize the active window.
 
 ### Portability and persistence
 
@@ -104,6 +113,16 @@ work in priority order. It is not a dump of every idea the project has had.
   display bindings are intentionally discarded.
 - `photos.json` is atomically written and older model versions decode through
   explicit defaults.
+- Five valid predecessor revisions provide explicit local recovery. Corrupt
+  state is preserved separately and blocks later writes until the user restores
+  a valid revision.
+- Media referenced by the current layout or a retained revision is protected
+  from cleanup. Archive replacement commits its whole model only after every
+  staged image decodes and the new JSON can be saved.
+- Replacing the current image in a Space updates that persisted slot, carries
+  its saved frame metadata forward, and survives hidden widgets and relaunch.
+- Load, save, and media-import failures remain visible in Settings rather than
+  disappearing into console output.
 - Remove All requires confirmation.
 
 ### Accessibility and quality
@@ -114,7 +133,8 @@ work in priority order. It is not a dump of every idea the project has had.
   and Settings-window configuration.
 - Persistence integration tests use isolated storage and cover relaunch,
   archive round-trip, and damaged replacement behavior.
-- A launched-app UI test visits every Settings tab and asserts one window.
+- Launched-app UI tests visit every Settings tab, exercise schedule and Frame
+  controls, and cover destructive confirmations in one Settings window.
 - CI runs tests and a Release build against the macOS 27 SDK.
 
 ## Known limits
@@ -124,42 +144,184 @@ work in priority order. It is not a dump of every idea the project has had.
 - Screen-capture exclusion cannot cover AirPlay or HDMI mirroring.
 - Call detection is process-based, cannot prove that sharing is active, and
   cannot detect browser calls.
-- Per-photo schedules have a tested engine but no user-facing editor yet; they
-  are not a shipped user feature until that UI exists.
-- Replacing the currently displayed image of a Space changes the live view but
-  does not yet write that replacement into the Space slot on disk.
 - `.arras` bundles contain Arras's stored/re-encoded media rather than original
   source files; they are layout backups, not archival masters.
+- Automatic revisions are a bounded recovery trail, not an infinite history;
+  media stops being retained after no live layout or kept revision references it.
 - Public release artifacts are Apple Silicon and ad-hoc signed. Intel is
   supported only through a source build.
 
-## Next work
+## 2.4.6 reliability work
 
-Ordered by correctness and recoverability before new product surface:
+Included in version 2.4.6:
 
-1. Add the per-photo schedule editor and verify overnight/weekday behavior in
-   the real Settings UI.
-2. Keep recoverable revisions of `photos.json` so accidental or corrupt state
-   changes have a local rollback path.
-3. Persist replacement of an individual Space image instead of swapping only
-   the current in-memory content.
-4. Surface persistence failures rather than silently ignoring failed writes or
-   undecodable state.
-5. Expand VoiceOver and keyboard traversal checks across the Frame inspector
-   and destructive confirmation flows.
+1. Per-photo schedule editing with a useful collapsed-row summary for weekday,
+   daytime, and overnight schedules.
+2. Bounded, recoverable revisions of `photos.json`, preservation of corrupt
+   input for diagnosis, and an explicit local restore path.
+3. Durable replacement of an individual Space image, including saved frame
+   metadata migration and revision-aware media retention.
+4. Visible load, save, and media-import failures in Settings.
+5. Expanded accessibility labels and keyboard-reachable controls across the
+   schedule editor, Frame inspector, and destructive confirmation flows, with
+   Reduce Motion respected for nonessential transitions.
 
-## Deferred product work
+The recovery and error-reporting items are one design unit: a failed write does
+not rotate away the last known-good state, and a failed decode cannot be silently
+overwritten by the next edit.
 
-- Living Collage: one window containing a composed, rotating multi-image grid.
-- Multi-select with align, distribute, keyboard nudge, and copy/paste style.
-- Named scenes for switching complete desktop layouts.
-- Archive-quality export, per-widget export, registered `.arras` document type,
-  and import preflight selection.
-- Photos album sync, muted video/Live Photo loops, captions, filters, and
-  optional low-power behavior.
+## Researched feature landscape
 
-These require separate product and architecture decisions; none is implied by
-the current UI.
+Research checked the current macOS wallpaper, photo-frame, and desktop-widget
+market in August 2026. Arras should not compete on raw feature count. Its useful
+position is a local-first, true-ratio photo desktop where each image keeps its
+own frame, position, and identity.
+
+Apple's own wallpaper supports Finder folders and Photos albums with rotation,
+while dedicated photo-frame apps commonly add ordering, no-repeat playback,
+captions, smart framing, and broader media. The closest direct comparison,
+FrameArabica, emphasizes independent folder-backed frames and lightweight large
+folder handling. Those are stronger signals than the web-widget, audio, and
+community-library features found in general wallpaper engines.
+
+Research references:
+
+- [Apple: change Wallpaper settings](https://support.apple.com/en-ie/guide/mac-help/mchlp3013/mac)
+- [Apple: desktop widgets on Mac](https://apps.apple.com/us/mac/story/id1699687142)
+- [Photo Widget](https://sindresorhus.com/photo-widget)
+- [Photo Album Widget](https://photoalbumwidget.app/)
+- [FrameArabica](https://getapps.cafe/app/framearabica)
+- [Digital Photo Frame for Mac](https://digitalphotoframeapp.com/mac/)
+- [WidgetWall](https://apps.apple.com/sg/app/widgetwall/id1618466427?mt=12)
+- [Aerial](https://aerialscreensaver.github.io/features/)
+- [Wallper](https://www.wallper.app/)
+- [Plash](https://sindresorhus.com/plash)
+- [Hologram](https://gethologram.com/)
+
+### Near-term product candidates
+
+These are understandable user-facing additions, but each changes a persisted
+choice or interaction and therefore needs a small product decision before code:
+
+- Rotation policy per Space: ordered, random, newest-first, and no-repeat.
+- Click action per widget: advance, Quick Look, reveal stored media, copy path,
+  or open the source application.
+- Caption overlay: custom caption and filename first; capture date and location
+  only when metadata is available locally.
+- A hard-cut transition alongside the current crossfade. More elaborate zoom,
+  dip-to-black, and Ken Burns effects stay deferred.
+- WebP and BMP import validation. Format support must be proven through the
+  complete ingest, persistence, relaunch, and render path—not just by file type.
+- Energy-aware animation and rotation using macOS Low Power Mode, thermal state,
+  and Reduce Motion. Pausing must not corrupt the saved rotation schedule.
+- Better failed-import summaries so Finder, clipboard, Photos, and Space batches
+  report accepted, skipped, and failed items consistently.
+- Image information in the inspector: dimensions, orientation, color profile,
+  and locally available EXIF fields.
+- More App Shortcuts backed by stable widget identifiers rather than names.
+- Finder-open routing for `.arras` archives without converting the app into a
+  document-based application.
+
+Relevant Apple frameworks include
+[Image I/O](https://developer.apple.com/documentation/imageio),
+[Quick Look Thumbnailing](https://developer.apple.com/documentation/quicklookthumbnailing),
+[App Intents](https://developer.apple.com/documentation/appintents),
+[Uniform Type Identifiers](https://developer.apple.com/documentation/uniformtypeidentifiers),
+[Low Power Mode](https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled),
+and [thermal state](https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.property).
+
+### Medium product and architecture work
+
+- Live Finder-folder Spaces with security-scoped bookmarks, change watching,
+  reconciliation, missing-folder recovery, and explicit cache behavior.
+- Live Photos, Smart Album, and Shared Album sources. This needs authorization
+  changes, iCloud-only asset downloads, membership updates, and stale-result
+  handling through
+  [PhotoKit collections](https://developer.apple.com/documentation/photos/phassetcollection)
+  and
+  [photo-library change observation](https://developer.apple.com/documentation/photos/phphotolibrarychangeobserver).
+- Manual focal points followed, only if useful, by local face or saliency-based
+  framing. Smart framing must never change Arras's true-ratio default.
+- Multi-select with align, distribute, keyboard nudge, duplication, and
+  copy/paste style.
+- Named scenes for switching complete layouts manually or on a schedule.
+- Fullscreen or second-display digital-frame mode.
+- Archive-quality export, per-widget export, and import preflight selection.
+- Power-aware video behavior and per-display quality controls.
+
+### Deferred product directions
+
+- Living Collage: one composed, rotating multi-image canvas. This changes the
+  one-widget/one-image ownership model and needs its own design pass.
+- Muted video and Live Photo playback. This adds AVFoundation lifecycle,
+  caching, wake/sleep, and energy-policy work; general-purpose Live Photo
+  playback also has macOS platform constraints.
+- Lock Screen integration and a full live-wallpaper engine.
+- HTML/CSS/JavaScript widgets or arbitrary web surfaces.
+- A curated/community wallpaper library or marketplace.
+- Ambient audio, weather particles, cursor effects, animated text, and
+  generative backgrounds.
+- Calendar- or Focus-driven automation. macOS does not expose the active named
+  Focus as a general-purpose app API; a Focus Filter requires a separate App
+  Intents extension and shared-state design.
+- Continuous iCloud layout sync. Display and Space bindings are intentionally
+  machine-specific; explicit `.arras` transfer remains the safer contract.
+
+### Long-term deferred target: an actual widget platform
+
+This is a future product target, not current implementation. Arras today is a
+local-first AppKit photo-widget app; none of the phases below is a shipped
+third-party API, package format, permission model, or network feed.
+
+- **Phase 0 — host contract and first-party baseline.** Define a small widget
+  lifecycle for configuration, rendering, optional interaction, and timeline
+  refresh, plus size/availability rules, state isolation, and a capability
+  manifest. Ship a few first-party widgets first to prove accessibility,
+  recovery, and energy behavior before opening the host to outside developers.
+- **Phase 1 — first-party widget families.** Add useful platform-aware widgets
+  (for example local media, calendar, or system status) through reviewed host
+  APIs, with offline and permission-denied states. First-party widgets should
+  exercise the same versioned contract intended for external developers.
+- **Phase 2 — stable developer SDK/API.** Publish a documented Swift SDK and
+  versioned widget protocol, sample widgets, a local simulator/preview, test
+  fixtures, and a compatibility matrix. Keep the public surface free of
+  private Mission Control or WindowServer APIs; expose declared capabilities
+  rather than arbitrary access to the host.
+- **Sandbox and permissions.** Run widget code/rendering behind an extension or
+  helper boundary with least-privilege sandboxing. Capabilities should be
+  explicit: user-selected files through security-scoped bookmarks, Photos
+  access only when requested, and network access only for a provider that
+  declares it. Explain, request, revoke, and surface permission failures in the
+  host. The current non-sandboxed self-updating app is not this future
+  extension architecture.
+- **Package, distribution, and review.** Define a signed/notarized widget
+  package with a manifest, stable identifier, author, API requirements,
+  declared capabilities, assets, and privacy/support metadata. Decide whether
+  packages arrive through a curated catalog, direct developer distribution, or
+  both; apply malware, privacy, reliability, update-signing, rollback,
+  uninstall, and user-visible provenance rules. No arbitrary downloaded
+  executable or HTML surface is implied.
+- **Compatibility and versioning.** Use stable reverse-DNS widget identifiers,
+  semantic package versions, a host SDK/API version, capability negotiation,
+  minimum and maximum macOS versions, migration hooks, and a safe fallback for
+  an unavailable widget. Preserve persisted configuration across upgrades and
+  make API-breaking changes opt-in and reviewable.
+- **Opt-in network-backed image providers.** Add provider adapters only after
+  the local contract is stable. A Reddit image provider is one example, not a
+  bundled community feed: users would explicitly enable it, authenticate where
+  needed, choose subreddit/account scope, and be able to disable it or remove
+  cached data. Enforce provider terms, rate limits, attribution, content
+  filtering, privacy controls, bounded caching, offline/stale behavior, and a
+  clear network-disabled state. Network access is off by default for existing
+  local widgets.
+
+Relevant platform references for this deferred target are [WidgetKit](https://developer.apple.com/documentation/widgetkit),
+[App extensions](https://developer.apple.com/app-extensions/), [App Sandbox](https://developer.apple.com/documentation/security/app_sandbox),
+[Notarizing macOS software](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution),
+and the [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/).
+
+These directions require separate product and architecture decisions. None is
+implied by the current UI or authorized by the current implementation pass.
 
 ## Deliberately not planned
 
@@ -168,9 +330,9 @@ the current UI.
 - CLI: it adds installation and support complexity to a visual desktop app.
 - AppleScript dictionary: App Intents cover the maintained automation surface.
 - Bundled Raycast extension: that belongs in an independent integration project.
-- Continuous iCloud layout sync: display and Space bindings are intentionally
-  machine-specific; `.arras` handles explicit transfer without pretending those
-  bindings are portable.
+- Arbitrary Mission Control Space selection: public AppKit supports joining all
+  Spaces, moving to the active Space, and fullscreen participation, but not
+  enumerating or targeting private Space identifiers.
 
 ## macOS 27 compatibility findings
 

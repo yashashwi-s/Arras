@@ -326,12 +326,17 @@ class DesktopPhotoWindow: NSPanel {
         canvasInset = container.requiredCanvasInset(photoSize: newPhoto.size)
         container.canvasInset = canvasInset
         photoFrame = newPhoto
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
-            ctx.allowsImplicitAnimation = true
-            self.animator().setFrame(self.windowFrame(forPhoto: newPhoto), display: true)
+        let newFrame = windowFrame(forPhoto: newPhoto)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            setFrame(newFrame, display: true)
+        } else {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.allowsImplicitAnimation = true
+                self.animator().setFrame(newFrame, display: true)
+            }
         }
-        container.updateLayout(windowFrame(forPhoto: newPhoto).size)
+        container.updateLayout(newFrame.size)
     }
 
     // MARK: - Depth
@@ -368,6 +373,7 @@ class DesktopPhotoWindow: NSPanel {
 
     func swapImage(_ content: PhotoContent, targetFrame: NSRect? = nil, mode: String = "dynamic", animate: Bool = true) {
         guard let container = contentView as? DraggablePhotoView else { return }
+        let shouldAnimate = animate && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let newSize = content.size
         let newAR = newSize.width / newSize.height
 
@@ -394,7 +400,7 @@ class DesktopPhotoWindow: NSPanel {
         photoFrame = newPhoto
         let newFrame = windowFrame(forPhoto: newPhoto)
 
-        if animate {
+        if shouldAnimate {
             // GPU-accelerated crossfade via Core Animation
             let transition = CATransition()
             transition.type = .fade
@@ -413,9 +419,9 @@ class DesktopPhotoWindow: NSPanel {
         // whatever `contents` is at each instant rather than a single fixed
         // end state. Landing on frame 0 first keeps the crossfade correct
         // and simple; playback then picks up smoothly right after.
-        container.photoLayer.apply(content, animationStartDelay: animate ? Self.crossfadeDuration : 0)
+        container.photoLayer.apply(content, animationStartDelay: shouldAnimate ? Self.crossfadeDuration : 0)
 
-        if animate {
+        if shouldAnimate {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Self.crossfadeDuration
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)

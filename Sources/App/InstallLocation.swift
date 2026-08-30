@@ -98,8 +98,23 @@ enum InstallLocation {
 
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: target, configuration: config) { _, _ in
-            Task { @MainActor in NSApp.terminate(nil) }
+        NSWorkspace.shared.openApplication(at: target, configuration: config) { _, error in
+            Task { @MainActor in
+                guard let error else {
+                    NSApp.terminate(nil)
+                    return
+                }
+
+                // Keep the source instance alive when LaunchServices rejects the copied app.
+                // Terminating unconditionally leaves the user with a copied bundle that never
+                // opened and no running Arras to explain what happened.
+                let failure = NSAlert()
+                failure.messageText = "Couldn't Relaunch \(Constants.appName)"
+                failure.informativeText = "The copy was placed in your Applications folder, but macOS could not open it. \(error.localizedDescription)"
+                failure.alertStyle = .warning
+                NSApp.activate(ignoringOtherApps: true)
+                failure.runModal()
+            }
         }
     }
 

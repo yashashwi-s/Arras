@@ -45,7 +45,7 @@ extension PhotoManager {
         do {
             try task.run()
         } catch {
-            print("Failed to launch screencapture: \(error)")
+            recordMediaImportFailure("Screen capture could not be started: \(error.localizedDescription).")
         }
     }
 }

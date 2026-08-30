@@ -1,8 +1,9 @@
 # Arras architecture contract
 
-Status: active for version 2.4.5. Arras is a Swift/AppKit menu bar agent with a
-SwiftUI Settings surface. AppKit owns desktop and Settings windows; SwiftUI edits
-observable state and never becomes a second window authority.
+Status: active for version 2.4.6. Arras is a
+Swift/AppKit menu bar agent with a SwiftUI Settings surface. AppKit owns desktop
+and Settings windows; SwiftUI edits observable state and never becomes a second
+window authority.
 
 ## Dependency direction
 
@@ -34,8 +35,8 @@ manage media files, or construct desktop windows independently.
 - `LayoutArchive.swift` and `BackupFormat.swift`: portable archive schema,
   minimal ZIP implementation, import staging, and optional preferences.
 - `MainWindowView.swift`, `ContentView.swift`, `PhotoRowView.swift`,
-  `FrameInspector.swift`, `PreferencesView.swift`, and `PrivacyView.swift`:
-  view-only Settings composition.
+  `FrameInspector.swift`, `PersistenceStatusView.swift`, `PreferencesView.swift`,
+  and `PrivacyView.swift`: view-only Settings composition and recovery status.
 - `HotKeyManager.swift`, `ArrasIntents.swift`, and `MenuBarCustomization.swift`:
   external commands and user-configurable control surfaces.
 - `Tests/Unit` and `Tests/UI`: pure/model coverage, isolated persistence
@@ -45,6 +46,12 @@ manage media files, or construct desktop windows independently.
 
 - Production storage is `~/Library/Application Support/PhotoWidget/`.
 - `photos.json` is an array of `PhotoItem` written atomically.
+- A changed write first saves the valid predecessor under `photos-revisions/`;
+  the bounded trail is a required part of the commit, not best-effort logging.
+- Existing state that cannot be read or decoded is preserved under
+  `photos-corrupt/` and blocks ordinary writes until explicit recovery.
+- Media cleanup considers the live model, durable current JSON, and every valid
+  retained revision. An unreadable state conservatively blocks cleanup.
 - Every field added after the original model must decode with
   `decodeIfPresent(...) ?? default`; a missing new field may never invalidate an
   older library.
@@ -93,14 +100,15 @@ manage media files, or construct desktop windows independently.
 ## Import and archive contract
 
 - Multi-image ingest prepares file bytes concurrently before committing model
-  and window changes on the main actor. Archive import separately validates and
-  stages its complete replacement payload before touching the current layout.
+  and window changes on the main actor. Archive import validates and stages every
+  payload, then commits merge or replacement in one durable model write before
+  rebuilding windows or cleaning old media.
 - A portable archive contains a versioned manifest plus referenced stored media.
 - Imported items receive new IDs and filenames to prevent collisions.
 - Relative frames are preferred when restoring onto different displays;
   legacy absolute frames are clamped back onto a visible screen.
-- Replace import validates and writes all usable payloads before removing the
-  current layout. Empty or damaged input cannot erase working state.
+- Replace import validates actual media decodability before committing. Empty,
+  damaged, or unsavable input cannot erase or partially replace working state.
 - Optional imported preferences are applied only after explicit user choice and
   remain separate from widget import.
 
@@ -120,10 +128,11 @@ manage media files, or construct desktop windows independently.
 
 1. Model: legacy/current `PhotoItem` decoding and round-trip behavior.
 2. Pure behavior: schedules and relative layouts.
-3. Persistence integration: isolated save/reload and archive merge/replace.
+3. Persistence integration: isolated save/reload, bounded recovery, media
+   retention, and transactional archive merge/replace.
 4. Window contract: Settings collection behavior without user data.
-5. UI integration: launch isolated Arras, assert one Settings window, and visit
-   Photos, Preferences, and Privacy.
+5. UI integration: launch isolated Arras, assert one Settings window, visit all
+   tabs, and exercise schedule, Frame, and destructive confirmation controls.
 6. Release: generate the project, run tests, build with the macOS 27 SDK, and
    inspect the produced app version/build.
 7. Manual: launch the actual Release artifact and verify native appearance,
@@ -131,6 +140,36 @@ manage media files, or construct desktop windows independently.
 
 Automated success does not claim final visual approval or multi-display/Space
 behavior that requires a real desktop session.
+
+## Release and update contract
+
+- Every public version has one deliberately human-authored metadata file at
+  `release-notes/<version>.json`. It must contain the matching `version`, a
+  meaningful one-line `title`, and a non-placeholder `summary`; optional
+  `details` entries provide the longer release-page copy.
+- Pull-request CI validates the current `MARKETING_VERSION` and every release
+  metadata file. The tag workflow validates the exact `v<version>` being
+  published before it runs tests or creates artifacts, so missing, mismatched,
+  malformed, or placeholder copy cannot become a public release.
+- The release workflow uses the validated metadata as the actual GitHub release
+  body (title, summary, and optional details), builds and uploads the artifacts,
+  then stamps `appcast.json` with the runner-produced checksum and the validated
+  `title: summary` string. GitHub's generated release notes are disabled so the
+  public release body and updater copy cannot silently diverge.
+- The existing updater reads `appcast.json`'s `releaseNotes` field for its in-app
+  update state and macOS notification body.
+- Automatic installation is a persisted, default-on preference with a daily
+  check cadence. If it is off, the separately persisted background-check
+  cadence defaults to daily; finding a new version posts one notification per
+  accepted version. Notification authorization is requested only when a banner
+  is actually needed.
+- Automatic and manual installation share the HTTPS, checksum, archive,
+  bundle-identity, advertised-version, quarantine, and rollback path. Revoking
+  automatic-install consent during a download prevents the staged app from
+  being installed.
+- `appcast.json` is a generated public feed. Do not calculate or edit its
+  artifact checksum locally; the release workflow owns the URL, hash, current
+  version, and updater-facing notes after the published artifact exists.
 
 ## Change rules
 

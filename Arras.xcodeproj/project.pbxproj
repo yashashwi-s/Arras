@@ -25,6 +25,7 @@
 		4CFB00C69AC613C086F230C8 /* PDFImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52B9FE0B69EDA19F9D1B572 /* PDFImport.swift */; };
 		6108EF774EEA36A0D1EBF5D4 /* PresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EFF94E51D97B00568E43FC /* PresenceManager.swift */; };
 		623C3FAD8B00FD2CC28AE916 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2438E5CD71DB865962C82487 /* Constants.swift */; };
+		64FB9A61130988EBE0B91649 /* PersistenceStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 194685B37F7E24063AB31B52 /* PersistenceStatusView.swift */; };
 		6AE77DE70E6F661B30FEDAC6 /* StatusItemDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579E70952342A18CE53C1128 /* StatusItemDropView.swift */; };
 		6DDD75E879218760BE5AEE72 /* PhotoWidgetOSXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B1C31D0557ED5747D42802 /* PhotoWidgetOSXApp.swift */; };
 		8A56B53613E9818E8A214A93 /* PersistenceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E764F69D20E265EDF9B54A0 /* PersistenceIntegrationTests.swift */; };
@@ -76,6 +77,7 @@
 		1222D95A620495E25BF72BF7 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		1787B2589BC4882E8036F45C /* SnapGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapGuideOverlay.swift; sourceTree = "<group>"; };
 		18EFF94E51D97B00568E43FC /* PresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceManager.swift; sourceTree = "<group>"; };
+		194685B37F7E24063AB31B52 /* PersistenceStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceStatusView.swift; sourceTree = "<group>"; };
 		2438E5CD71DB865962C82487 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		35CC783B47668E620C9F7642 /* ScreenshotCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotCapture.swift; sourceTree = "<group>"; };
 		3A508370E55D73DFCEF08D7A /* FrameStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStyle.swift; sourceTree = "<group>"; };
@@ -178,6 +180,7 @@
 				FF188E798C95551C52A8B46E /* MainWindowView.swift */,
 				EE23412E99E4D8B532F328A2 /* MenuBarCustomization.swift */,
 				E52B9FE0B69EDA19F9D1B572 /* PDFImport.swift */,
+				194685B37F7E24063AB31B52 /* PersistenceStatusView.swift */,
 				F41161B09C0DF8A0F0589893 /* PhotoAppearanceControls.swift */,
 				60A4ED96F9E52F4A80B3B50B /* PhotoImport.swift */,
 				55DE6C91A26436686DDE766A /* PhotoIngest.swift */,
@@ -347,6 +350,7 @@
 				0473928D3D15D87EF7042E85 /* MainWindowView.swift in Sources */,
 				B4AADA5C1B952D386E36C772 /* MenuBarCustomization.swift in Sources */,
 				4CFB00C69AC613C086F230C8 /* PDFImport.swift in Sources */,
+				64FB9A61130988EBE0B91649 /* PersistenceStatusView.swift in Sources */,
 				E52C88FB1E50A4F3FAC6A476 /* PhotoAppearanceControls.swift in Sources */,
 				EC959893CAA4F213861F0C7D /* PhotoImport.swift in Sources */,
 				F2AC0B078B3803A2C0A977B1 /* PhotoIngest.swift in Sources */,
@@ -479,7 +483,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -491,7 +495,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.5;
+				MARKETING_VERSION = 2.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;
@@ -625,7 +629,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -637,7 +641,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.5;
+				MARKETING_VERSION = 2.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;

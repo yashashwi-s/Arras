@@ -2,11 +2,69 @@ import AppKit
 import SwiftUI
 import ServiceManagement
 
+/// A persisted-state failure that needs a human decision rather than a silent fallback.
+///
+/// The settings panel keeps these visible until the user dismisses them. In particular, a
+/// corrupt store is never treated as an empty first launch: doing so would let the next edit
+/// overwrite the only evidence of what went wrong.
+enum PersistenceFailureKind: String, CaseIterable, Equatable {
+    case load
+    case save
+    case mediaImport
+
+    var title: String {
+        switch self {
+        case .load: return "Photo library couldn't be read"
+        case .save: return "Photo library couldn't be saved"
+        case .mediaImport: return "Some media couldn't be added"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .load: return "doc.badge.gearshape"
+        case .save: return "externaldrive.badge.exclamationmark"
+        case .mediaImport: return "photo.badge.exclamationmark"
+        }
+    }
+}
+
+struct PersistenceFailure: Identifiable, Equatable {
+    let id: UUID
+    let kind: PersistenceFailureKind
+    let detail: String
+    let occurredAt: Date
+
+    init(id: UUID = UUID(), kind: PersistenceFailureKind, detail: String, occurredAt: Date = Date()) {
+        self.id = id
+        self.kind = kind
+        self.detail = detail
+        self.occurredAt = occurredAt
+    }
+
+    var title: String { kind.title }
+}
+
+/// One automatic snapshot of the JSON store. Media is deliberately not copied here: these
+/// revisions are for recovering layout/state edits, while `.arras` remains the explicit media
+/// backup format.
+struct PhotoStoreRevision: Identifiable, Equatable {
+    let url: URL
+    let createdAt: Date
+
+    var id: URL { url }
+}
+
 /// Manages multiple desktop photos, persistence, and settings.
 @MainActor
 class PhotoManager: ObservableObject {
     @Published var photos: [PhotoItem] = []
     @Published var launchAtLogin: Bool = false
+
+    /// Persistent-state problems are intentionally model-owned so every Settings tab can show
+    /// the same diagnosis. The array is bounded in `recordPersistenceFailure`.
+    @Published private(set) var persistenceFailures: [PersistenceFailure] = []
+    @Published private(set) var availableRevisions: [PhotoStoreRevision] = []
 
     // v1.6 — Presence & Privacy: mirrors of PresenceMonitor's toggles/detected state for
     // the Settings UI. Always go through the setX methods below rather than assigning
@@ -42,6 +100,26 @@ class PhotoManager: ObservableObject {
     private let presence = PresenceMonitor()
     private var scheduleTimer: DispatchSourceTimer?
     private let storageDirectoryOverride: URL?
+    private var storeLoadBlocked = false
+    private var didPreserveCorruptStore = false
+
+    /// True while the current `photos.json` could not be decoded or read. The Settings
+    /// recovery surface uses this to distinguish a genuinely blocked store from an unrelated
+    /// media or best-effort save warning.
+    var isStoreLoadBlocked: Bool { storeLoadBlocked }
+
+    /// Five snapshots cover a short undo trail without turning a frequent frame-position save
+    /// into an unbounded archive. A revision is a JSON state snapshot; source media stays in the
+    /// normal store and is retained while a valid revision still references it.
+    static let maxPhotoStoreRevisions = 5
+    private static let maxCorruptStoreCopies = 5
+    /// Orphan cleanup is deliberately bounded. A store can contain files from an interrupted
+    /// import, but a single revision prune should never spend an unbounded amount of time
+    /// walking or deleting user data.
+    private static let maxOrphanedMediaCleanup = 32
+    private static let managedMediaExtensions: Set<String> = [
+        "jpg", "jpeg", "png", "gif", "heic", "tif", "tiff", "bmp", "webp"
+    ]
 
     var storageDir: URL {
         if let storageDirectoryOverride {
@@ -137,8 +215,53 @@ class PhotoManager: ObservableObject {
     // MARK: - Persistence
 
     func loadSaved() {
-        guard let data = try? Data(contentsOf: dataFile),
-              let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else { return }
+        refreshAvailableRevisions()
+        guard FileManager.default.fileExists(atPath: dataFile.path) else { return }
+
+        do {
+            let data = try Data(contentsOf: dataFile)
+            do {
+                let items = try JSONDecoder().decode([PhotoItem].self, from: data)
+                storeLoadBlocked = false
+                installLoadedItems(items)
+            } catch {
+                storeLoadBlocked = true
+                let preserved = preserveCorruptStore(data: data)
+                var detail = "The existing photos.json could not be decoded: \(error.localizedDescription)."
+                if let preserved {
+                    detail += " A copy was preserved at \(preserved.path)."
+                }
+                if !availableRevisions.isEmpty {
+                    detail += " Restore a previous revision from Settings."
+                } else {
+                    detail += " No valid automatic revision is available."
+                }
+                recordPersistenceFailure(.load, detail: detail)
+            }
+        } catch {
+            storeLoadBlocked = true
+            let preserved = preserveCorruptStore()
+            var detail = "The existing photos.json could not be read: \(error.localizedDescription)."
+            if let preserved {
+                detail += " A copy was preserved at \(preserved.path)."
+            }
+            if !availableRevisions.isEmpty {
+                detail += " Restore a previous revision from Settings."
+            }
+            recordPersistenceFailure(.load, detail: detail)
+        }
+    }
+
+    /// Rebuilds windows from a decoded model. Keeping this in one place means an explicit
+    /// revision restore follows the same presence, Space, display and animation rules as a
+    /// normal relaunch instead of inventing a second loader.
+    private func installLoadedItems(_ items: [PhotoItem]) {
+        for window in windows.values { window.hidePhoto() }
+        windows.removeAll()
+        for timer in rotationTimers.values { timer.cancel() }
+        rotationTimers.removeAll()
+        spaceImages.removeAll()
+
         photos = items
 
         // Presence suppression (schedule / fullscreen / conferencing) depends on the
@@ -157,15 +280,42 @@ class PhotoManager: ObservableObject {
         let ordered = photos
             .filter { $0.isVisible && !$0.isHiddenForDisplay && !$0.isHiddenForPresence }
             .sorted { $0.stackOrder < $1.stackOrder }
+        var failedMedia = 0
         for item in ordered {
-            guard let content = loadDisplayContent(for: item) else { continue }
+            guard let content = loadDisplayContent(for: item) else {
+                failedMedia += 1
+                continue
+            }
             createWindow(for: item, content: content)
             if !item.spaceImageFilenames.isEmpty {
                 setupRotationTimer(for: item)
             }
         }
 
+        if failedMedia > 0 {
+            recordMediaImportFailure(
+                "\(failedMedia) saved widget\(failedMedia == 1 ? "" : "s") could not decode its stored image."
+            )
+        }
+        reportMissingStoredMedia(in: items)
         scheduleNextSchedulerTick()
+    }
+
+    private func reportMissingStoredMedia(in items: [PhotoItem]) {
+        let missing = items
+            .flatMap { storedFilenames(in: $0) }
+            .filter { !FileManager.default.fileExists(atPath: storageDir.appendingPathComponent($0).path) }
+        guard !missing.isEmpty else { return }
+        recordMediaImportFailure(
+            "\(missing.count) stored image file\(missing.count == 1 ? "" : "s") is missing from the photo library."
+        )
+    }
+
+    private func storedFilenames(in item: PhotoItem) -> [String] {
+        var names: [String] = []
+        if !item.filename.isEmpty { names.append(item.filename) }
+        names.append(contentsOf: item.spaceImageFilenames)
+        return names
     }
 
     /// Resolves what is currently due to be shown for `item` (single photo or the active
@@ -192,11 +342,372 @@ class PhotoManager: ObservableObject {
     /// Not private, for the same reason `windows` isn't — PhotoAppearanceControls.swift used
     /// to carry a byte-for-byte copy of this, which made two independent writers to the same
     /// file and a lost-update waiting to happen.
-    func persist() {
+    @discardableResult
+    func persist() -> Bool {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-        guard let data = try? encoder.encode(photos) else { return }
-        try? data.write(to: dataFile, options: .atomic)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data: Data
+        do {
+            data = try encoder.encode(photos)
+        } catch {
+            recordPersistenceFailure(.save, detail: "The current photo layout could not be encoded: \(error.localizedDescription).")
+            return false
+        }
+
+        // A corrupt existing store must stay available for diagnosis. Requiring an explicit
+        // restore before accepting another write is what prevents a later edit from erasing it.
+        if storeLoadBlocked {
+            recordPersistenceFailure(
+                .save,
+                detail: "The existing photos.json was not overwritten. Restore a valid revision from Settings before saving another change."
+            )
+            return false
+        }
+
+        let fileManager = FileManager.default
+        let currentExists = fileManager.fileExists(atPath: dataFile.path)
+        if currentExists {
+            let current: Data
+            do {
+                current = try Data(contentsOf: dataFile)
+            } catch {
+                storeLoadBlocked = true
+                let preserved = preserveCorruptStore()
+                var detail = "The existing photos.json could not be read before saving: \(error.localizedDescription)."
+                if let preserved { detail += " A copy was preserved at \(preserved.path)." }
+                recordPersistenceFailure(.load, detail: detail)
+                recordPersistenceFailure(.save, detail: "The photo layout was not saved because its previous state could not be read.")
+                return false
+            }
+
+            // Validate the previous bytes before making them a recovery point. If another
+            // process or a manual edit damaged the file, preserve it and refuse to replace it.
+            do {
+                _ = try JSONDecoder().decode([PhotoItem].self, from: current)
+            } catch {
+                storeLoadBlocked = true
+                let preserved = preserveCorruptStore(data: current)
+                var detail = "The existing photos.json could not be decoded before saving: \(error.localizedDescription)."
+                if let preserved { detail += " A copy was preserved at \(preserved.path)." }
+                recordPersistenceFailure(.load, detail: detail)
+                recordPersistenceFailure(.save, detail: "The photo layout was not saved because its previous state was corrupt.")
+                return false
+            }
+
+            // Repeated no-op writes (including a few AppKit callbacks) do not create a
+            // revision. Every real write gets one bounded, valid predecessor snapshot.
+            if current == data {
+                clearPersistenceFailure(.save)
+                refreshAvailableRevisions()
+                return true
+            }
+            // The predecessor is the recovery guarantee. If it cannot be written, leave the
+            // existing photos.json untouched rather than replacing the only known-good state
+            // and merely displaying a warning after the fact.
+            guard writeRevision(current) != nil else { return false }
+            do {
+                try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
+                try data.write(to: dataFile, options: .atomic)
+                clearPersistenceFailure(.save)
+                refreshAvailableRevisions()
+                return true
+            } catch {
+                // `.atomic` leaves the previous file in place when its replacement fails. The
+                // recovery point above therefore remains valid and the in-memory edit stays
+                // visible without claiming it survived a relaunch.
+                recordPersistenceFailure(.save, detail: "The photo layout could not be saved: \(error.localizedDescription).")
+                return false
+            }
+        }
+
+        do {
+            try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
+            try data.write(to: dataFile, options: .atomic)
+            clearPersistenceFailure(.save)
+            refreshAvailableRevisions()
+            return true
+        } catch {
+            // `.atomic` leaves the previous file in place when its replacement fails. The
+            // recovery point above therefore remains valid and the in-memory edit stays
+            // visible without claiming it survived a relaunch.
+            recordPersistenceFailure(.save, detail: "The photo layout could not be saved: \(error.localizedDescription).")
+            return false
+        }
+    }
+
+    /// A bounded snapshot of the last known-good JSON state. `persist()` treats this as a
+    /// prerequisite for replacing `photos.json`, so a revision failure leaves the last known
+    /// good store untouched.
+    @discardableResult
+    private func writeRevision(_ data: Data) -> URL? {
+        do {
+            try FileManager.default.createDirectory(at: revisionsDirectory, withIntermediateDirectories: true)
+            let filename = "photos-\(Int(Date().timeIntervalSince1970 * 1_000_000))-\(UUID().uuidString).json"
+            let url = revisionsDirectory.appendingPathComponent(filename)
+            try data.write(to: url, options: .atomic)
+            pruneRevisions()
+            refreshAvailableRevisions()
+            return url
+        } catch {
+            recordPersistenceFailure(.save, detail: "A recovery revision could not be written: \(error.localizedDescription).")
+            return nil
+        }
+    }
+
+    private var revisionsDirectory: URL {
+        storageDir.appendingPathComponent("photos-revisions", isDirectory: true)
+    }
+
+    private var corruptStoreDirectory: URL {
+        storageDir.appendingPathComponent("photos-corrupt", isDirectory: true)
+    }
+
+    /// Keeps the damaged bytes under a unique name. Copying the original file is preferred so
+    /// even a decode/read failure that is not representable as `Data` can be diagnosed later.
+    private func preserveCorruptStore(data: Data? = nil) -> URL? {
+        if didPreserveCorruptStore {
+            return (try? FileManager.default.contentsOfDirectory(at: corruptStoreDirectory, includingPropertiesForKeys: nil))?
+                .filter { $0.pathExtension == "json" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                .last
+        }
+        guard FileManager.default.fileExists(atPath: dataFile.path) || data != nil else { return nil }
+
+        do {
+            try FileManager.default.createDirectory(at: corruptStoreDirectory, withIntermediateDirectories: true)
+            let url = corruptStoreDirectory.appendingPathComponent(
+                "photos-corrupt-\(Int(Date().timeIntervalSince1970 * 1_000_000))-\(UUID().uuidString).json"
+            )
+            if let data {
+                try data.write(to: url, options: .atomic)
+            } else {
+                try FileManager.default.copyItem(at: dataFile, to: url)
+            }
+            didPreserveCorruptStore = true
+            pruneCorruptStoreCopies()
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private func refreshAvailableRevisions() {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: revisionsDirectory,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        availableRevisions = urls
+            .filter { $0.pathExtension == "json" }
+            .compactMap { url in
+                guard let data = try? Data(contentsOf: url),
+                      (try? JSONDecoder().decode([PhotoItem].self, from: data)) != nil else { return nil }
+                return PhotoStoreRevision(url: url, createdAt: creationDate(for: url))
+            }
+            .sorted {
+                if $0.createdAt == $1.createdAt { return $0.url.lastPathComponent > $1.url.lastPathComponent }
+                return $0.createdAt > $1.createdAt
+            }
+    }
+
+    private func creationDate(for url: URL) -> Date {
+        guard let values = try? url.resourceValues(forKeys: [.creationDateKey]),
+              let date = values.creationDate else {
+            return .distantPast
+        }
+        return date
+    }
+
+    private func pruneRevisions() {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: revisionsDirectory,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsHiddenFiles]
+        ))?.filter { $0.pathExtension == "json" }.sorted { lhs, rhs in
+            let left = creationDate(for: lhs)
+            let right = creationDate(for: rhs)
+            if left == right { return lhs.lastPathComponent > rhs.lastPathComponent }
+            return left > right
+        } ?? []
+        for url in urls.dropFirst(Self.maxPhotoStoreRevisions) {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        // A file can outlive the PhotoItem that used it when an import or replacement is
+        // interrupted. Once a revision no longer protects that old state, clean only files that
+        // are clearly media, are not referenced by the live model/current JSON/any valid
+        // revision, and are within a small per-prune budget.
+        cleanupOrphanedStoredMedia()
+    }
+
+    /// Returns filenames from valid JSON revisions. Invalid revision files are reported too:
+    /// cleanup must stop conservatively when it cannot prove what a revision references.
+    private func revisionStoredFilenames() -> (filenames: Set<String>, hasUnreadableRevision: Bool) {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: revisionsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ))?.filter { $0.pathExtension.lowercased() == "json" } ?? []
+
+        var filenames = Set<String>()
+        var hasUnreadableRevision = false
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
+                hasUnreadableRevision = true
+                continue
+            }
+            filenames.formUnion(items.flatMap { storedFilenames(in: $0) })
+        }
+        return (filenames, hasUnreadableRevision)
+    }
+
+    /// Returns the current on-disk references, or nil when a current store exists but cannot be
+    /// decoded. A corrupt current store must block orphan cleanup rather than turning a recovery
+    /// problem into data loss.
+    private func currentStoredFilenames() -> Set<String>? {
+        guard FileManager.default.fileExists(atPath: dataFile.path) else { return [] }
+        guard let data = try? Data(contentsOf: dataFile),
+              let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
+            return nil
+        }
+        return Set(items.flatMap { storedFilenames(in: $0) })
+    }
+
+    private func cleanupOrphanedStoredMedia() {
+        guard let current = currentStoredFilenames() else { return }
+        let revisions = revisionStoredFilenames()
+        guard !revisions.hasUnreadableRevision else { return }
+
+        var referenced = current
+        referenced.formUnion(photos.flatMap { storedFilenames(in: $0) })
+        referenced.formUnion(revisions.filenames)
+
+        let candidates = (try? FileManager.default.contentsOfDirectory(
+            at: storageDir,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        var removed = 0
+        for url in candidates where removed < Self.maxOrphanedMediaCleanup {
+            guard Self.managedMediaExtensions.contains(url.pathExtension.lowercased()),
+                  !referenced.contains(url.lastPathComponent),
+                  let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
+                  values.isDirectory != true else { continue }
+            if (try? FileManager.default.removeItem(at: url)) != nil {
+                removed += 1
+            }
+        }
+    }
+
+    private func pruneCorruptStoreCopies() {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: corruptStoreDirectory,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsHiddenFiles]
+        ))?.filter { $0.pathExtension == "json" }.sorted { lhs, rhs in
+            let left = creationDate(for: lhs)
+            let right = creationDate(for: rhs)
+            if left == right { return lhs.lastPathComponent > rhs.lastPathComponent }
+            return left > right
+        } ?? []
+        for url in urls.dropFirst(Self.maxCorruptStoreCopies) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// Replaces the live layout only after a selected, previously validated revision has been
+    /// decoded and written successfully. There is no automatic fallback: choosing this action
+    /// is the user's explicit recovery decision.
+    @discardableResult
+    func restoreLatestRevision() -> Bool {
+        guard let revision = availableRevisions.first else { return false }
+        return restoreRevision(revision)
+    }
+
+    @discardableResult
+    func restoreRevision(_ revision: PhotoStoreRevision) -> Bool {
+        let data: Data
+        let items: [PhotoItem]
+        do {
+            data = try Data(contentsOf: revision.url)
+            items = try JSONDecoder().decode([PhotoItem].self, from: data)
+        } catch {
+            recordPersistenceFailure(.load, detail: "The selected recovery revision could not be restored: \(error.localizedDescription).")
+            return false
+        }
+
+        // Keep the state being replaced recoverable too. If this launch was already blocked on
+        // corrupt input, preserveCorruptStore is idempotent and returns the existing copy.
+        if storeLoadBlocked {
+            let hadCurrentStore = FileManager.default.fileExists(atPath: dataFile.path)
+            if hadCurrentStore, preserveCorruptStore() == nil {
+                recordPersistenceFailure(
+                    .save,
+                    detail: "The selected layout was not restored because the corrupt photos.json could not be preserved."
+                )
+                return false
+            }
+        } else if FileManager.default.fileExists(atPath: dataFile.path) {
+            do {
+                let current = try Data(contentsOf: dataFile)
+                if current != data {
+                    guard writeRevision(current) != nil else { return false }
+                }
+            } catch {
+                storeLoadBlocked = true
+                let preserved = preserveCorruptStore()
+                var detail = "The existing photos.json could not be read before restore: \(error.localizedDescription)."
+                if let preserved { detail += " A copy was preserved at \(preserved.path)." }
+                recordPersistenceFailure(.load, detail: detail)
+                guard preserved != nil else {
+                    recordPersistenceFailure(
+                        .save,
+                        detail: "The selected layout was not restored because the unreadable photos.json could not be preserved."
+                    )
+                    return false
+                }
+            }
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
+            try data.write(to: dataFile, options: .atomic)
+        } catch {
+            recordPersistenceFailure(.save, detail: "The selected recovery revision could not be written: \(error.localizedDescription).")
+            return false
+        }
+
+        storeLoadBlocked = false
+        didPreserveCorruptStore = false
+        clearPersistenceFailure(.load)
+        clearPersistenceFailure(.save)
+        installLoadedItems(items)
+        refreshAvailableRevisions()
+        return true
+    }
+
+    private func recordPersistenceFailure(_ kind: PersistenceFailureKind, detail: String) {
+        if let index = persistenceFailures.firstIndex(where: { $0.kind == kind }) {
+            let existing = persistenceFailures[index]
+            persistenceFailures[index] = PersistenceFailure(id: existing.id, kind: kind, detail: detail)
+        } else {
+            persistenceFailures.append(PersistenceFailure(kind: kind, detail: detail))
+            if persistenceFailures.count > 8 { persistenceFailures.removeFirst() }
+        }
+    }
+
+    func recordMediaImportFailure(_ detail: String) {
+        recordPersistenceFailure(.mediaImport, detail: detail)
+    }
+
+    private func clearPersistenceFailure(_ kind: PersistenceFailureKind) {
+        persistenceFailures.removeAll { $0.kind == kind }
+    }
+
+    func dismissPersistenceFailure(_ id: UUID) {
+        persistenceFailures.removeAll { $0.id == id }
     }
 
     private func saveAllPositions() {
@@ -264,6 +775,7 @@ class PhotoManager: ObservableObject {
         guard let tiffData = image.tiffRepresentation,
               let bitmapRep = NSBitmapImageRep(data: tiffData),
               let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
+            recordMediaImportFailure("The selected image could not be decoded.")
             return nil
         }
         let filename = UUID().uuidString + ".jpg"
@@ -272,20 +784,60 @@ class PhotoManager: ObservableObject {
             try jpegData.write(to: url)
             return (filename, url)
         } catch {
-            print("Failed to save image: \(error)")
+            recordMediaImportFailure("The selected image could not be stored: \(error.localizedDescription).")
             return nil
         }
     }
 
     func addPhoto(_ image: NSImage) {
-        guard let (filename, url) = saveImportedImage(image) else { return }
+        guard let (filename, url) = saveImportedImage(image) else {
+            // `saveImportedImage` records the detailed conversion/write error where it has
+            // context. Keep this guard explicit so every NSImage-based importer follows the
+            // same failure path without creating a partial PhotoItem.
+            return
+        }
 
         let item = PhotoItem(filename: filename)
         photos.append(item)
         if let content = PhotoContent.load(from: url) {
             createWindow(for: item, content: content)
+        } else {
+            recordMediaImportFailure("The imported image could not be decoded after it was stored.")
         }
-        persist()
+        guard persist() else {
+            // The media file is staged before the model write. Keep it available for diagnosis
+            // when the JSON write fails; a later explicit cleanup can remove it safely.
+            return
+        }
+    }
+
+    /// Removes one stored media file only when no other widget still points at it. Space
+    /// duplication intentionally shares its filenames, so deletion must inspect both the
+    /// single-image field and every Space slot before touching the bytes on disk.
+    private func removeStoredFileIfUnreferenced(_ filename: String, excluding id: UUID? = nil, spaceSlotIndex: Int? = nil) {
+        guard !filename.isEmpty else { return }
+        let stillReferenced = photos.contains { candidate in
+            if candidate.id == id, let spaceSlotIndex {
+                // Replacement changes one slot in-place. Count every other slot in that same
+                // item, including a duplicate filename, plus the legacy primary filename.
+                if candidate.filename == filename { return true }
+                return candidate.spaceImageFilenames.enumerated().contains { index, name in
+                    index != spaceSlotIndex && name == filename
+                }
+            }
+            return candidate.filename == filename || candidate.spaceImageFilenames.contains(filename)
+        }
+        guard !stillReferenced else { return }
+
+        // `persist()` writes the predecessor JSON before replacing the current file. Those
+        // revisions are real references: deleting their media would make an explicit restore
+        // recreate a PhotoItem that points at a missing file. Treat an unreadable revision as a
+        // reason to keep the bytes until the user or bounded pruning resolves it.
+        guard let current = currentStoredFilenames() else { return }
+        let revisions = revisionStoredFilenames()
+        guard !revisions.hasUnreadableRevision else { return }
+        guard !current.contains(filename), !revisions.filenames.contains(filename) else { return }
+        try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(filename))
     }
 
 
@@ -302,17 +854,18 @@ class PhotoManager: ObservableObject {
         rotationTimers[id]?.cancel()
         rotationTimers.removeValue(forKey: id)
 
-        // Delete all files
-        if !item.spaceImageFilenames.isEmpty {
-            for filename in item.spaceImageFilenames {
-                try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(filename))
-            }
-        } else {
-            try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(item.filename))
-        }
-        
         photos.remove(at: index)
-        persist()
+        // Keep media in place until the new JSON is durable. If saving fails, the previous
+        // photos.json still references this item and must remain loadable on the next launch.
+        if persist() {
+            if !item.spaceImageFilenames.isEmpty {
+                for filename in item.spaceImageFilenames {
+                    removeStoredFileIfUnreferenced(filename)
+                }
+            } else {
+                removeStoredFileIfUnreferenced(item.filename)
+            }
+        }
     }
 
     func removeAllPhotos() {
@@ -351,11 +904,53 @@ class PhotoManager: ObservableObject {
         // animating, rather than as a frozen first frame.
         if let content = loadDisplayContent(for: item) {
             createWindow(for: item, content: content)
+        } else {
+            recordMediaImportFailure("The imported widget's stored image could not be decoded.")
         }
         if !item.spaceImageFilenames.isEmpty {
             setupRotationTimer(for: item)
         }
         persist()
+    }
+
+    /// Adopts a batch of already-staged imported items in one durable model write. The caller
+    /// has validated that every referenced media file decodes before reaching this point, so the
+    /// only fallible operation here is the model save itself. Windows are rebuilt only after the
+    /// save succeeds; if it fails, restoring the old value leaves both the in-memory layout and
+    /// its existing windows untouched.
+    @discardableResult
+    func commitImportedItems(_ importedItems: [PhotoItem], replacing: Bool) -> Bool {
+        guard !importedItems.isEmpty else { return false }
+
+        let previousPhotos = photos
+        let committedPhotos = replacing ? importedItems : previousPhotos + importedItems
+        photos = committedPhotos
+
+        guard persist() else {
+            photos = previousPhotos
+            return false
+        }
+
+        // Rebuild all runtime state (windows, Spaces, timers, presence suppression) only after
+        // photos.json is durable. This also keeps import behavior aligned with relaunch and
+        // explicit revision restore.
+        installLoadedItems(committedPhotos)
+
+        // A replacement may orphan the previous library's media. Do this last: until the model
+        // commit succeeds, the old JSON is still the source of truth and must remain loadable.
+        removeStoredFilesNoLongerReferenced(from: previousPhotos, after: committedPhotos)
+        return true
+    }
+
+    private func removeStoredFilesNoLongerReferenced(from oldItems: [PhotoItem], after newItems: [PhotoItem]) {
+        let oldFilenames = Set(oldItems.flatMap { storedFilenames(in: $0) }.filter { !$0.isEmpty })
+        let newFilenames = Set(newItems.flatMap { storedFilenames(in: $0) }.filter { !$0.isEmpty })
+
+        for filename in oldFilenames.subtracting(newFilenames) {
+            // Keep the same revision-aware safety checks used by ordinary deletion: a previous
+            // layout snapshot may still need this media for explicit recovery.
+            removeStoredFileIfUnreferenced(filename)
+        }
     }
 
     // MARK: - Window Creation
@@ -531,6 +1126,8 @@ class PhotoManager: ObservableObject {
             let item = photos[index]
             if let content = loadDisplayContent(for: item) {
                 createWindow(for: item, content: content)
+            } else {
+                recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
             }
             if !item.spaceImageFilenames.isEmpty {
                 setupRotationTimer(for: item)
@@ -564,30 +1161,105 @@ class PhotoManager: ObservableObject {
         let item = photos[index]
         invalidateThumbnails(for: item)
 
-        // Only replace file for single-image photos
+        // Stage the replacement before mutating the model. The generated filename means this
+        // is a copy in our store, not an in-place write that could damage the last known-good
+        // slot if encoding or decoding fails.
+        guard let stored = saveImportedImage(newImage) else { return }
+
+        // Only replace the primary file for single-image photos.
         if item.spaceImageFilenames.isEmpty {
-            let oldURL = storageDir.appendingPathComponent(item.filename)
-            guard let (filename, url) = saveImportedImage(newImage) else { return }
             // The extension may change (still <-> animated), so this isn't
             // always an in-place overwrite of the old file.
-            if filename != item.filename {
-                try? FileManager.default.removeItem(at: oldURL)
-            }
-            photos[index].filename = filename
+            photos[index].filename = stored.filename
 
-            if let content = PhotoContent.load(from: url) {
+            if let content = PhotoContent.load(from: stored.url) {
                 windows[id]?.swapImage(content, animate: true)
+            } else {
+                // Do not leave an undecodable replacement behind or change the model to point
+                // at it. `saveImportedImage` normally produces a loadable file, but this keeps
+                // a failed conversion recoverable if an encoder ever regresses.
+                recordMediaImportFailure("The replacement image could not be decoded after it was stored.")
+                photos[index].filename = item.filename
+                removeStoredFileIfUnreferenced(stored.filename)
+                return
             }
+
         } else {
-            // Space photos: this branch has never persisted the
-            // replacement to a slot on disk, only swapped what's currently
-            // on screen -- preserved as-is, just extended to animate when
-            // the picked image happens to be animated.
-            let content = AnimatedImageIO.extractFrames(from: newImage)
-                .map { PhotoContent.animated($0, representative: newImage) } ?? .still(newImage)
-            windows[id]?.swapImage(content, animate: true)
+            // A Space replacement targets the currently selected slot, not the whole Space.
+            // Use the persisted filenames as the source of truth: hidden widgets do not have a
+            // `spaceImages` entry yet, but must still get a durable replacement.
+            let currentIndex = item.spaceImageFilenames.indices.contains(item.folderImageIndex)
+                ? item.folderImageIndex
+                : 0
+            let oldFilename = item.spaceImageFilenames[currentIndex]
+            // Configs are keyed by filename, so a malformed/legacy Space can have two slots
+            // sharing one config. Keep the old key while another slot still uses it, and copy
+            // the same frame to the newly stored filename for the replaced slot.
+            let oldConfig = photos[index].folderImageConfigs[oldFilename]
+            photos[index].spaceImageFilenames[currentIndex] = stored.filename
+            if let oldConfig {
+                photos[index].folderImageConfigs[stored.filename] = oldConfig
+            }
+            if !photos[index].spaceImageFilenames.contains(oldFilename) {
+                photos[index].folderImageConfigs.removeValue(forKey: oldFilename)
+            }
+
+            // Keep the runtime URL cache in sync even when the widget is hidden (and therefore
+            // had never gone through loadDisplayContent). This also makes the next menu
+            // thumbnail/navigation lookup use the new bytes immediately.
+            var urls = photos[index].spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+            if urls.indices.contains(currentIndex) {
+                urls[currentIndex] = stored.url
+            }
+            spaceImages[id] = urls
+
+            guard let content = PhotoContent.load(from: stored.url) else {
+                // Restore the old slot/configuration if the staged file cannot be decoded.
+                recordMediaImportFailure("The replacement Space image could not be decoded after it was stored.")
+                photos[index].spaceImageFilenames[currentIndex] = oldFilename
+                if let oldConfig {
+                    photos[index].folderImageConfigs.removeValue(forKey: stored.filename)
+                    photos[index].folderImageConfigs[oldFilename] = oldConfig
+                }
+                spaceImages[id] = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+                removeStoredFileIfUnreferenced(stored.filename)
+                return
+            }
+
+            // Dynamic Spaces keep the replaced slot's saved photo frame. Fixed Spaces keep the
+            // existing frame regardless of the new image aspect ratio. Passing the mode here is
+            // important: the generic swap default is dynamic, which would resize fixed Spaces.
+            let targetFrame = oldConfig.map { NSRectFromString($0.frameString) }
+            windows[id]?.swapImage(
+                content,
+                targetFrame: targetFrame,
+                mode: item.folderSizeMode,
+                animate: true
+            )
+
         }
-        persist()
+
+        // The old filename was invalidated above; invalidate the new key too so this remains
+        // correct if a future ingest path reuses a generated filename in the same process.
+        invalidateThumbnails(for: photos[index])
+        let didPersist = persist()
+        if didPersist {
+            // Remove replaced bytes only after the new JSON is durable, and only when no other
+            // PhotoItem still references the filename. If saving fails, keep both files so the
+            // last known-good photos.json remains usable on the next launch.
+            if item.spaceImageFilenames.isEmpty {
+                removeStoredFileIfUnreferenced(item.filename, excluding: id)
+            } else {
+                let oldIndex = item.spaceImageFilenames.indices.contains(item.folderImageIndex)
+                    ? item.folderImageIndex
+                    : 0
+                removeStoredFileIfUnreferenced(
+                    item.spaceImageFilenames[oldIndex],
+                    excluding: id,
+                    spaceSlotIndex: oldIndex
+                )
+            }
+        }
     }
 
     func duplicatePhoto(_ id: UUID) {
@@ -834,7 +1506,9 @@ class PhotoManager: ObservableObject {
     }
 
     func folderImageCount(_ id: UUID) -> Int {
-        spaceImages[id]?.count ?? 0
+        spaceImages[id]?.count
+            ?? photos.first(where: { $0.id == id })?.spaceImageFilenames.count
+            ?? 0
     }
 
 
@@ -928,7 +1602,10 @@ class PhotoManager: ObservableObject {
                 }
 
                 let item = photos[index]
-                guard let content = loadDisplayContent(for: item) else { continue }
+                guard let content = loadDisplayContent(for: item) else {
+                    recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
+                    continue
+                }
                 createWindow(for: item, content: content)
                 if !item.spaceImageFilenames.isEmpty {
                     setupRotationTimer(for: item)
@@ -1019,6 +1696,8 @@ class PhotoManager: ObservableObject {
                 let item = photos[index]
                 if let content = loadDisplayContent(for: item) {
                     createWindow(for: item, content: content)
+                } else {
+                    recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
                 }
                 if !item.spaceImageFilenames.isEmpty {
                     setupRotationTimer(for: item)

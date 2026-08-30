@@ -17,19 +17,27 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        TabView(selection: $selection) {
-            ContentView(manager: manager, onMenuUpdate: onMenuUpdate)
-                .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }
-                .tag(Tab.photos)
+        VStack(spacing: 0) {
+            if !manager.persistenceFailures.isEmpty {
+                PersistenceStatusView(manager: manager, showRecoveryWhenHealthy: false)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+            }
 
-            PreferencesView(manager: manager, onMenuUpdate: onMenuUpdate)
-                .tabItem { Label("Preferences", systemImage: "gearshape") }
-                .tag(Tab.preferences)
+            TabView(selection: $selection) {
+                ContentView(manager: manager, onMenuUpdate: onMenuUpdate)
+                    .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }
+                    .tag(Tab.photos)
 
-            PrivacyView(manager: manager, onMenuUpdate: onMenuUpdate)
-                .tabItem { Label("Privacy", systemImage: "hand.raised") }
-                .tag(Tab.privacy)
+                PreferencesView(manager: manager, onMenuUpdate: onMenuUpdate)
+                    .tabItem { Label("Preferences", systemImage: "gearshape") }
+                    .tag(Tab.preferences)
+
+                PrivacyView(manager: manager, onMenuUpdate: onMenuUpdate)
+                    .tabItem { Label("Privacy", systemImage: "hand.raised") }
+                    .tag(Tab.privacy)
+            }
         }
-        .frame(minWidth: 460, minHeight: 480)
+        .frame(minWidth: Constants.settingsMinimumWidth, minHeight: Constants.settingsMinimumHeight)
     }
 }

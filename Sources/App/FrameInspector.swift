@@ -12,8 +12,10 @@ struct FrameInspector: View {
     let item: PhotoItem
     @ObservedObject var manager: PhotoManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showingAdvanced = false
+    @State private var showingResetConfirmation = false
 
     /// Re-read from the manager rather than captured, so the sheet reflects edits made through
     /// it (`item` is a value copied when the sheet opened).
@@ -26,12 +28,16 @@ struct FrameInspector: View {
             HStack {
                 Text("Frame")
                     .font(.system(size: 13, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
                 Text(manager.label(for: live))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Frame inspector for \(manager.label(for: live))")
+            .accessibilityAddTraits(.isHeader)
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 14)
@@ -47,22 +53,46 @@ struct FrameInspector: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
+            .focusSection()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("frame-inspector-controls")
 
             Divider()
 
             HStack {
-                Button("Reset") { manager.applyPreset(live.id, .minimal) }
+                Button("Reset") { showingResetConfirmation = true }
                     .controlSize(.regular)
-                    .accessibilityHint("Returns every frame setting to the Minimal preset")
+                    .accessibilityIdentifier("frame-reset")
+                    .accessibilityLabel("Reset frame settings")
+                    .accessibilityHint("Opens a confirmation before returning every frame setting to the Minimal preset")
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                     .controlSize(.regular)
+                    .accessibilityIdentifier("frame-done")
+                    .accessibilityLabel("Done")
+                    .accessibilityHint("Closes the Frame inspector")
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
         .frame(width: 500, height: 470)
+        .focusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("frame-inspector")
+        .confirmationDialog(
+            "Reset frame settings?",
+            isPresented: $showingResetConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset Frame", role: .destructive) {
+                manager.applyPreset(live.id, .minimal)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("All shape, shadow, mat, border, fade and tilt changes will return to the Minimal preset.")
+        }
+        .onExitCommand { dismiss() }
     }
 
     // MARK: - Basics
@@ -80,6 +110,7 @@ struct FrameInspector: View {
             .labelsHidden()
             .controlSize(.small)
             .accessibilityLabel("Style preset")
+            .accessibilityHint("Applies a matching set of frame, mat, border and shadow settings")
         }
 
         SettingRow("Shape") {
@@ -119,6 +150,7 @@ struct FrameInspector: View {
                 .controlSize(.mini)
                 .labelsHidden()
                 .accessibilityLabel("Shadow")
+                .accessibilityValue(live.shadowEnabled ? "On" : "Off")
 
                 Slider(value: Binding(
                     get: { live.shadowBlur },
@@ -130,6 +162,7 @@ struct FrameInspector: View {
                 .controlSize(.small)
                 .disabled(!live.shadowEnabled)
                 .accessibilityLabel("Shadow blur")
+                .accessibilityValue(live.shadowEnabled ? "\(Int(live.shadowBlur)) pixels" : "Disabled")
             }
         }
 
@@ -140,6 +173,7 @@ struct FrameInspector: View {
             ), in: 0...40, step: 1)
             .controlSize(.small)
             .accessibilityLabel("Mat width")
+            .accessibilityValue(live.matWidth > 0 ? "\(Int(live.matWidth)) pixels" : "Off")
             .accessibilityHint("A solid inset border between the frame and the photo, like a mounted print")
         } accessory: {
             ColorPicker("", selection: Binding(
@@ -160,6 +194,7 @@ struct FrameInspector: View {
             ), in: 0...5, step: 0.5)
             .controlSize(.small)
             .accessibilityLabel("Border width")
+            .accessibilityValue(live.borderWidth > 0 ? "\(String(format: "%.1f", live.borderWidth)) pixels" : "Off")
         } accessory: {
             ColorPicker("", selection: Binding(
                 get: { Color(nsColor: NSColor.fromHex(live.borderColorHex) ?? .white) },
@@ -184,7 +219,7 @@ struct FrameInspector: View {
         // the hit target.
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showingAdvanced.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { showingAdvanced.toggle() }
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.right")
@@ -200,6 +235,8 @@ struct FrameInspector: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Advanced frame settings")
             .accessibilityValue(showingAdvanced ? "expanded" : "collapsed")
+            .accessibilityHint("Shows or hides stroke, gradient, edge fade and tilt controls")
+            .accessibilityIdentifier("frame-advanced-toggle")
 
             if showingAdvanced {
         SettingRow("Stroke") {
@@ -214,6 +251,8 @@ struct FrameInspector: View {
             .controlSize(.small)
             .disabled(live.borderWidth == 0)
             .accessibilityLabel("Border stroke style")
+            .accessibilityHint("Choose a solid, dashed or dotted border")
+            .accessibilityIdentifier("frame-border-stroke")
         }
 
         SettingRow("Gradient", value: live.borderGradientEnabled ? "On" : "Off") {
@@ -229,6 +268,7 @@ struct FrameInspector: View {
             .labelsHidden()
             .disabled(live.borderWidth == 0)
             .accessibilityLabel("Gradient border")
+            .accessibilityValue(live.borderGradientEnabled ? "On" : "Off")
             .help("Sweeps from the border colour to a second colour instead of one flat colour")
             Spacer()
         } accessory: {
@@ -255,7 +295,9 @@ struct FrameInspector: View {
             .controlSize(.mini)
             .labelsHidden()
             .accessibilityLabel("Edge fade")
+            .accessibilityValue(live.vignetteEnabled ? "On" : "Off")
             .accessibilityHint("Darkens the photo's edges and corners")
+            .accessibilityIdentifier("frame-edge-fade")
             Spacer()
         }
 
@@ -267,6 +309,7 @@ struct FrameInspector: View {
             .controlSize(.small)
             .accessibilityLabel("Tilt")
             .accessibilityValue("\(Int(live.tiltDegrees)) degrees")
+            .accessibilityHint("Rotates the frame from minus twelve to plus twelve degrees")
         }
             }
         }

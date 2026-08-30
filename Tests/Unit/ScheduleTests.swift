@@ -77,4 +77,52 @@ final class ScheduleTests: XCTestCase {
             accuracy: 0.1
         )
     }
+
+    func testPresentationKeepsWeekdaysSundayFirst() {
+        let mask = ScheduleWeekday.sunday.bit |
+            ScheduleWeekday.tuesday.bit |
+            ScheduleWeekday.saturday.bit
+
+        XCTAssertEqual(SchedulePresentation.weekdaySummary(mask: mask), "Sun, Tue, Sat")
+    }
+
+    func testPresentationCallsOutOvernightWindow() {
+        XCTAssertEqual(
+            SchedulePresentation.summary(
+                enabled: true,
+                startMinutes: 22 * 60,
+                endMinutes: 6 * 60,
+                weekdayMask: ScheduleWeekday.friday.bit
+            ),
+            "Schedule · Fri · 22:00–06:00 overnight"
+        )
+    }
+
+    func testPresentationDistinguishesDisabledAndInactiveSchedules() {
+        XCTAssertEqual(
+            SchedulePresentation.summary(
+                enabled: false,
+                startMinutes: 9 * 60,
+                endMinutes: 17 * 60,
+                weekdayMask: SchedulePresentation.allDaysMask
+            ),
+            "Schedule off"
+        )
+        XCTAssertTrue(
+            SchedulePresentation.summary(
+                enabled: true,
+                startMinutes: 10 * 60,
+                endMinutes: 10 * 60,
+                weekdayMask: SchedulePresentation.allDaysMask
+            ).contains("inactive")
+        )
+    }
+
+    func testEditorTimeDateRoundTripsMinutesInLocalCalendar() {
+        let minutes = 23 * 60 + 47
+        let date = SchedulePresentation.date(for: minutes, calendar: calendar)
+
+        XCTAssertEqual(SchedulePresentation.minutes(from: date, calendar: calendar), minutes)
+        XCTAssertEqual(SchedulePresentation.timeString(minutes: minutes), "23:47")
+    }
 }

@@ -146,6 +146,12 @@ extension PhotoManager {
             return results.sorted { $0.0 < $1.0 }.compactMap { $0.1 }
         }
 
+        let skipped = items.count - prepared.count
+        if skipped > 0 {
+            recordMediaImportFailure(
+                "\(skipped) selected image\(skipped == 1 ? "" : "s") could not be decoded or stored."
+            )
+        }
         return adopt(prepared)
     }
 
@@ -165,6 +171,12 @@ extension PhotoManager {
             return results.sorted { $0.0 < $1.0 }.compactMap { $0.1 }
         }
 
+        let skipped = urls.count - prepared.count
+        if skipped > 0 {
+            recordMediaImportFailure(
+                "\(skipped) selected file\(skipped == 1 ? "" : "s") could not be read or decoded."
+            )
+        }
         return adopt(prepared)
     }
 
@@ -178,6 +190,8 @@ extension PhotoManager {
             photos.append(item)
             if let content = PhotoContent.load(from: file.url) {
                 createWindow(for: item, content: content)
+            } else {
+                recordMediaImportFailure("The stored image \(file.originalName ?? file.filename) could not be decoded after import.")
             }
         }
         persist()
@@ -197,6 +211,12 @@ extension PhotoManager {
             for await result in group { results.append(result) }
             return results.sorted { $0.0 < $1.0 }.compactMap { $0.1 }
         }
+        let skipped = urls.count - prepared.count
+        if skipped > 0 {
+            recordMediaImportFailure(
+                "\(skipped) selected file\(skipped == 1 ? "" : "s") could not be read or decoded for this Space."
+            )
+        }
         guard !prepared.isEmpty else { return }
 
         var item = PhotoItem(filename: "")
@@ -210,6 +230,8 @@ extension PhotoManager {
         if let first = prepared.first, let content = PhotoContent.load(from: first.url) {
             createWindow(for: item, content: content)
             setupRotationTimer(for: item)
+        } else {
+            recordMediaImportFailure("The first image in the new Space could not be decoded after import.")
         }
         // The old addSpace never persisted at all — a Space survived only because the
         // quit handler saved it, so a force-quit lost the whole thing.
@@ -228,6 +250,12 @@ extension PhotoManager {
                 var results: [(Int, PhotoIngest.Prepared?)] = []
                 for await result in group { results.append(result) }
                 return results.sorted { $0.0 < $1.0 }.compactMap { $0.1 }
+            }
+            let skipped = urls.count - prepared.count
+            if skipped > 0 {
+                self.recordMediaImportFailure(
+                    "\(skipped) selected file\(skipped == 1 ? "" : "s") could not be read or decoded for this Space."
+                )
             }
             guard !prepared.isEmpty else { return }
 

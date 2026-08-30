@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.4.6 — Recovery and updates
+
+**Verified automatic updates now default to daily.** Arras checks once a day,
+installs only after the existing HTTPS, checksum, archive, bundle-identity and
+version checks pass, and keeps the previous app until the replacement confirms
+that it launched. Turning automatic installation off keeps a configurable
+background check and sends one useful release notification for each new version.
+
+**Recovery and backup now say what they mean.** Recent Layout History is a local
+undo trail of up to five earlier widget layouts. Portable Backup exports widgets
+and their stored images to one `.arras` file for restoration or transfer to
+another Mac. Damaged state is preserved, persistence failures stay visible, and
+archive replacement validates every staged image before changing the live model.
+
+**Schedules and Spaces survive real use.** Each photo can edit and summarize its
+weekday and time-window schedule. Replacing the current image in a Space updates
+the persisted slot, carries its frame metadata forward, and survives hiding and
+relaunching the widget.
+
+**Release copy is now a required artifact.** CI rejects missing or placeholder
+human-authored notes. The validated title and summary become both the GitHub
+release body and updater message, while the release runner stamps the checksum
+from the exact uploaded archive.
+
 ## 2.4.5 — UI changes
 
 **The intended glass Settings UI now ships consistently.** Local builds, CI and

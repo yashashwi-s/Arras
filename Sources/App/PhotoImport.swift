@@ -29,7 +29,10 @@ extension PhotoManager {
             return addImages(from: urls)
         }
 
-        guard let image = NSImage(pasteboard: pasteboard), image.isValid else { return 0 }
+        guard let image = NSImage(pasteboard: pasteboard), image.isValid else {
+            recordMediaImportFailure("The pasted image could not be decoded.")
+            return 0
+        }
         addPhoto(image)
         return 1
         // Left on the NSImage path deliberately: a pasteboard image has no original file

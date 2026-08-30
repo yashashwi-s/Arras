@@ -60,12 +60,318 @@ extension SettingRow {
     }
 }
 
+// MARK: - Schedule presentation
+
+/// The schedule bitmask deliberately follows Calendar's Sunday-first weekday numbering. Keep
+/// the presentation order explicit instead of deriving it from the user's locale: a schedule
+/// saved as `0b0000011` must always mean Sunday + Monday, and the first button in the editor must
+/// always be Sunday as well.
+enum ScheduleWeekday: Int, CaseIterable, Identifiable, Hashable {
+    case sunday = 0
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+
+    var id: Int { rawValue }
+
+    var bit: Int { 1 << rawValue }
+
+    var shortName: String {
+        switch self {
+        case .sunday: return "Sun"
+        case .monday: return "Mon"
+        case .tuesday: return "Tue"
+        case .wednesday: return "Wed"
+        case .thursday: return "Thu"
+        case .friday: return "Fri"
+        case .saturday: return "Sat"
+        }
+    }
+
+    var fullName: String {
+        switch self {
+        case .sunday: return "Sunday"
+        case .monday: return "Monday"
+        case .tuesday: return "Tuesday"
+        case .wednesday: return "Wednesday"
+        case .thursday: return "Thursday"
+        case .friday: return "Friday"
+        case .saturday: return "Saturday"
+        }
+    }
+}
+
+/// Strings and dates used by the schedule editor live in one small, pure helper so the UI and
+/// unit tests agree on weekday order, 24-hour summary formatting, and overnight wording.
+enum SchedulePresentation {
+    static let allDaysMask = ScheduleWeekday.allCases.reduce(0) { $0 | $1.bit }
+
+    static func normalizedMinutes(_ minutes: Int) -> Int {
+        let remainder = minutes % 1440
+        return remainder >= 0 ? remainder : remainder + 1440
+    }
+
+    static func timeString(minutes: Int) -> String {
+        let normalized = normalizedMinutes(minutes)
+        return String(format: "%02d:%02d", normalized / 60, normalized % 60)
+    }
+
+    static func date(for minutes: Int, calendar: Calendar = .current) -> Date {
+        let normalized = normalizedMinutes(minutes)
+        var components = DateComponents()
+        components.year = 2001
+        components.month = 1
+        components.day = 1
+        components.hour = normalized / 60
+        components.minute = normalized % 60
+        return calendar.date(from: components) ?? Date(timeIntervalSince1970: 0)
+    }
+
+    static func minutes(from date: Date, calendar: Calendar = .current) -> Int {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let hour = max(0, min(23, components.hour ?? 0))
+        let minute = max(0, min(59, components.minute ?? 0))
+        return hour * 60 + minute
+    }
+
+    static func weekdaySummary(mask: Int) -> String {
+        let normalized = mask & allDaysMask
+        if normalized == allDaysMask { return "Every day" }
+        if normalized == (ScheduleWeekday.saturday.bit | ScheduleWeekday.sunday.bit) {
+            return "Weekends"
+        }
+        if normalized == (ScheduleWeekday.monday.bit |
+            ScheduleWeekday.tuesday.bit |
+            ScheduleWeekday.wednesday.bit |
+            ScheduleWeekday.thursday.bit |
+            ScheduleWeekday.friday.bit) {
+            return "Weekdays"
+        }
+        guard normalized != 0 else { return "No days" }
+        return ScheduleWeekday.allCases
+            .filter { normalized & $0.bit != 0 }
+            .map(\.shortName)
+            .joined(separator: ", ")
+    }
+
+    static func summary(enabled: Bool, startMinutes: Int, endMinutes: Int, weekdayMask: Int) -> String {
+        guard enabled else { return "Schedule off" }
+
+        let start = normalizedMinutes(startMinutes)
+        let end = normalizedMinutes(endMinutes)
+        let range = "\(timeString(minutes: start))–\(timeString(minutes: end))"
+        if start == end {
+            return "Schedule · \(weekdaySummary(mask: weekdayMask)) · \(range) (inactive)"
+        }
+        if start > end {
+            return "Schedule · \(weekdaySummary(mask: weekdayMask)) · \(range) overnight"
+        }
+        return "Schedule · \(weekdaySummary(mask: weekdayMask)) · \(range)"
+    }
+}
+
+// MARK: - Per-photo schedule editor
+
+/// The schedule is intentionally kept in the expandable row: it is a per-photo behavior, not a
+/// global preference. The card gives the controls enough room to remain legible while matching
+/// the native translucent/glass treatment used by the rest of the Settings window.
+struct PhotoScheduleEditor: View {
+    let item: PhotoItem
+    @ObservedObject var manager: PhotoManager
+    var onMenuUpdate: (() -> Void)?
+
+    private enum FocusField: Hashable {
+        case enabled
+        case weekday(ScheduleWeekday)
+        case start
+        case end
+    }
+
+    @FocusState private var focusedField: FocusField?
+
+    private var live: PhotoItem {
+        manager.photos.first { $0.id == item.id } ?? item
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label("Schedule", systemImage: "calendar")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer(minLength: 8)
+
+                Toggle("Enable schedule", isOn: Binding(
+                    get: { live.scheduleEnabled },
+                    set: { update(enabled: $0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .focused($focusedField, equals: .enabled)
+                .accessibilityIdentifier("photo-schedule-toggle")
+                .accessibilityValue(live.scheduleEnabled ? "On" : "Off")
+                .accessibilityHint("Shows this photo only during the selected days and wall-clock times")
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilitySortPriority(40)
+
+            Text(live.scheduleEnabled
+                 ? "Visible only during this local-time window."
+                 : "Choose the window now; turn it on when you are ready.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+
+            SettingRow("Days", value: SchedulePresentation.weekdaySummary(mask: live.scheduleWeekdays)) {
+                HStack(spacing: 2) {
+                    ForEach(ScheduleWeekday.allCases) { day in
+                        let selected = live.scheduleWeekdays & day.bit != 0
+                        Button {
+                            var mask = live.scheduleWeekdays
+                            if selected {
+                                mask &= ~day.bit
+                            } else {
+                                mask |= day.bit
+                            }
+                            update(weekdayMask: mask)
+                        } label: {
+                            Text(day.shortName)
+                                .font(.system(size: 9, weight: .medium))
+                                .frame(maxWidth: .infinity, minHeight: 23)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(selected
+                                              ? Color.accentColor.opacity(0.22)
+                                              : Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                                )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .stroke(selected
+                                                ? Color.accentColor.opacity(0.8)
+                                                : Color(nsColor: .separatorColor).opacity(0.65),
+                                                lineWidth: selected ? 1 : 0.5)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .focused($focusedField, equals: .weekday(day))
+                        .accessibilityIdentifier("photo-schedule-weekday-\(day.shortName.lowercased())")
+                        .accessibilityLabel(day.fullName)
+                        .accessibilityValue(selected ? "Selected" : "Not selected")
+                        .accessibilityHint("Toggles \(day.fullName) for this photo's schedule")
+                        .accessibilityAddTraits(selected ? [.isSelected] : [])
+                        .accessibilitySortPriority(34)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .contain)
+                .accessibilitySortPriority(35)
+            }
+
+            SettingRow("Start", value: SchedulePresentation.timeString(minutes: live.scheduleStartMinutes)) {
+                DatePicker("Schedule start time", selection: Binding(
+                    get: { SchedulePresentation.date(for: live.scheduleStartMinutes) },
+                    set: { update(startMinutes: SchedulePresentation.minutes(from: $0)) }
+                ), displayedComponents: .hourAndMinute)
+                .datePickerStyle(.field)
+                .labelsHidden()
+                .controlSize(.small)
+                .focused($focusedField, equals: .start)
+                .accessibilityIdentifier("photo-schedule-start")
+                .accessibilityLabel("Schedule start time")
+                .accessibilityValue(SchedulePresentation.timeString(minutes: live.scheduleStartMinutes))
+                .accessibilityHint("Local wall-clock time when this photo becomes visible")
+            }
+
+            SettingRow("End", value: SchedulePresentation.timeString(minutes: live.scheduleEndMinutes)) {
+                DatePicker("Schedule end time", selection: Binding(
+                    get: { SchedulePresentation.date(for: live.scheduleEndMinutes) },
+                    set: { update(endMinutes: SchedulePresentation.minutes(from: $0)) }
+                ), displayedComponents: .hourAndMinute)
+                .datePickerStyle(.field)
+                .labelsHidden()
+                .controlSize(.small)
+                .focused($focusedField, equals: .end)
+                .accessibilityIdentifier("photo-schedule-end")
+                .accessibilityLabel("Schedule end time")
+                .accessibilityValue(SchedulePresentation.timeString(minutes: live.scheduleEndMinutes))
+                .accessibilityHint("Local wall-clock time when this photo stops being visible; an earlier time than Start continues overnight")
+            }
+
+            scheduleCaveat
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        }
+        .focusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("photo-schedule-editor")
+        .accessibilitySortPriority(30)
+    }
+
+    @ViewBuilder
+    private var scheduleCaveat: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if (live.scheduleWeekdays & SchedulePresentation.allDaysMask) == 0 {
+                Label("No days selected · schedule stays off", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("No schedule days selected")
+                    .accessibilityValue("The schedule will never show this photo")
+                    .accessibilityIdentifier("photo-schedule-no-days")
+            }
+
+            if live.scheduleStartMinutes > live.scheduleEndMinutes {
+                Label("Overnight · continues into the next day", systemImage: "moon.stars")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Overnight schedule")
+                    .accessibilityValue("The selected start day's window continues past midnight into the next day")
+                    .accessibilityIdentifier("photo-schedule-overnight")
+            } else if live.scheduleStartMinutes == live.scheduleEndMinutes {
+                Label("Start and end match · schedule is inactive", systemImage: "pause.circle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("Inactive schedule")
+                    .accessibilityValue("Start and end times match, so this schedule never shows the photo")
+                    .accessibilityIdentifier("photo-schedule-inactive")
+            }
+        }
+    }
+
+    private func update(
+        enabled: Bool? = nil,
+        startMinutes: Int? = nil,
+        endMinutes: Int? = nil,
+        weekdayMask: Int? = nil
+    ) {
+        let current = live
+        manager.setSchedule(
+            current.id,
+            enabled: enabled ?? current.scheduleEnabled,
+            startMinutes: startMinutes ?? current.scheduleStartMinutes,
+            endMinutes: endMinutes ?? current.scheduleEndMinutes,
+            weekdayMask: weekdayMask ?? current.scheduleWeekdays
+        )
+        onMenuUpdate?()
+    }
+}
+
 // MARK: - Photo Row
 
 struct PhotoRowView: View {
     let item: PhotoItem
     @ObservedObject var manager: PhotoManager
     var onMenuUpdate: (() -> Void)?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isExpanded = false
     @State private var isRenaming = false
@@ -73,6 +379,7 @@ struct PhotoRowView: View {
     @FocusState private var nameFocused: Bool
     @State private var isHovering = false
     @State private var showingFrameSheet = false
+    @State private var showingRemoveConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,6 +400,19 @@ struct PhotoRowView: View {
         .sheet(isPresented: $showingFrameSheet) {
             FrameInspector(item: item, manager: manager)
         }
+        .confirmationDialog(
+            "Remove Photo?",
+            isPresented: $showingRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Photo", role: .destructive) {
+                manager.removePhoto(item.id)
+                onMenuUpdate?()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Remove \(manager.label(for: item)) and its saved frame from this Mac? This cannot be undone.")
+        }
     }
 
     // MARK: Header
@@ -100,14 +420,14 @@ struct PhotoRowView: View {
     private var header: some View {
         HStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { isExpanded.toggle() }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(.easeInOut(duration: 0.15), value: isExpanded)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isExpanded)
                         .frame(width: 8)
 
                     thumbnailView
@@ -145,6 +465,7 @@ struct PhotoRowView: View {
             .allowsHitTesting(!isRenaming)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("photo-row-toggle-\(item.id.uuidString)")
             .accessibilityLabel(manager.label(for: item))
             .accessibilityValue(collapsedStatus)
             .accessibilityHint(isExpanded ? "Double-tap to collapse settings" : "Double-tap to expand settings")
@@ -175,9 +496,11 @@ struct PhotoRowView: View {
 
                 Menu {
                     Button("Rename") { beginRename() }
-                    if item.spaceImageFilenames.isEmpty {
-                        Button("Replace Image…") { replace() }
-                    }
+                    Button(
+                        item.spaceImageFilenames.isEmpty
+                            ? "Replace Image…"
+                            : "Replace Current Space Image…"
+                    ) { replace() }
                     Button("Duplicate") {
                         manager.duplicatePhoto(item.id)
                         onMenuUpdate?()
@@ -186,8 +509,7 @@ struct PhotoRowView: View {
                     Button("Reveal in Finder") { revealInFinder() }
                     Divider()
                     Button("Remove", role: .destructive) {
-                        manager.removePhoto(item.id)
-                        onMenuUpdate?()
+                        showingRemoveConfirmation = true
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -198,6 +520,8 @@ struct PhotoRowView: View {
                 .menuIndicator(.hidden)
                 .frame(width: 22)
                 .accessibilityLabel("More actions")
+                .accessibilityHint("Rename, duplicate, reveal, replace, or remove this photo")
+                .accessibilityIdentifier("photo-more-actions")
             }
         }
         .padding(.horizontal, 10)
@@ -297,10 +621,15 @@ struct PhotoRowView: View {
             }
 
             separator.padding(.vertical, 2)
+            PhotoScheduleEditor(item: item, manager: manager, onMenuUpdate: onMenuUpdate)
+
+            separator.padding(.vertical, 2)
 
             HStack {
                 Button("Frame…") { showingFrameSheet = true }
                     .controlSize(.small)
+                    .accessibilityIdentifier("photo-frame-inspector")
+                    .accessibilityLabel("Edit frame")
                     .accessibilityHint("Shape, corners, shadow, mat, border and tilt")
                 Spacer()
             }
@@ -390,8 +719,8 @@ struct PhotoRowView: View {
             .fill(isExpanded
                   ? Color(nsColor: .controlBackgroundColor)
                   : (isHovering ? Color(nsColor: .controlBackgroundColor).opacity(0.5) : Color.clear))
-            .animation(.easeInOut(duration: 0.1), value: isHovering)
-            .animation(.easeInOut(duration: 0.15), value: isExpanded)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: isHovering)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isExpanded)
     }
 
     @ViewBuilder
@@ -416,14 +745,20 @@ struct PhotoRowView: View {
     /// One line that says everything the badges used to say in icons, in words VoiceOver can
     /// read and a sighted user doesn't have to decode.
     private var collapsedStatus: String {
-        if !item.isVisible { return "Hidden" }
         var parts: [String] = []
+        if !item.isVisible { parts.append("Hidden") }
         if !item.spaceImageFilenames.isEmpty {
             parts.append("Space · \(manager.folderImageCount(item.id)) images")
         }
         if item.depth != .onDesktop { parts.append(item.depth.displayName.lowercased()) }
         if item.isLocked { parts.append("locked") }
         if item.opacity < 1.0 { parts.append("\(Int(item.opacity * 100))%") }
+        parts.append(SchedulePresentation.summary(
+            enabled: item.scheduleEnabled,
+            startMinutes: item.scheduleStartMinutes,
+            endMinutes: item.scheduleEndMinutes,
+            weekdayMask: item.scheduleWeekdays
+        ))
         return parts.isEmpty ? "On desktop" : parts.joined(separator: " · ")
     }
 
@@ -447,14 +782,17 @@ struct PhotoRowView: View {
 
     private func replace() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, .png, .jpeg, .heic, .tiff]
+        panel.allowedContentTypes = PhotoManager.importableTypes
         panel.allowsMultipleSelection = false
         panel.prompt = "Replace"
         NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) {
-            manager.replacePhoto(item.id, with: image)
-            onMenuUpdate?()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let image = NSImage(contentsOf: url) else {
+            manager.recordMediaImportFailure("The selected image \(url.lastPathComponent) could not be decoded.")
+            return
         }
+        manager.replacePhoto(item.id, with: image)
+        onMenuUpdate?()
     }
 
     private func revealInFinder() {
@@ -476,7 +814,7 @@ struct PhotoRowView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = PhotoManager.importableTypes
         panel.prompt = "Add to Space"
         panel.message = "Choose images to append to this rotating space"
         NSApp.activate(ignoringOtherApps: true)
