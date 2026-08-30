@@ -45,7 +45,10 @@ final class SettingsUITests: XCTestCase {
             "scheduleEndMinutes": scheduleEndMinutes,
             "scheduleWeekdays": scheduleWeekdays
         ]
-        let data = try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+        // Production stores an array of PhotoItem objects. Writing the object directly made the
+        // app correctly reject the fixture and left every row-based UI test looking for a widget
+        // that had never loaded.
+        let data = try JSONSerialization.data(withJSONObject: [json], options: [.sortedKeys])
         try data.write(to: storageDirectory.appendingPathComponent("photos.json"), options: .atomic)
         return id
     }

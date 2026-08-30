@@ -27,7 +27,7 @@ final class LayoutAndUpdaterTests: XCTestCase {
         XCTAssertTrue(Updater.compare("2.4.0", isNewerThan: "2.4.0-rc.1"))
         XCTAssertTrue(Updater.compare("2.4.0-rc.10", isNewerThan: "2.4.0-rc.2"))
         XCTAssertTrue(Updater.compare("2.4.0-rc.2", isNewerThan: "2.4.0-rc.1"))
-        XCTAssertFalse(Updater.compare("2.4.0-rc.1", isNewerThan: "2.4.0-rc"))
+        XCTAssertTrue(Updater.compare("2.4.0-rc.1", isNewerThan: "2.4.0-rc"))
         XCTAssertFalse(Updater.compare("2.4.0+build.2", isNewerThan: "2.4.0+build.1"))
         XCTAssertFalse(Updater.compare("2.4", isNewerThan: "2.3.0"))
         XCTAssertFalse(Updater.isValidVersion("2.4"))
