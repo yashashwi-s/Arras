@@ -28,6 +28,21 @@ final class LayoutAndUpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdateEndpointsAvoidCheckRedirectAndUniquelyTrackDownloads() throws {
+        XCTAssertEqual(Updater.appcastURL.host, "raw.githubusercontent.com")
+
+        let source = try XCTUnwrap(URL(string: "https://github.com/example/app/releases/download/v2.4.5/App.zip?source=arras-updater&version=2.4.5"))
+        let requestID = UUID(uuidString: "A4A8BCDF-193B-4A13-8416-E92C66391055")!
+        let tracked = Updater.trackedDownloadURL(source, requestID: requestID)
+        let components = try XCTUnwrap(URLComponents(url: tracked, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(tracked.pathExtension, "zip")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "source" })?.value, "arras-updater")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "version" })?.value, "2.4.5")
+        XCTAssertEqual(components.queryItems?.filter { $0.name == "request" }.map(\.value), [requestID.uuidString.lowercased()])
+    }
+
+    @MainActor
     func testSettingsWindowIsConfiguredForTheActiveSpace() {
         let window = NSWindow()
         AppDelegate.configureSettingsWindow(window)

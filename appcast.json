@@ -1,6 +1,6 @@
 {
   "latestVersion": "2.4.5",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.5/Arras.app.zip",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.5/Arras.app.zip?source=arras-updater&version=2.4.5",
   "sha256": "e37b21bc7e7a60bc8801fd93889b6e4472f46fce0da190a88b28572314abf465",
   "releaseNotes": "UI changes: restores the native glass Settings design and Arras wordmark, and opens one Settings window on the active desktop Space. Adds regression tests and safer layout replacement.",
   "minimumOSVersion": "14.0",

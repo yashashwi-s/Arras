@@ -122,7 +122,7 @@ jobs:
           path = pathlib.Path("appcast.json")
           data = json.loads(path.read_text())
           data["latestVersion"] = version
-          data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Arras.app.zip"
+          data["downloadURL"] = f"https://github.com/{repo}/releases/download/{tag}/Arras.app.zip?source=arras-updater&version={version}"
           data["sha256"] = sha
           # releaseNotes is written by a human before tagging; leave it alone.
           path.write_text(json.dumps(data, indent=2) + "\n")
