@@ -8,18 +8,31 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # SwiftUI's native settings tabs are linked-SDK dependent. The reference UI
+    # is the macOS 27 presentation, so CI must exercise the same SDK as release.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Verify SDK
+        run: |
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" = "27"
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode Project
         run: xcodegen generate
+
+      - name: Test
+        run: |
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme Arras \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            test
 
       - name: Build
         run: |

@@ -11,6 +11,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var dropView: StatusItemDropView?
     private var pasteMonitor: Any?
 
+    private var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything shows UI, so the Dock icon and menu bar are correct on
         // the first frame rather than appearing a moment later.
@@ -18,7 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Before anything else can fail because of it: an app run from a disk image cannot
         // replace itself, and discovering that at update time is a dead end.
-        InstallLocation.offerToInstallIfNeeded()
+        if !isUITesting {
+            InstallLocation.offerToInstallIfNeeded()
+        }
 
         setupStatusItem()
         setupGlobalHotKey()
@@ -26,11 +32,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Asks for notification permission, then polls the appcast on launch and
         // weekly, so updates and announcements reach existing users.
-        Updater.shared.start()
+        if !isUITesting {
+            Updater.shared.start()
+        }
 
         // Show settings after an update landed, so the new version is visible rather
         // than the app appearing to have closed and reopened for no reason.
-        if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
+        if isUITesting {
+            showSettingsWindow()
+        } else if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
             UserDefaults.standard.removeObject(forKey: Updater.justUpdatedKey)
             showSettingsWindow()
             Updater.shared.announceInstalled(version: installed)
@@ -481,8 +491,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showSettingsWindow()
     }
 
+    /// Keeps the one managed Settings window visually native and attached to the Space where
+    /// the user asked for it. Without `.moveToActiveSpace`, ordering an existing window brings
+    /// the user to the window's old Space instead of bringing Settings to them.
+    static func configureSettingsWindow(_ window: NSWindow) {
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.tabbingMode = .disallowed
+        window.isReleasedWhenClosed = false
+    }
+
     func showSettingsWindow() {
         if let window = settingsWindow {
+            Self.configureSettingsWindow(window)
+            if !window.isOnActiveSpace {
+                window.orderOut(nil)
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -502,7 +525,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.center()
         window.minSize = NSSize(width: 420, height: 400)
         window.contentView = NSHostingView(rootView: contentView)
-        window.isReleasedWhenClosed = false
+        Self.configureSettingsWindow(window)
         Self.installWordmark(in: window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -631,7 +654,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func removeAllPhotos() {
+        guard !manager.photos.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Remove All Photos?"
+        alert.informativeText = "This removes every photo and its saved layout. This cannot be undone."
+        alert.addButton(withTitle: "Remove All")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
         manager.removeAllPhotos()
+        rebuildMenu()
     }
 
     @objc func toggleAllVisibility() {

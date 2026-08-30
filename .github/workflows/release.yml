@@ -10,18 +10,35 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    # The settings-window appearance is linked-SDK dependent. Use the SDK that
+    # produces the UI shipped in the reference build instead of macos-15's
+    # legacy SwiftUI tab presentation.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Verify SDK
+        run: |
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" = "27"
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode Project
         run: xcodegen generate
+
+      - name: Verify Tag and Test
+        run: |
+          set -euo pipefail
+          VERSION="$(xcodebuild -project Arras.xcodeproj -scheme Arras -showBuildSettings | awk '/MARKETING_VERSION/ { print $3; exit }')"
+          test "v${VERSION}" = "$GITHUB_REF_NAME"
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme Arras \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            test
 
       - name: Build Release
         run: |

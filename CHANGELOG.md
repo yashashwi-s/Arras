@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.4.5 — UI changes
+
+**The intended glass Settings UI now ships consistently.** Local builds, CI and
+release builds all link against the macOS 27 SDK, which is what gives the native
+SwiftUI tab strip its rounded translucent presentation. The Arras gradient
+wordmark remains in the title bar.
+
+**Settings follows you to the current desktop Space.** The duplicate SwiftUI
+Settings scene is gone; the menu and app commands now target one AppKit-managed
+window that moves to the active Space instead of switching you back to wherever
+it was last opened.
+
+**Regression coverage.** Unit tests cover schedules, layout restoration, version
+comparison and model compatibility. Integration tests cover persistence and
+backup round-trips, and a UI test opens the real app, visits every Settings tab
+and confirms there is only one window.
+
+**Safer destructive operations.** Remove All asks for confirmation. A damaged
+replacement backup is fully checked before the current layout is removed, so a
+missing image or failed write cannot wipe a working setup.
+
 ## 2.4.4
 
 **The tab bar has its glass back, and the wordmark stayed.** Putting the Arras

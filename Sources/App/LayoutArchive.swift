@@ -292,12 +292,9 @@ extension PhotoManager {
         decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(LayoutManifest.self, from: manifestData)
 
-        if mode == .replace {
-            removeAllPhotos()
-        }
-
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        var importedCount = 0
+        var preparedItems: [PhotoItem] = []
+        var stagedURLs: [URL] = []
 
         for sourceItem in manifest.photos {
             let names = referencedFilenames(of: sourceItem)
@@ -326,7 +323,16 @@ extension PhotoManager {
             }
             for (oldName, newName) in filenameMap {
                 guard let payload = payloads[oldName] else { continue }
-                try? payload.write(to: storageDir.appendingPathComponent(newName))
+                let destination = storageDir.appendingPathComponent(newName)
+                do {
+                    try payload.write(to: destination, options: .atomic)
+                    stagedURLs.append(destination)
+                } catch {
+                    for stagedURL in stagedURLs {
+                        try? FileManager.default.removeItem(at: stagedURL)
+                    }
+                    throw error
+                }
             }
 
             var newItem = remapped(sourceItem, filenameMap: filenameMap)
@@ -366,11 +372,20 @@ extension PhotoManager {
                 }
             }
 
-            addImportedItem(newItem)
-            importedCount += 1
+            preparedItems.append(newItem)
         }
 
-        return importedCount
+        // A damaged or empty backup must never erase a working layout. All archive data is
+        // validated and staged before a replacement becomes destructive.
+        guard !preparedItems.isEmpty else { return 0 }
+        if mode == .replace {
+            removeAllPhotos()
+        }
+        for item in preparedItems {
+            addImportedItem(item)
+        }
+
+        return preparedItems.count
     }
 
     /// Applies preferences carried by a bundle. Separate from `importLayout` and never

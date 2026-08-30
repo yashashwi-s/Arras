@@ -13,6 +13,7 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.profraw
 
 # Archives & exports
 *.xcarchive

@@ -13,17 +13,30 @@ BUILD_DIR="build"
 OUTPUT_DIR="dist"
 
 
-# Auto-detect Xcode path
-if [ -d "/Applications/Xcode.app" ]; then
-    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
-elif [ -d "/Applications/Xcode-beta.app" ]; then
-    export DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
-else
-    echo "❌ No Xcode installation found in /Applications"
+# This UI deliberately uses the native macOS 27 TabView presentation. SwiftUI
+# can select an older settings-window design when the same source is linked with
+# an older SDK, so choosing whichever Xcode happens to be installed first
+# makes local and exported apps visibly different.
+for XCODE_PATH in /Applications/Xcode.app /Applications/Xcode-beta.app; do
+    if [ ! -d "$XCODE_PATH" ]; then
+        continue
+    fi
+
+    CANDIDATE_DEVELOPER_DIR="$XCODE_PATH/Contents/Developer"
+    SDK_VERSION=$(DEVELOPER_DIR="$CANDIDATE_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)
+    if [[ "$SDK_VERSION" == 27.* ]]; then
+        export DEVELOPER_DIR="$CANDIDATE_DEVELOPER_DIR"
+        break
+    fi
+done
+
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+    echo "❌ Xcode with the macOS 27 SDK is required so exported builds use the intended UI"
     exit 1
 fi
 
 echo "🔧 Using Xcode at: $DEVELOPER_DIR"
+echo "🎯 Linking against macOS SDK $SDK_VERSION"
 
 # Generate Xcode project
 echo "⚙️  Generating Xcode project..."
@@ -31,6 +44,12 @@ xcodegen generate 2>&1 | tail -1
 
 # Build
 echo "🏗️  Building $SCHEME (Release)..."
+# A failed incremental build must never leave an older app in the location that
+# the validation and packaging steps inspect.
+rm -rf "$BUILD_DIR/Release/$APP_NAME.app" \
+       "$BUILD_DIR/Release/$APP_NAME.app.dSYM" \
+       "$BUILD_DIR/Release/$APP_NAME.swiftmodule"
+
 xcodebuild \
   -project "$APP_NAME.xcodeproj" \
   -scheme "$SCHEME" \
@@ -39,7 +58,7 @@ xcodebuild \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGN_STYLE=Manual \
   DEVELOPMENT_TEAM="" \
-  build 2>&1 | grep -E "BUILD|error:|warning:" || true
+  build 2>&1 | grep -E "BUILD|error:|warning:"
 
 APP_PATH="$BUILD_DIR/Release/$APP_NAME.app"
 

@@ -7,7 +7,7 @@ No cropping, no black bars, no fixed grid.
   <img src="assets/demo.gif" alt="Arras widgets on a macOS desktop" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.4-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.5-green?style=flat-square)
 
 > Arras was **Photo Widget OSX**, then **Tableau** until v2.3.1. Only the name
 > changed. The bundle identifier and your photo library are untouched, so

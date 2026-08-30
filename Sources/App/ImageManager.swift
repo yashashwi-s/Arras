@@ -41,8 +41,13 @@ class PhotoManager: ObservableObject {
     // v1.6 — Presence & Privacy
     private let presence = PresenceMonitor()
     private var scheduleTimer: DispatchSourceTimer?
+    private let storageDirectoryOverride: URL?
 
     var storageDir: URL {
+        if let storageDirectoryOverride {
+            try? FileManager.default.createDirectory(at: storageDirectoryOverride, withIntermediateDirectories: true)
+            return storageDirectoryOverride
+        }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = support.appendingPathComponent("PhotoWidget", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -55,10 +60,16 @@ class PhotoManager: ObservableObject {
 
     private var dataFile: URL { storageDir.appendingPathComponent("photos.json") }
 
-    init() {
+    init(storageDirectory: URL? = nil) {
+        if let path = ProcessInfo.processInfo.environment["ARRAS_UI_TEST_STORAGE_DIR"], !path.isEmpty {
+            storageDirectoryOverride = URL(fileURLWithPath: path, isDirectory: true)
+        } else {
+            storageDirectoryOverride = storageDirectory
+        }
+
         // Must run before anything reads photos.json: dropping the sandbox moved
         // the Application Support directory, and this carries older installs across.
-        if !Self.didMigrateStorage {
+        if storageDirectoryOverride == nil, !Self.didMigrateStorage {
             Self.didMigrateStorage = true
             StorageMigration.migrateIfNeeded(to: storageDir)
         }

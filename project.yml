@@ -26,8 +26,8 @@ targetTemplates:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Arras"
         GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 17
-        MARKETING_VERSION: 2.4.4
+        CURRENT_PROJECT_VERSION: 18
+        MARKETING_VERSION: 2.4.5
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES
@@ -48,3 +48,42 @@ targets:
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
+  ArrasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/Unit
+    dependencies:
+      - target: Arras
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  ArrasUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/UI
+    dependencies:
+      - target: Arras
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Arras:
+    build:
+      targets:
+        Arras: all
+        ArrasTests: [test]
+        ArrasUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - ArrasTests
+        - ArrasUITests
