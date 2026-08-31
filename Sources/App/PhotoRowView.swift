@@ -162,7 +162,7 @@ struct PhotoRowView: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("photo-row-toggle-\(item.id.uuidString)")
             .accessibilityLabel(manager.label(for: item))
-            .accessibilityValue(collapsedStatus)
+            .accessibilityValue("\(collapsedStatus), \(isExpanded ? "Expanded" : "Collapsed")")
             .accessibilityHint(isExpanded ? "Double-tap to collapse settings" : "Double-tap to expand settings")
 
             HStack(spacing: 4) {
@@ -327,6 +327,8 @@ struct PhotoRowView: View {
             }
 
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("photo-expanded-settings-\(item.id.uuidString)")
     }
 
     // MARK: Smart Canvas

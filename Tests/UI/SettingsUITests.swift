@@ -62,17 +62,22 @@ final class SettingsUITests: XCTestCase {
         element.click()
     }
 
-    private func reveal(_ element: XCUIElement, in scrollView: XCUIElement, timeout: TimeInterval = 5) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if waitForHittable(element, timeout: 0.2) {
-                return true
-            }
-            if scrollView.exists && scrollView.isHittable {
-                scrollView.swipeUp()
-            }
-        } while Date() < deadline
-        return waitForHittable(element, timeout: 0.2)
+    private func expand(_ row: XCUIElement, id: UUID, in window: XCUIElement) {
+        let expandedValue = NSPredicate(format: "value CONTAINS %@", "Expanded")
+        let expandedSettings = window.descendants(matching: .any)["photo-expanded-settings-\(id.uuidString)"]
+
+        // A macOS Space transition can finish after XCUIApplication reports the row as hittable.
+        // Retry the user action once, but only while its explicit accessibility state still says
+        // Collapsed. This never double-clicks a row that has actually expanded.
+        for _ in 0..<2 where !expandedValue.evaluate(with: row) {
+            clickWhenHittable(row)
+            let expectation = XCTNSPredicateExpectation(predicate: expandedValue, object: row)
+            if XCTWaiter().wait(for: [expectation], timeout: 3) == .completed { break }
+            app.activate()
+        }
+
+        XCTAssertTrue(expandedValue.evaluate(with: row))
+        XCTAssertTrue(expandedSettings.waitForExistence(timeout: 2))
     }
 
     func testSingleSettingsWindowNavigatesAllTabs() {
@@ -108,16 +113,14 @@ final class SettingsUITests: XCTestCase {
 
         let row = window.descendants(matching: .any)["photo-row-toggle-\(id.uuidString)"]
         XCTAssertTrue(waitForHittable(row))
-        row.click()
+        expand(row, id: id, in: window)
 
-        // SwiftUI exposes this native button by its accessibility label on macOS 27 even
-        // when the source identifier is present. Query the user-facing contract that VoiceOver
-        // uses; the identifier-based query incorrectly reported the clearly visible control as
-        // absent in the captured UI run.
-        let frameButton = window.buttons["Edit frame"]
-        let photosScrollView = window.descendants(matching: .any)["photos-scroll-view"]
-        XCTAssertTrue(photosScrollView.waitForExistence(timeout: 2))
-        XCTAssertTrue(reveal(frameButton, in: photosScrollView, timeout: 10))
+        let expandedSettings = window.descendants(matching: .any)["photo-expanded-settings-\(id.uuidString)"]
+        // Frame is deliberately the first button in this contained, labelled settings group.
+        // SwiftUI currently drops identifiers from controls nested in a lazy macOS scroll view,
+        // while preserving their roles and ordering in the accessibility tree.
+        let frameButton = expandedSettings.buttons.firstMatch
+        XCTAssertTrue(waitForHittable(frameButton))
         clickWhenHittable(frameButton)
 
         let inspector = app.descendants(matching: .any)["frame-inspector"]
@@ -150,7 +153,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         app.activate()
         let row = window.descendants(matching: .any)["photo-row-toggle-\(id.uuidString)"]
-        clickWhenHittable(row)
+        expand(row, id: id, in: window)
 
         let moreActions = window.descendants(matching: .any)["photo-more-actions"]
         clickWhenHittable(moreActions)
