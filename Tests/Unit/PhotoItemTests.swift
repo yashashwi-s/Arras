@@ -20,21 +20,16 @@ final class PhotoItemTests: XCTestCase {
         XCTAssertEqual(item.opacity, 1)
         XCTAssertEqual(item.cornerRadius, 16)
         XCTAssertEqual(item.rotationInterval, "click")
-        XCTAssertEqual(item.scheduleWeekdays, 0b111_1111)
         XCTAssertFalse(item.isSpaceBound)
     }
 
-    func testCurrentItemRoundTripsWithoutLosingAppearanceOrSchedule() throws {
+    func testCurrentItemRoundTripsWithoutLosingAppearance() throws {
         var original = PhotoItem(filename: "photo.jpg", width: 420)
         original.customName = "Aurora"
         original.depth = .floating
         original.opacity = 0.65
         original.shapeMask = PhotoShapeMask.arch.rawValue
         original.stylePreset = StylePreset.modern.rawValue
-        original.scheduleEnabled = true
-        original.scheduleStartMinutes = 22 * 60
-        original.scheduleEndMinutes = 6 * 60
-        original.scheduleWeekdays = 0b010_1010
 
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PhotoItem.self, from: data)
@@ -45,8 +40,5 @@ final class PhotoItemTests: XCTestCase {
         XCTAssertEqual(decoded.opacity, 0.65)
         XCTAssertEqual(decoded.shapeMask, PhotoShapeMask.arch.rawValue)
         XCTAssertEqual(decoded.stylePreset, StylePreset.modern.rawValue)
-        XCTAssertEqual(decoded.scheduleStartMinutes, 22 * 60)
-        XCTAssertEqual(decoded.scheduleEndMinutes, 6 * 60)
-        XCTAssertEqual(decoded.scheduleWeekdays, 0b010_1010)
     }
 }

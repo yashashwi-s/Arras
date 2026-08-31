@@ -1,76 +1,5 @@
 import AppKit
 
-// MARK: - Schedule math
-
-/// Pure schedule-window math, kept independent of `PhotoManager` so it can be exercised
-/// directly against fixed dates without touching any live state (see CLAUDE.md §7 on why
-/// `PhotoManager` itself must never be exercised from a scratch harness).
-enum Schedule {
-    static func minutesFromMidnight(_ date: Date, calendar: Calendar = .current) -> Int {
-        let comps = calendar.dateComponents([.hour, .minute], from: date)
-        return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-    }
-
-    /// `Calendar.component(.weekday:)` returns 1...7 for Sunday...Saturday; bit (weekday - 1)
-    /// is that day's slot in a `scheduleWeekdays` mask.
-    static func weekdayBit(for date: Date, calendar: Calendar = .current) -> Int {
-        1 << (calendar.component(.weekday, from: date) - 1)
-    }
-
-    /// True if `date` falls inside the `[start, end)` window on an enabled weekday.
-    ///
-    /// `end < start` means an overnight window (e.g. 22:00-06:00): the portion after
-    /// midnight is checked against *yesterday's* weekday bit, since a Friday-night
-    /// schedule should still read as on at 1am Saturday rather than switching off the
-    /// instant the calendar day rolls over. `start == end` is treated as an empty window
-    /// (never active) rather than "always active" -- a zero-length range has no natural
-    /// meaning otherwise, and "never" is the less surprising failure mode for a feature
-    /// whose entire job is hiding things.
-    static func isActive(startMinutes: Int, endMinutes: Int, weekdayMask: Int, at date: Date, calendar: Calendar = .current) -> Bool {
-        guard startMinutes != endMinutes else { return false }
-
-        let now = minutesFromMidnight(date, calendar: calendar)
-        let todayBit = weekdayBit(for: date, calendar: calendar)
-
-        if startMinutes < endMinutes {
-            guard weekdayMask & todayBit != 0 else { return false }
-            return now >= startMinutes && now < endMinutes
-        }
-
-        // Overnight: active from startMinutes through midnight (today's bit), then from
-        // midnight up to endMinutes (yesterday's bit, since that's the day the window
-        // "belongs" to).
-        if now >= startMinutes {
-            return weekdayMask & todayBit != 0
-        }
-        if now < endMinutes {
-            let yesterday = calendar.date(byAdding: .day, value: -1, to: date) ?? date
-            return weekdayMask & weekdayBit(for: yesterday, calendar: calendar) != 0
-        }
-        return false
-    }
-
-    /// Seconds until the next instant `isActive` could possibly change: the next
-    /// occurrence of the start time, the end time, or midnight (where the weekday bit
-    /// rolls over). Used to arm a single one-shot timer rather than polling every minute
-    /// -- near-zero idle CPU is a stated feature of this app.
-    static func secondsUntilNextBoundary(startMinutes: Int, endMinutes: Int, from date: Date = Date(), calendar: Calendar = .current) -> TimeInterval {
-        let start = nextOccurrence(ofMinuteOfDay: startMinutes, after: date, calendar: calendar)
-        let end = nextOccurrence(ofMinuteOfDay: endMinutes, after: date, calendar: calendar)
-        let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date)) ?? date.addingTimeInterval(86400)
-        let next = min(start, end, midnight)
-        return max(1, next.timeIntervalSince(date))
-    }
-
-    private static func nextOccurrence(ofMinuteOfDay minute: Int, after date: Date, calendar: Calendar) -> Date {
-        let startOfDay = calendar.startOfDay(for: date)
-        let today = calendar.date(byAdding: .minute, value: minute, to: startOfDay) ?? date
-        if today > date { return today }
-        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? date
-        return calendar.date(byAdding: .minute, value: minute, to: startOfTomorrow) ?? date
-    }
-}
-
 // MARK: - Presence detection
 
 /// Best-effort and reliable signals for keeping photo widgets out of places they don't
@@ -133,8 +62,7 @@ final class PresenceMonitor {
     private(set) var isConferencingAppRunning = false
     private(set) var isFullscreenActive = false
 
-    /// Whether either enabled heuristic currently says "hide". Schedule is evaluated
-    /// separately, per photo, since it's a per-photo setting rather than a global one.
+    /// Whether either enabled global heuristic currently says "hide".
     var shouldSuppressForPresence: Bool {
         (autoHideForConferencingApps && isConferencingAppRunning) ||
         (hideWhenFullscreenActive && isFullscreenActive)

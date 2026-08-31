@@ -18,12 +18,6 @@ struct MainWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !manager.persistenceFailures.isEmpty {
-                PersistenceStatusView(manager: manager, showRecoveryWhenHealthy: false)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-            }
-
             TabView(selection: $selection) {
                 ContentView(manager: manager, onMenuUpdate: onMenuUpdate)
                     .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }

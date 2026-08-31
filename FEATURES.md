@@ -13,7 +13,7 @@ project has had.
 - Position, size, visibility, depth, lock state, appearance, display placement,
   and Space behavior survive relaunch.
 - Ordinary idle work stays near zero CPU. Animated content runs on Core
-  Animation; schedules and rotation use bounded timers rather than frame loops.
+  Animation; Space rotation uses bounded timers rather than frame loops.
 - Local media is copied into Application Support so widgets do not depend on the
   original file remaining in place.
 - The app remains usable without Accessibility, Screen Recording, or network
@@ -98,10 +98,6 @@ project has had.
   running.
 - Optional teardown behind fullscreen apps to release image memory and stop
   rotation work.
-- Scheduling engine handles weekdays, daytime windows, overnight windows, and
-  next-boundary calculation.
-- Each photo has a Settings editor for enabling its schedule, choosing weekdays,
-  and setting local start/end times; collapsed rows summarize the active window.
 
 ### Portability and persistence
 
@@ -112,29 +108,23 @@ project has had.
 - Imported widgets receive fresh identifiers and filenames; machine-specific
   display bindings are intentionally discarded.
 - `photos.json` is atomically written and older model versions decode through
-  explicit defaults.
-- Five valid predecessor revisions provide explicit local recovery. Corrupt
-  state is preserved separately and blocks later writes until the user restores
-  a valid revision.
-- Media referenced by the current layout or a retained revision is protected
-  from cleanup. Archive replacement commits its whole model only after every
-  staged image decodes and the new JSON can be saved.
+  explicit defaults. A failed write leaves the last valid file untouched.
+- Archive replacement validates and stages every media payload before changing
+  the live model, so damaged input cannot erase a working layout.
 - Replacing the current image in a Space updates that persisted slot, carries
   its saved frame metadata forward, and survives hidden widgets and relaunch.
-- Load, save, and media-import failures remain visible in Settings rather than
-  disappearing into console output.
 - Remove All requires confirmation.
 
 ### Accessibility and quality
 
 - VoiceOver labels, hints, and values cover Settings controls, including
   icon-only buttons and sliders.
-- Unit tests cover schedule boundaries, model compatibility, layout restoration,
+- Unit tests cover model compatibility, layout restoration, updater precedence,
   and Settings-window configuration.
 - Persistence integration tests use isolated storage and cover relaunch,
-  archive round-trip, and damaged replacement behavior.
-- Launched-app UI tests visit every Settings tab, exercise schedule and Frame
-  controls, and cover destructive confirmations in one Settings window.
+  archive round-trip, damaged replacement, and durable Space replacement.
+- Launched-app UI tests visit every Settings tab, exercise the Frame inspector's
+  Advanced disclosure, and cover destructive confirmations in one Settings window.
 - CI runs tests and a Release build against the macOS 27 SDK.
 
 ## Known limits
@@ -146,29 +136,33 @@ project has had.
   cannot detect browser calls.
 - `.arras` bundles contain Arras's stored/re-encoded media rather than original
   source files; they are layout backups, not archival masters.
-- Automatic revisions are a bounded recovery trail, not an infinite history;
-  media stops being retained after no live layout or kept revision references it.
+- Per-photo schedules, automatic layout history, and a Settings-facing
+  persistence diagnostics surface are not part of the 2.4.6 shipped scope;
+  explicit `.arras` backups are the supported recovery path.
 - Public release artifacts are Apple Silicon and ad-hoc signed. Intel is
   supported only through a source build.
 
-## 2.4.6 reliability work
+## 2.4.6 shipped scope
 
 Included in version 2.4.6:
 
-1. Per-photo schedule editing with a useful collapsed-row summary for weekday,
-   daytime, and overnight schedules.
-2. Bounded, recoverable revisions of `photos.json`, preservation of corrupt
-   input for diagnosis, and an explicit local restore path.
+1. Daily, verified automatic updates with deliberate release notes and CI
+   validation. The updater keeps its HTTPS, checksum, archive, identity,
+   advertised-version, and rollback gates.
+2. Atomic layout writes and damaged-data preservation. Portable `.arras` import
+   stages and validates all media before merge or replacement, leaving a working
+   layout intact when input is damaged.
 3. Durable replacement of an individual Space image, including saved frame
-   metadata migration and revision-aware media retention.
-4. Visible load, save, and media-import failures in Settings.
-5. Expanded accessibility labels and keyboard-reachable controls across the
-   schedule editor, Frame inspector, and destructive confirmation flows, with
-   Reduce Motion respected for nonessential transitions.
+   metadata migration and shared-media safety across hidden widgets and relaunch.
+4. Expanded accessibility labels and keyboard-reachable controls, including the
+   Frame inspector's Advanced disclosure and destructive confirmation flows.
 
-The recovery and error-reporting items are one design unit: a failed write does
-not rotate away the last known-good state, and a failed decode cannot be silently
-overwritten by the next edit.
+### Deliberately excluded from 2.4.6
+
+Per-photo visibility schedules, automatic layout revisions/recovery UI, and
+Settings-facing persistence diagnostics were removed to keep the product lean.
+Failures remain available through system logs, while explicit `.arras` files
+are the supported backup and transfer path.
 
 ## Researched feature landscape
 

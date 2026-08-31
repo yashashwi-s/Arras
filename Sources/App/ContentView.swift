@@ -139,6 +139,7 @@ struct ContentView: View {
             }
             .padding(12)
         }
+        .accessibilityIdentifier("photos-scroll-view")
     }
 
     // MARK: - File Pickers

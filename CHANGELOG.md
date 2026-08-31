@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.4.6 — Recovery and updates
+## 2.4.6 — Updates and durable backups
 
 **Verified automatic updates now default to daily.** Arras checks once a day,
 installs only after the existing HTTPS, checksum, archive, bundle-identity and
@@ -8,16 +8,17 @@ version checks pass, and keeps the previous app until the replacement confirms
 that it launched. Turning automatic installation off keeps a configurable
 background check and sends one useful release notification for each new version.
 
-**Recovery and backup now say what they mean.** Recent Layout History is a local
-undo trail of up to five earlier widget layouts. Portable Backup exports widgets
+**Portable backups are safe to replace with.** Portable Backup exports widgets
 and their stored images to one `.arras` file for restoration or transfer to
-another Mac. Damaged state is preserved, persistence failures stay visible, and
-archive replacement validates every staged image before changing the live model.
+another Mac. Writes remain atomic, and archive replacement validates every
+staged image before changing the live model, so damaged input cannot erase a
+working layout.
 
-**Schedules and Spaces survive real use.** Each photo can edit and summarize its
-weekday and time-window schedule. Replacing the current image in a Space updates
-the persisted slot, carries its frame metadata forward, and survives hiding and
-relaunching the widget.
+**Space replacement and accessibility are durable.** Replacing the current image
+in a Space updates the persisted slot, carries its frame metadata forward, and
+survives hiding and relaunching the widget. Settings controls expose labels,
+hints, and values for assistive technologies, including the keyboard-reachable
+Advanced Frame disclosure.
 
 **Release copy is now a required artifact.** CI rejects missing or placeholder
 human-authored notes. The validated title and summary become both the GitHub
@@ -36,10 +37,10 @@ Settings scene is gone; the menu and app commands now target one AppKit-managed
 window that moves to the active Space instead of switching you back to wherever
 it was last opened.
 
-**Regression coverage.** Unit tests cover schedules, layout restoration, version
-comparison and model compatibility. Integration tests cover persistence and
+**Regression coverage.** Unit tests cover layout restoration, version comparison
+and model compatibility. Integration tests cover persistence and
 backup round-trips, and a UI test opens the real app, visits every Settings tab
-and confirms there is only one window.
+exercises the Frame inspector and confirms there is only one window.
 
 **Safer destructive operations.** Remove All asks for confirmation. A damaged
 replacement backup is fully checked before the current layout is removed, so a

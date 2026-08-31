@@ -16,7 +16,12 @@ final class PersistenceIntegrationTests: XCTestCase {
         item.isVisible = false
         item.frameString = "{{40, 60}, {360, 240}}"
         manager.photos = [item]
-        manager.persist()
+        XCTAssertTrue(manager.persist())
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("photos-revisions", isDirectory: true).path
+            )
+        )
 
         let reloaded = PhotoManager(storageDirectory: directory)
 
@@ -49,10 +54,6 @@ final class PersistenceIntegrationTests: XCTestCase {
         item.borderGradientColorHex = "#ABCDEF"
         item.tiltDegrees = -4
         item.stylePreset = StylePreset.modern.rawValue
-        item.scheduleEnabled = true
-        item.scheduleStartMinutes = 22 * 60
-        item.scheduleEndMinutes = 6 * 60
-        item.scheduleWeekdays = 0b010_1010
         item.displayIdentifier = "exporting-machine"
         item.savedDisplayFrames = ["exporting-machine": "{{1, 2}, {3, 4}}"]
         item.isHiddenForDisplay = true
@@ -77,10 +78,6 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(imported.borderGradientColorHex, "#ABCDEF")
         XCTAssertEqual(imported.tiltDegrees, -4)
         XCTAssertEqual(imported.stylePreset, StylePreset.modern.rawValue)
-        XCTAssertTrue(imported.scheduleEnabled)
-        XCTAssertEqual(imported.scheduleStartMinutes, 22 * 60)
-        XCTAssertEqual(imported.scheduleEndMinutes, 6 * 60)
-        XCTAssertEqual(imported.scheduleWeekdays, 0b010_1010)
         XCTAssertNil(imported.displayIdentifier)
         XCTAssertTrue(imported.savedDisplayFrames.isEmpty)
         XCTAssertFalse(imported.isHiddenForDisplay)
@@ -175,7 +172,6 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         XCTAssertEqual(try target.importLayout(from: archive, mode: .replace), 0)
         XCTAssertEqual(target.photos.map(\.customName), ["Keep me"])
-        XCTAssertTrue(target.persistenceFailures.contains(where: { $0.kind == .save }))
 
         // The staged imported image was never adopted by a durable model, so it must not be
         // left behind as an orphan in the target library.
@@ -276,38 +272,6 @@ final class PersistenceIntegrationTests: XCTestCase {
     }
 
     @MainActor
-    func testReplacementMediaStaysUntilItsLastValidRevisionIsPruned() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let originalFilename = "revision-media.jpg"
-        let imageData = try XCTUnwrap(testImage(size: NSSize(width: 320, height: 180), color: .systemBlue).tiffRepresentation)
-        try imageData.write(to: directory.appendingPathComponent(originalFilename))
-
-        var item = PhotoItem(filename: originalFilename)
-        item.isVisible = false
-        let manager = PhotoManager(storageDirectory: directory)
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        manager.replacePhoto(item.id, with: testImage(size: NSSize(width: 180, height: 320), color: .systemRed))
-        let replacement = try XCTUnwrap(manager.photos.first?.filename)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(originalFilename).path))
-
-        // The replacement created a revision that still points to the original bytes. Push
-        // enough newer valid revisions through the bounded trail to evict that predecessor.
-        for index in 0...PhotoManager.maxPhotoStoreRevisions {
-            var current = try XCTUnwrap(manager.photos.first)
-            current.customName = "Revision \(index)"
-            manager.photos = [current]
-            XCTAssertTrue(manager.persist())
-        }
-
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(replacement).path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(originalFilename).path))
-    }
-
-    @MainActor
     func testHiddenSpaceImageCountFallsBackToPersistedFilenames() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -324,73 +288,12 @@ final class PersistenceIntegrationTests: XCTestCase {
     }
 
     @MainActor
-    func testPersistKeepsAValidBoundedRevisionTrail() throws {
+    func testCorruptStoreIsPreservedWithoutOverwritingIt() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let manager = PhotoManager(storageDirectory: directory)
-        var item = PhotoItem(filename: "revision.jpg")
-        item.isVisible = false
-        item.customName = "Revision 0"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        for index in 1..<(PhotoManager.maxPhotoStoreRevisions + 4) {
-            item.customName = "Revision \(index)"
-            manager.photos = [item]
-            XCTAssertTrue(manager.persist())
-        }
-
-        let revisionDirectory = directory.appendingPathComponent("photos-revisions", isDirectory: true)
-        let revisions = try FileManager.default.contentsOfDirectory(
-            at: revisionDirectory,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
-        XCTAssertEqual(revisions.count, PhotoManager.maxPhotoStoreRevisions)
-
-        for revision in revisions {
-            let data = try Data(contentsOf: revision)
-            XCTAssertNoThrow(try JSONDecoder().decode([PhotoItem].self, from: data))
-        }
-    }
-
-    @MainActor
-    func testSemanticNoOpWithReorderedDictionaryKeysDoesNotCreateRevision() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        var item = PhotoItem(filename: "dictionary.jpg")
-        item.isVisible = false
-        item.folderImageConfigs = [
-            "b.jpg": FolderImageConfig(frameString: "{{20, 20}, {200, 120}}", widgetWidth: 200),
-            "a.jpg": FolderImageConfig(frameString: "{{10, 10}, {180, 100}}", widgetWidth: 180)
-        ]
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        item.customName = "Changed"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-        let revisionCount = manager.availableRevisions.count
-
-        // Reinsert one dictionary entry to change its in-memory iteration order without
-        // changing the semantic layout. sortedKeys should keep the encoded bytes identical.
-        let aConfig = try XCTUnwrap(item.folderImageConfigs.removeValue(forKey: "a.jpg"))
-        item.folderImageConfigs["a.jpg"] = aConfig
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-        XCTAssertEqual(manager.availableRevisions.count, revisionCount)
-    }
-
-    @MainActor
-    func testCorruptStoreIsPreservedAndRequiresExplicitRevisionRestore() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        var original = PhotoItem(filename: "revision.jpg")
+        var original = PhotoItem(filename: "original.jpg")
         original.isVisible = false
         original.customName = "Original"
         manager.photos = [original]
@@ -405,8 +308,6 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         let corrupted = PhotoManager(storageDirectory: directory)
         XCTAssertTrue(corrupted.photos.isEmpty)
-        XCTAssertTrue(corrupted.isStoreLoadBlocked)
-        XCTAssertEqual(corrupted.persistenceFailures.first(where: { $0.kind == .load })?.kind, .load)
 
         let corruptDirectory = directory.appendingPathComponent("photos-corrupt", isDirectory: true)
         let copies = try FileManager.default.contentsOfDirectory(
@@ -420,132 +321,23 @@ final class PersistenceIntegrationTests: XCTestCase {
         corrupted.photos = [PhotoItem(filename: "should-not-overwrite.jpg")]
         XCTAssertFalse(corrupted.persist())
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("photos.json")), corruptData)
-
-        XCTAssertTrue(corrupted.restoreLatestRevision())
-        XCTAssertEqual(corrupted.photos.first?.customName, "Original")
-        XCTAssertFalse(corrupted.isStoreLoadBlocked)
-        XCTAssertFalse(corrupted.persistenceFailures.contains(where: { $0.kind == .load }))
     }
 
     @MainActor
-    func testRevisionFailureLeavesLastKnownGoodStoreUntouched() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        var item = PhotoItem(filename: "revision.jpg")
-        item.isVisible = false
-        item.customName = "Original"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-        let originalData = try Data(contentsOf: directory.appendingPathComponent("photos.json"))
-
-        // A file at the revisions directory path makes the required predecessor write fail.
-        // The new layout must not replace the only known-good photos.json in that case.
-        let revisionsPath = directory.appendingPathComponent("photos-revisions")
-        try Data("not a directory".utf8).write(to: revisionsPath)
-        item.customName = "Should not win"
-        manager.photos = [item]
-
-        XCTAssertFalse(manager.persist())
-        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("photos.json")), originalData)
-        XCTAssertEqual(
-            try JSONDecoder().decode([PhotoItem].self, from: originalData).first?.customName,
-            "Original"
-        )
-        XCTAssertTrue(manager.persistenceFailures.contains(where: { $0.kind == .save }))
-        XCTAssertFalse(manager.isStoreLoadBlocked)
-    }
-
-    @MainActor
-    func testRestoreAbortsWhenReadableCurrentStateCannotBecomeARevision() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        var item = PhotoItem(filename: "revision.jpg")
-        item.isVisible = false
-        item.customName = "Original"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        item.customName = "Changed"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-        let selected = try XCTUnwrap(manager.availableRevisions.first)
-        let selectedData = try Data(contentsOf: selected.url)
-        let externalRevisionURL = directory.appendingPathComponent("external-revision.json")
-        try selectedData.write(to: externalRevisionURL)
-
-        let currentURL = directory.appendingPathComponent("photos.json")
-        let currentData = try Data(contentsOf: currentURL)
-        try FileManager.default.removeItem(at: directory.appendingPathComponent("photos-revisions"))
-        try Data("not a directory".utf8).write(to: directory.appendingPathComponent("photos-revisions"))
-
-        let externalRevision = PhotoStoreRevision(url: externalRevisionURL, createdAt: selected.createdAt)
-        XCTAssertFalse(manager.restoreRevision(externalRevision))
-        XCTAssertEqual(try Data(contentsOf: currentURL), currentData)
-        XCTAssertEqual(manager.photos.first?.customName, "Changed")
-        XCTAssertTrue(manager.persistenceFailures.contains(where: { $0.kind == .save }))
-    }
-
-    @MainActor
-    func testRestoreAbortsWhenCorruptStoreCannotBePreserved() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        var item = PhotoItem(filename: "revision.jpg")
-        item.isVisible = false
-        item.customName = "Original"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        item.customName = "Changed"
-        manager.photos = [item]
-        XCTAssertTrue(manager.persist())
-
-        let corruptData = Data("{ not valid Arras JSON".utf8)
-        let currentURL = directory.appendingPathComponent("photos.json")
-        try corruptData.write(to: currentURL, options: .atomic)
-        try Data("not a directory".utf8).write(to: directory.appendingPathComponent("photos-corrupt"))
-
-        let corrupted = PhotoManager(storageDirectory: directory)
-        XCTAssertTrue(corrupted.isStoreLoadBlocked)
-        XCTAssertFalse(corrupted.restoreLatestRevision())
-        XCTAssertEqual(try Data(contentsOf: currentURL), corruptData)
-        XCTAssertTrue(corrupted.photos.isEmpty)
-        XCTAssertTrue(corrupted.persistenceFailures.contains {
-            $0.kind == .save && $0.detail.contains("could not be preserved")
-        })
-    }
-
-    @MainActor
-    func testSaveFailureIsReportedWithoutNeedingAWritableDirectory() throws {
+    func testSaveFailsWhenStoragePathIsNotDirectory() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let notADirectory = root.appendingPathComponent("not-a-directory")
-        try Data("sentinel".utf8).write(to: notADirectory)
+        let sentinel = Data("sentinel".utf8)
+        try sentinel.write(to: notADirectory)
 
         let manager = PhotoManager(storageDirectory: notADirectory)
         manager.photos = [PhotoItem(filename: "photo.jpg")]
 
         XCTAssertFalse(manager.persist())
-        XCTAssertTrue(manager.persistenceFailures.contains(where: { $0.kind == .save }))
-        XCTAssertFalse(manager.isStoreLoadBlocked)
-    }
-
-    @MainActor
-    func testInvalidBatchMediaIsReportedInManagerState() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let manager = PhotoManager(storageDirectory: directory)
-        let added = await manager.addPhotos(data: [Data("not an image".utf8)])
-        XCTAssertEqual(added, 0)
-        XCTAssertTrue(manager.persistenceFailures.contains(where: { $0.kind == .mediaImport }))
-        XCTAssertFalse(manager.isStoreLoadBlocked)
+        XCTAssertEqual(try Data(contentsOf: notADirectory), sentinel)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: notADirectory.appendingPathComponent("photos.json").path))
     }
 
     private func testImage(size: NSSize, color: NSColor) -> NSImage {

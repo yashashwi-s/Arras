@@ -1,11 +1,11 @@
 {
   "version": "2.4.6",
-  "title": "Recovery and updates",
-  "summary": "Daily verified automatic updates, clearer layout recovery, durable Space-image replacement, and safer persistence make Arras easier to trust.",
+  "title": "Updates and durable backups",
+  "summary": "Daily verified updates, atomic damaged-data handling, safe portable backups, and durable Space-image replacement make Arras easier to trust.",
   "details": [
-    "Recent Layout History is now clearly separated from portable .arras backups and explains exactly what restoring will replace.",
-    "Per-photo schedules support weekday, daytime, and overnight windows with a useful summary in each photo row.",
-    "Space-image replacement, archive import, revision retention, and persistence failures now follow one durable model path.",
+    "Portable .arras import stages and validates its media before replacing a layout, while atomic writes preserve the last valid state when input is damaged.",
+    "Replacing a Space image updates the persisted slot, carries its frame metadata forward, and remains safe across shared media, hidden widgets, and relaunch.",
+    "Settings controls include accessible labels, hints, and values, including a keyboard-reachable Advanced Frame disclosure.",
     "Every release must provide deliberate human-authored notes that CI uses for both the GitHub release and updater message."
   ]
 }

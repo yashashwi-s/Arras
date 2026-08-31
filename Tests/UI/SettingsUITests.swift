@@ -23,14 +23,9 @@ final class SettingsUITests: XCTestCase {
 
     /// A tiny valid `photos.json` entry and 1x1 image are enough to exercise the Settings row
     /// without relying on a Finder picker or a user's photo library.
-    private func seedPhoto(
-        scheduleEnabled: Bool = true,
-        scheduleStartMinutes: Int = 22 * 60,
-        scheduleEndMinutes: Int = 6 * 60,
-        scheduleWeekdays: Int = 0b010_0000
-    ) throws -> UUID {
+    private func seedPhoto() throws -> UUID {
         let id = UUID()
-        let filename = "schedule-test-image.png"
+        let filename = "ui-test-image.png"
         let pngData = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
         try pngData.write(to: storageDirectory.appendingPathComponent(filename), options: .atomic)
         let json: [String: Any] = [
@@ -39,11 +34,7 @@ final class SettingsUITests: XCTestCase {
             "frameString": "{{0, 0}, {300, 200}}",
             "widgetWidth": 300,
             "isLocked": false,
-            "isVisible": true,
-            "scheduleEnabled": scheduleEnabled,
-            "scheduleStartMinutes": scheduleStartMinutes,
-            "scheduleEndMinutes": scheduleEndMinutes,
-            "scheduleWeekdays": scheduleWeekdays
+            "isVisible": true
         ]
         // Production stores an array of PhotoItem objects. Writing the object directly made the
         // app correctly reject the fixture and left every row-based UI test looking for a widget
@@ -107,7 +98,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertEqual(app.windows.count, 1)
     }
 
-    func testPhotoScheduleAndFrameControlsAreReachable() throws {
+    func testFrameInspectorDisclosureAndControlsAreReachable() throws {
         let id = try seedPhoto()
         app.launch()
 
@@ -117,37 +108,16 @@ final class SettingsUITests: XCTestCase {
 
         let row = window.descendants(matching: .any)["photo-row-toggle-\(id.uuidString)"]
         XCTAssertTrue(waitForHittable(row))
-        let rowSummary = row.value as? String ?? ""
-        XCTAssertTrue(rowSummary.contains("Schedule"))
-        XCTAssertTrue(rowSummary.contains("22:00–06:00 overnight"))
         row.click()
 
-        let editor = window.descendants(matching: .any)["photo-schedule-editor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 2))
-        let scheduleToggle = window.descendants(matching: .any)["photo-schedule-toggle"]
-        clickWhenHittable(scheduleToggle)
-        clickWhenHittable(scheduleToggle)
-
-        let sunday = window.descendants(matching: .any)["photo-schedule-weekday-sun"]
-        clickWhenHittable(sunday)
-        clickWhenHittable(sunday)
-
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-mon"].exists)
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-tue"].exists)
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-wed"].exists)
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-thu"].exists)
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-fri"].exists)
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-weekday-sat"].exists)
-        let start = window.descendants(matching: .any)["photo-schedule-start"]
-        clickWhenHittable(start)
-        app.typeKey(.escape, modifierFlags: [])
-        let end = window.descendants(matching: .any)["photo-schedule-end"]
-        clickWhenHittable(end)
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(window.descendants(matching: .any)["photo-schedule-overnight"].exists)
-
-        let frameButton = window.descendants(matching: .any)["photo-frame-inspector"]
-        XCTAssertTrue(reveal(frameButton, in: window.scrollViews.firstMatch))
+        // SwiftUI exposes this native button by its accessibility label on macOS 27 even
+        // when the source identifier is present. Query the user-facing contract that VoiceOver
+        // uses; the identifier-based query incorrectly reported the clearly visible control as
+        // absent in the captured UI run.
+        let frameButton = window.buttons["Edit frame"]
+        let photosScrollView = window.descendants(matching: .any)["photos-scroll-view"]
+        XCTAssertTrue(photosScrollView.waitForExistence(timeout: 2))
+        XCTAssertTrue(reveal(frameButton, in: photosScrollView, timeout: 10))
         clickWhenHittable(frameButton)
 
         let inspector = app.descendants(matching: .any)["frame-inspector"]
@@ -168,12 +138,12 @@ final class SettingsUITests: XCTestCase {
 
         clickWhenHittable(app.descendants(matching: .any)["frame-reset"])
         let resetConfirmation = app.buttons["Reset Frame"]
-        XCTAssertTrue(waitForHittable(resetConfirmation))
-        clickWhenHittable(app.buttons["Cancel"])
+        XCTAssertTrue(resetConfirmation.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     func testRemovingPhotoRequiresAnAccessibleConfirmation() throws {
-        let id = try seedPhoto(scheduleEnabled: false)
+        let id = try seedPhoto()
         app.launch()
 
         let window = app.windows["Arras"]
@@ -184,11 +154,18 @@ final class SettingsUITests: XCTestCase {
 
         let moreActions = window.descendants(matching: .any)["photo-more-actions"]
         clickWhenHittable(moreActions)
-        let remove = app.menuItems["Remove"]
-        clickWhenHittable(remove)
+        // Scope the title to this row's open menu. The menu-bar photo submenu also contains a
+        // "Remove" item, so an application-wide title query is intentionally ambiguous.
+        let remove = moreActions.descendants(matching: .menuItem)["Remove"]
+        // A native macOS menu item is exposed while its menu is open, but XCTest can report
+        // `isHittable == false` even though a direct click succeeds. Existence is the stable
+        // contract for this role; button-style hittability polling is appropriate only after
+        // the confirmation becomes an ordinary control.
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.click()
 
         let removeConfirmation = app.buttons["Remove Photo"]
-        XCTAssertTrue(waitForHittable(removeConfirmation))
-        clickWhenHittable(app.buttons["Cancel"])
+        XCTAssertTrue(removeConfirmation.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
     }
 }

@@ -2,69 +2,11 @@ import AppKit
 import SwiftUI
 import ServiceManagement
 
-/// A persisted-state failure that needs a human decision rather than a silent fallback.
-///
-/// The settings panel keeps these visible until the user dismisses them. In particular, a
-/// corrupt store is never treated as an empty first launch: doing so would let the next edit
-/// overwrite the only evidence of what went wrong.
-enum PersistenceFailureKind: String, CaseIterable, Equatable {
-    case load
-    case save
-    case mediaImport
-
-    var title: String {
-        switch self {
-        case .load: return "Photo library couldn't be read"
-        case .save: return "Photo library couldn't be saved"
-        case .mediaImport: return "Some media couldn't be added"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .load: return "doc.badge.gearshape"
-        case .save: return "externaldrive.badge.exclamationmark"
-        case .mediaImport: return "photo.badge.exclamationmark"
-        }
-    }
-}
-
-struct PersistenceFailure: Identifiable, Equatable {
-    let id: UUID
-    let kind: PersistenceFailureKind
-    let detail: String
-    let occurredAt: Date
-
-    init(id: UUID = UUID(), kind: PersistenceFailureKind, detail: String, occurredAt: Date = Date()) {
-        self.id = id
-        self.kind = kind
-        self.detail = detail
-        self.occurredAt = occurredAt
-    }
-
-    var title: String { kind.title }
-}
-
-/// One automatic snapshot of the JSON store. Media is deliberately not copied here: these
-/// revisions are for recovering layout/state edits, while `.arras` remains the explicit media
-/// backup format.
-struct PhotoStoreRevision: Identifiable, Equatable {
-    let url: URL
-    let createdAt: Date
-
-    var id: URL { url }
-}
-
 /// Manages multiple desktop photos, persistence, and settings.
 @MainActor
 class PhotoManager: ObservableObject {
     @Published var photos: [PhotoItem] = []
     @Published var launchAtLogin: Bool = false
-
-    /// Persistent-state problems are intentionally model-owned so every Settings tab can show
-    /// the same diagnosis. The array is bounded in `recordPersistenceFailure`.
-    @Published private(set) var persistenceFailures: [PersistenceFailure] = []
-    @Published private(set) var availableRevisions: [PhotoStoreRevision] = []
 
     // v1.6 — Presence & Privacy: mirrors of PresenceMonitor's toggles/detected state for
     // the Settings UI. Always go through the setX methods below rather than assigning
@@ -98,28 +40,10 @@ class PhotoManager: ObservableObject {
 
     // v1.6 — Presence & Privacy
     private let presence = PresenceMonitor()
-    private var scheduleTimer: DispatchSourceTimer?
     private let storageDirectoryOverride: URL?
     private var storeLoadBlocked = false
     private var didPreserveCorruptStore = false
-
-    /// True while the current `photos.json` could not be decoded or read. The Settings
-    /// recovery surface uses this to distinguish a genuinely blocked store from an unrelated
-    /// media or best-effort save warning.
-    var isStoreLoadBlocked: Bool { storeLoadBlocked }
-
-    /// Five snapshots cover a short undo trail without turning a frequent frame-position save
-    /// into an unbounded archive. A revision is a JSON state snapshot; source media stays in the
-    /// normal store and is retained while a valid revision still references it.
-    static let maxPhotoStoreRevisions = 5
     private static let maxCorruptStoreCopies = 5
-    /// Orphan cleanup is deliberately bounded. A store can contain files from an interrupted
-    /// import, but a single revision prune should never spend an unbounded amount of time
-    /// walking or deleting user data.
-    private static let maxOrphanedMediaCleanup = 32
-    private static let managedMediaExtensions: Set<String> = [
-        "jpg", "jpeg", "png", "gif", "heic", "tif", "tiff", "bmp", "webp"
-    ]
 
     var storageDir: URL {
         if let storageDirectoryOverride {
@@ -215,7 +139,6 @@ class PhotoManager: ObservableObject {
     // MARK: - Persistence
 
     func loadSaved() {
-        refreshAvailableRevisions()
         guard FileManager.default.fileExists(atPath: dataFile.path) else { return }
 
         do {
@@ -231,12 +154,7 @@ class PhotoManager: ObservableObject {
                 if let preserved {
                     detail += " A copy was preserved at \(preserved.path)."
                 }
-                if !availableRevisions.isEmpty {
-                    detail += " Restore a previous revision from Settings."
-                } else {
-                    detail += " No valid automatic revision is available."
-                }
-                recordPersistenceFailure(.load, detail: detail)
+                logPersistenceFailure(detail)
             }
         } catch {
             storeLoadBlocked = true
@@ -245,16 +163,12 @@ class PhotoManager: ObservableObject {
             if let preserved {
                 detail += " A copy was preserved at \(preserved.path)."
             }
-            if !availableRevisions.isEmpty {
-                detail += " Restore a previous revision from Settings."
-            }
-            recordPersistenceFailure(.load, detail: detail)
+            logPersistenceFailure(detail)
         }
     }
 
-    /// Rebuilds windows from a decoded model. Keeping this in one place means an explicit
-    /// revision restore follows the same presence, Space, display and animation rules as a
-    /// normal relaunch instead of inventing a second loader.
+    /// Rebuilds windows from a decoded model. Keeping this in one place means a successful
+    /// import follows the same presence, Space, display and animation rules as a normal relaunch.
     private func installLoadedItems(_ items: [PhotoItem]) {
         for window in windows.values { window.hidePhoto() }
         windows.removeAll()
@@ -264,13 +178,11 @@ class PhotoManager: ObservableObject {
 
         photos = items
 
-        // Presence suppression (schedule / fullscreen / conferencing) depends on the
-        // wall clock and on which apps happen to be running right now, neither of which
-        // survives a relaunch, so it's recomputed fresh here rather than trusting
-        // whatever was persisted last session.
-        let now = Date()
+        // Presence suppression (fullscreen / conferencing) depends on which apps happen to be
+        // running right now, neither of which survives a relaunch, so it's recomputed fresh here
+        // rather than trusting whatever was persisted last session.
         for index in photos.indices {
-            photos[index].isHiddenForPresence = isSuppressedForPresence(photos[index], now: now)
+            photos[index].isHiddenForPresence = isSuppressedForPresence(photos[index])
         }
 
         // A photo that was auto-hidden because its display was disconnected stays invisible
@@ -298,7 +210,6 @@ class PhotoManager: ObservableObject {
             )
         }
         reportMissingStoredMedia(in: items)
-        scheduleNextSchedulerTick()
     }
 
     private func reportMissingStoredMedia(in items: [PhotoItem]) {
@@ -350,17 +261,14 @@ class PhotoManager: ObservableObject {
         do {
             data = try encoder.encode(photos)
         } catch {
-            recordPersistenceFailure(.save, detail: "The current photo layout could not be encoded: \(error.localizedDescription).")
+            logPersistenceFailure("The current photo layout could not be encoded: \(error.localizedDescription).")
             return false
         }
 
-        // A corrupt existing store must stay available for diagnosis. Requiring an explicit
-        // restore before accepting another write is what prevents a later edit from erasing it.
+        // A corrupt existing store must stay available for diagnosis. Refusing another write
+        // until the file is repaired externally prevents a later edit from erasing the evidence.
         if storeLoadBlocked {
-            recordPersistenceFailure(
-                .save,
-                detail: "The existing photos.json was not overwritten. Restore a valid revision from Settings before saving another change."
-            )
+            logPersistenceFailure("The existing photos.json was not overwritten because it is unreadable.")
             return false
         }
 
@@ -375,13 +283,12 @@ class PhotoManager: ObservableObject {
                 let preserved = preserveCorruptStore()
                 var detail = "The existing photos.json could not be read before saving: \(error.localizedDescription)."
                 if let preserved { detail += " A copy was preserved at \(preserved.path)." }
-                recordPersistenceFailure(.load, detail: detail)
-                recordPersistenceFailure(.save, detail: "The photo layout was not saved because its previous state could not be read.")
+                logPersistenceFailure(detail)
                 return false
             }
 
-            // Validate the previous bytes before making them a recovery point. If another
-            // process or a manual edit damaged the file, preserve it and refuse to replace it.
+            // Validate the previous bytes before replacing them. If another process or a manual
+            // edit damaged the file, preserve it and refuse to overwrite it.
             do {
                 _ = try JSONDecoder().decode([PhotoItem].self, from: current)
             } catch {
@@ -389,33 +296,7 @@ class PhotoManager: ObservableObject {
                 let preserved = preserveCorruptStore(data: current)
                 var detail = "The existing photos.json could not be decoded before saving: \(error.localizedDescription)."
                 if let preserved { detail += " A copy was preserved at \(preserved.path)." }
-                recordPersistenceFailure(.load, detail: detail)
-                recordPersistenceFailure(.save, detail: "The photo layout was not saved because its previous state was corrupt.")
-                return false
-            }
-
-            // Repeated no-op writes (including a few AppKit callbacks) do not create a
-            // revision. Every real write gets one bounded, valid predecessor snapshot.
-            if current == data {
-                clearPersistenceFailure(.save)
-                refreshAvailableRevisions()
-                return true
-            }
-            // The predecessor is the recovery guarantee. If it cannot be written, leave the
-            // existing photos.json untouched rather than replacing the only known-good state
-            // and merely displaying a warning after the fact.
-            guard writeRevision(current) != nil else { return false }
-            do {
-                try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
-                try data.write(to: dataFile, options: .atomic)
-                clearPersistenceFailure(.save)
-                refreshAvailableRevisions()
-                return true
-            } catch {
-                // `.atomic` leaves the previous file in place when its replacement fails. The
-                // recovery point above therefore remains valid and the in-memory edit stays
-                // visible without claiming it survived a relaunch.
-                recordPersistenceFailure(.save, detail: "The photo layout could not be saved: \(error.localizedDescription).")
+                logPersistenceFailure(detail)
                 return false
             }
         }
@@ -423,39 +304,13 @@ class PhotoManager: ObservableObject {
         do {
             try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
             try data.write(to: dataFile, options: .atomic)
-            clearPersistenceFailure(.save)
-            refreshAvailableRevisions()
             return true
         } catch {
-            // `.atomic` leaves the previous file in place when its replacement fails. The
-            // recovery point above therefore remains valid and the in-memory edit stays
-            // visible without claiming it survived a relaunch.
-            recordPersistenceFailure(.save, detail: "The photo layout could not be saved: \(error.localizedDescription).")
+            // `.atomic` leaves the previous file in place when its replacement fails, so a
+            // transient write error never destroys the last known-good JSON.
+            logPersistenceFailure("The photo layout could not be saved: \(error.localizedDescription).")
             return false
         }
-    }
-
-    /// A bounded snapshot of the last known-good JSON state. `persist()` treats this as a
-    /// prerequisite for replacing `photos.json`, so a revision failure leaves the last known
-    /// good store untouched.
-    @discardableResult
-    private func writeRevision(_ data: Data) -> URL? {
-        do {
-            try FileManager.default.createDirectory(at: revisionsDirectory, withIntermediateDirectories: true)
-            let filename = "photos-\(Int(Date().timeIntervalSince1970 * 1_000_000))-\(UUID().uuidString).json"
-            let url = revisionsDirectory.appendingPathComponent(filename)
-            try data.write(to: url, options: .atomic)
-            pruneRevisions()
-            refreshAvailableRevisions()
-            return url
-        } catch {
-            recordPersistenceFailure(.save, detail: "A recovery revision could not be written: \(error.localizedDescription).")
-            return nil
-        }
-    }
-
-    private var revisionsDirectory: URL {
-        storageDir.appendingPathComponent("photos-revisions", isDirectory: true)
     }
 
     private var corruptStoreDirectory: URL {
@@ -491,114 +346,12 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    private func refreshAvailableRevisions() {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: revisionsDirectory,
-            includingPropertiesForKeys: [.creationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        availableRevisions = urls
-            .filter { $0.pathExtension == "json" }
-            .compactMap { url in
-                guard let data = try? Data(contentsOf: url),
-                      (try? JSONDecoder().decode([PhotoItem].self, from: data)) != nil else { return nil }
-                return PhotoStoreRevision(url: url, createdAt: creationDate(for: url))
-            }
-            .sorted {
-                if $0.createdAt == $1.createdAt { return $0.url.lastPathComponent > $1.url.lastPathComponent }
-                return $0.createdAt > $1.createdAt
-            }
-    }
-
     private func creationDate(for url: URL) -> Date {
         guard let values = try? url.resourceValues(forKeys: [.creationDateKey]),
               let date = values.creationDate else {
             return .distantPast
         }
         return date
-    }
-
-    private func pruneRevisions() {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: revisionsDirectory,
-            includingPropertiesForKeys: [.creationDateKey],
-            options: [.skipsHiddenFiles]
-        ))?.filter { $0.pathExtension == "json" }.sorted { lhs, rhs in
-            let left = creationDate(for: lhs)
-            let right = creationDate(for: rhs)
-            if left == right { return lhs.lastPathComponent > rhs.lastPathComponent }
-            return left > right
-        } ?? []
-        for url in urls.dropFirst(Self.maxPhotoStoreRevisions) {
-            try? FileManager.default.removeItem(at: url)
-        }
-
-        // A file can outlive the PhotoItem that used it when an import or replacement is
-        // interrupted. Once a revision no longer protects that old state, clean only files that
-        // are clearly media, are not referenced by the live model/current JSON/any valid
-        // revision, and are within a small per-prune budget.
-        cleanupOrphanedStoredMedia()
-    }
-
-    /// Returns filenames from valid JSON revisions. Invalid revision files are reported too:
-    /// cleanup must stop conservatively when it cannot prove what a revision references.
-    private func revisionStoredFilenames() -> (filenames: Set<String>, hasUnreadableRevision: Bool) {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: revisionsDirectory,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ))?.filter { $0.pathExtension.lowercased() == "json" } ?? []
-
-        var filenames = Set<String>()
-        var hasUnreadableRevision = false
-        for url in urls {
-            guard let data = try? Data(contentsOf: url),
-                  let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
-                hasUnreadableRevision = true
-                continue
-            }
-            filenames.formUnion(items.flatMap { storedFilenames(in: $0) })
-        }
-        return (filenames, hasUnreadableRevision)
-    }
-
-    /// Returns the current on-disk references, or nil when a current store exists but cannot be
-    /// decoded. A corrupt current store must block orphan cleanup rather than turning a recovery
-    /// problem into data loss.
-    private func currentStoredFilenames() -> Set<String>? {
-        guard FileManager.default.fileExists(atPath: dataFile.path) else { return [] }
-        guard let data = try? Data(contentsOf: dataFile),
-              let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
-            return nil
-        }
-        return Set(items.flatMap { storedFilenames(in: $0) })
-    }
-
-    private func cleanupOrphanedStoredMedia() {
-        guard let current = currentStoredFilenames() else { return }
-        let revisions = revisionStoredFilenames()
-        guard !revisions.hasUnreadableRevision else { return }
-
-        var referenced = current
-        referenced.formUnion(photos.flatMap { storedFilenames(in: $0) })
-        referenced.formUnion(revisions.filenames)
-
-        let candidates = (try? FileManager.default.contentsOfDirectory(
-            at: storageDir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        var removed = 0
-        for url in candidates where removed < Self.maxOrphanedMediaCleanup {
-            guard Self.managedMediaExtensions.contains(url.pathExtension.lowercased()),
-                  !referenced.contains(url.lastPathComponent),
-                  let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
-                  values.isDirectory != true else { continue }
-            if (try? FileManager.default.removeItem(at: url)) != nil {
-                removed += 1
-            }
-        }
     }
 
     private func pruneCorruptStoreCopies() {
@@ -617,97 +370,23 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    /// Replaces the live layout only after a selected, previously validated revision has been
-    /// decoded and written successfully. There is no automatic fallback: choosing this action
-    /// is the user's explicit recovery decision.
-    @discardableResult
-    func restoreLatestRevision() -> Bool {
-        guard let revision = availableRevisions.first else { return false }
-        return restoreRevision(revision)
-    }
-
-    @discardableResult
-    func restoreRevision(_ revision: PhotoStoreRevision) -> Bool {
-        let data: Data
-        let items: [PhotoItem]
-        do {
-            data = try Data(contentsOf: revision.url)
-            items = try JSONDecoder().decode([PhotoItem].self, from: data)
-        } catch {
-            recordPersistenceFailure(.load, detail: "The selected recovery revision could not be restored: \(error.localizedDescription).")
-            return false
+    /// Returns the filenames referenced by the durable current store. If the store cannot be
+    /// decoded, media deletion stops conservatively rather than risking data loss.
+    private func currentStoredFilenames() -> Set<String>? {
+        guard FileManager.default.fileExists(atPath: dataFile.path) else { return [] }
+        guard let data = try? Data(contentsOf: dataFile),
+              let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
+            return nil
         }
-
-        // Keep the state being replaced recoverable too. If this launch was already blocked on
-        // corrupt input, preserveCorruptStore is idempotent and returns the existing copy.
-        if storeLoadBlocked {
-            let hadCurrentStore = FileManager.default.fileExists(atPath: dataFile.path)
-            if hadCurrentStore, preserveCorruptStore() == nil {
-                recordPersistenceFailure(
-                    .save,
-                    detail: "The selected layout was not restored because the corrupt photos.json could not be preserved."
-                )
-                return false
-            }
-        } else if FileManager.default.fileExists(atPath: dataFile.path) {
-            do {
-                let current = try Data(contentsOf: dataFile)
-                if current != data {
-                    guard writeRevision(current) != nil else { return false }
-                }
-            } catch {
-                storeLoadBlocked = true
-                let preserved = preserveCorruptStore()
-                var detail = "The existing photos.json could not be read before restore: \(error.localizedDescription)."
-                if let preserved { detail += " A copy was preserved at \(preserved.path)." }
-                recordPersistenceFailure(.load, detail: detail)
-                guard preserved != nil else {
-                    recordPersistenceFailure(
-                        .save,
-                        detail: "The selected layout was not restored because the unreadable photos.json could not be preserved."
-                    )
-                    return false
-                }
-            }
-        }
-
-        do {
-            try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
-            try data.write(to: dataFile, options: .atomic)
-        } catch {
-            recordPersistenceFailure(.save, detail: "The selected recovery revision could not be written: \(error.localizedDescription).")
-            return false
-        }
-
-        storeLoadBlocked = false
-        didPreserveCorruptStore = false
-        clearPersistenceFailure(.load)
-        clearPersistenceFailure(.save)
-        installLoadedItems(items)
-        refreshAvailableRevisions()
-        return true
-    }
-
-    private func recordPersistenceFailure(_ kind: PersistenceFailureKind, detail: String) {
-        if let index = persistenceFailures.firstIndex(where: { $0.kind == kind }) {
-            let existing = persistenceFailures[index]
-            persistenceFailures[index] = PersistenceFailure(id: existing.id, kind: kind, detail: detail)
-        } else {
-            persistenceFailures.append(PersistenceFailure(kind: kind, detail: detail))
-            if persistenceFailures.count > 8 { persistenceFailures.removeFirst() }
-        }
+        return Set(items.flatMap { storedFilenames(in: $0) })
     }
 
     func recordMediaImportFailure(_ detail: String) {
-        recordPersistenceFailure(.mediaImport, detail: detail)
+        logPersistenceFailure(detail)
     }
 
-    private func clearPersistenceFailure(_ kind: PersistenceFailureKind) {
-        persistenceFailures.removeAll { $0.kind == kind }
-    }
-
-    func dismissPersistenceFailure(_ id: UUID) {
-        persistenceFailures.removeAll { $0.id == id }
+    private func logPersistenceFailure(_ detail: String) {
+        NSLog("Arras persistence: %@", detail)
     }
 
     private func saveAllPositions() {
@@ -829,14 +508,10 @@ class PhotoManager: ObservableObject {
         }
         guard !stillReferenced else { return }
 
-        // `persist()` writes the predecessor JSON before replacing the current file. Those
-        // revisions are real references: deleting their media would make an explicit restore
-        // recreate a PhotoItem that points at a missing file. Treat an unreadable revision as a
-        // reason to keep the bytes until the user or bounded pruning resolves it.
+        // Verify the durable current JSON before deleting. If it is unreadable, keep the bytes
+        // because the file may still reference them even though the in-memory model does not.
         guard let current = currentStoredFilenames() else { return }
-        let revisions = revisionStoredFilenames()
-        guard !revisions.hasUnreadableRevision else { return }
-        guard !current.contains(filename), !revisions.filenames.contains(filename) else { return }
+        guard !current.contains(filename) else { return }
         try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(filename))
     }
 
@@ -932,8 +607,7 @@ class PhotoManager: ObservableObject {
         }
 
         // Rebuild all runtime state (windows, Spaces, timers, presence suppression) only after
-        // photos.json is durable. This also keeps import behavior aligned with relaunch and
-        // explicit revision restore.
+        // photos.json is durable. This keeps import behavior aligned with relaunch.
         installLoadedItems(committedPhotos)
 
         // A replacement may orphan the previous library's media. Do this last: until the model
@@ -947,8 +621,7 @@ class PhotoManager: ObservableObject {
         let newFilenames = Set(newItems.flatMap { storedFilenames(in: $0) }.filter { !$0.isEmpty })
 
         for filename in oldFilenames.subtracting(newFilenames) {
-            // Keep the same revision-aware safety checks used by ordinary deletion: a previous
-            // layout snapshot may still need this media for explicit recovery.
+            // Keep the same durable-reference safety checks used by ordinary deletion.
             removeStoredFileIfUnreferenced(filename)
         }
     }
@@ -1115,12 +788,11 @@ class PhotoManager: ObservableObject {
 
         if photos[index].isVisible {
             // A manual "Show" always wins over the display-disconnect and presence
-            // (schedule / fullscreen / conferencing) auto-hides — otherwise a photo could
-            // become permanently unreachable from the UI. This only wins until the next
-            // presence re-evaluation (a schedule boundary, or the fullscreen/conferencing
-            // state actually changing) re-applies the same rule from scratch — see
-            // reevaluatePresence(). That mirrors how isHiddenForDisplay already behaves:
-            // manual show wins now, not forever.
+            // (fullscreen / conferencing) auto-hides — otherwise a photo could become
+            // permanently unreachable from the UI. This only wins until the next presence
+            // re-evaluation, when the current fullscreen/conferencing state is applied again.
+            // That mirrors how isHiddenForDisplay already behaves: manual show wins now, not
+            // forever.
             photos[index].isHiddenForDisplay = false
             photos[index].isHiddenForPresence = false
             let item = photos[index]
@@ -1659,19 +1331,10 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    /// Whether `item` should currently be hidden for presence reasons -- outside its own
-    /// schedule window, or either global heuristic (fullscreen app / conferencing app)
-    /// currently tripped -- independent of the user's own `isVisible` choice.
-    private func isSuppressedForPresence(_ item: PhotoItem, now: Date = Date()) -> Bool {
-        if item.scheduleEnabled {
-            let withinSchedule = Schedule.isActive(
-                startMinutes: item.scheduleStartMinutes,
-                endMinutes: item.scheduleEndMinutes,
-                weekdayMask: item.scheduleWeekdays,
-                at: now
-            )
-            if !withinSchedule { return true }
-        }
+    /// Whether `item` should currently be hidden for the global presence heuristics (fullscreen
+    /// app / conferencing app), independent of the user's own `isVisible` choice. Legacy per-photo
+    /// schedule values are intentionally ignored; they remain only so old stores can decode.
+    private func isSuppressedForPresence(_: PhotoItem) -> Bool {
         return presence.shouldSuppressForPresence
     }
 
@@ -1679,10 +1342,9 @@ class PhotoManager: ObservableObject {
     /// and creates/tears down its window to match -- exactly like the per-display
     /// auto-hide path, `isVisible` is never touched here.
     private func reevaluatePresence() {
-        let now = Date()
         for index in photos.indices {
             guard photos[index].isVisible, !photos[index].isHiddenForDisplay else { continue }
-            let shouldHide = isSuppressedForPresence(photos[index], now: now)
+            let shouldHide = isSuppressedForPresence(photos[index])
             guard shouldHide != photos[index].isHiddenForPresence else { continue }
             photos[index].isHiddenForPresence = shouldHide
             let id = photos[index].id
@@ -1707,32 +1369,6 @@ class PhotoManager: ObservableObject {
         persist()
     }
 
-    /// Arms a single one-shot timer for the earliest moment any enabled schedule could
-    /// flip active/inactive, then re-arms itself after firing. Deliberately not a
-    /// per-minute poll: with no photos scheduled this holds no timer at all, and with
-    /// several scheduled it still costs exactly one wakeup per boundary crossing.
-    private func scheduleNextSchedulerTick() {
-        scheduleTimer?.cancel()
-        scheduleTimer = nil
-
-        let enabledItems = photos.filter { $0.scheduleEnabled }
-        guard !enabledItems.isEmpty else { return }
-
-        let now = Date()
-        let seconds = enabledItems
-            .map { Schedule.secondsUntilNextBoundary(startMinutes: $0.scheduleStartMinutes, endMinutes: $0.scheduleEndMinutes, from: now) }
-            .min() ?? 60
-
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + seconds)
-        timer.setEventHandler { [weak self] in
-            self?.reevaluatePresence()
-            self?.scheduleNextSchedulerTick()
-        }
-        timer.resume()
-        scheduleTimer = timer
-    }
-
     /// Reliable: sets `NSWindow.sharingType = .none` on every photo window, which the
     /// window server itself honors for any screen recording or video-conferencing share.
     /// See the type-level comment on `PresenceMonitor` for exactly what this does and
@@ -1753,23 +1389,6 @@ class PhotoManager: ObservableObject {
     /// reclaim the memory and stop rotation timers rather than to hide anything visible.
     func setHideWhenFullscreenActive(_ enabled: Bool) {
         presence.setHideWhenFullscreenActive(enabled)
-    }
-
-    /// Sets or updates a photo's show-only-during-this-window schedule.
-    /// - Parameters:
-    ///   - startMinutes/endMinutes: minutes after midnight; `endMinutes < startMinutes`
-    ///     is an overnight window (e.g. 22:00-06:00). Both are wrapped into `0..<1440`
-    ///     rather than validated, so a caller can't hand this an out-of-range value that
-    ///     later fails to decode -- see PhotoItem's decoding discipline.
-    ///   - weekdayMask: bitmask, bit (Calendar.weekday - 1): bit 0 = Sunday ... bit 6 = Saturday.
-    func setSchedule(_ id: UUID, enabled: Bool, startMinutes: Int, endMinutes: Int, weekdayMask: Int) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].scheduleEnabled = enabled
-        photos[index].scheduleStartMinutes = ((startMinutes % 1440) + 1440) % 1440
-        photos[index].scheduleEndMinutes = ((endMinutes % 1440) + 1440) % 1440
-        photos[index].scheduleWeekdays = weekdayMask
-        reevaluatePresence()
-        scheduleNextSchedulerTick()
     }
 
     // MARK: - App Controls

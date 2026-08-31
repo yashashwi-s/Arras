@@ -30,13 +30,12 @@ manage media files, or construct desktop windows independently.
   and `ScreenshotCapture.swift`: content normalization and import boundaries.
 - `SnapEngine.swift`, `SnapGuideOverlay.swift`, and `DisplayManager.swift`:
   placement geometry, visual guides, and stable display identity.
-- `PresenceManager.swift`: schedule evaluation, fullscreen state, and
-  conferencing-process observation.
+- `PresenceManager.swift`: fullscreen state and conferencing-process observation.
 - `LayoutArchive.swift` and `BackupFormat.swift`: portable archive schema,
   minimal ZIP implementation, import staging, and optional preferences.
 - `MainWindowView.swift`, `ContentView.swift`, `PhotoRowView.swift`,
-  `FrameInspector.swift`, `PersistenceStatusView.swift`, `PreferencesView.swift`,
-  and `PrivacyView.swift`: view-only Settings composition and recovery status.
+  `FrameInspector.swift`, `PreferencesView.swift`, and `PrivacyView.swift`:
+  view-only Settings composition.
 - `HotKeyManager.swift`, `ArrasIntents.swift`, and `MenuBarCustomization.swift`:
   external commands and user-configurable control surfaces.
 - `Tests/Unit` and `Tests/UI`: pure/model coverage, isolated persistence
@@ -46,12 +45,8 @@ manage media files, or construct desktop windows independently.
 
 - Production storage is `~/Library/Application Support/PhotoWidget/`.
 - `photos.json` is an array of `PhotoItem` written atomically.
-- A changed write first saves the valid predecessor under `photos-revisions/`;
-  the bounded trail is a required part of the commit, not best-effort logging.
-- Existing state that cannot be read or decoded is preserved under
-  `photos-corrupt/` and blocks ordinary writes until explicit recovery.
-- Media cleanup considers the live model, durable current JSON, and every valid
-  retained revision. An unreadable state conservatively blocks cleanup.
+- A failed save never replaces the last valid `photos.json`. Damaged archive or
+  media input is rejected before it can replace a working layout.
 - Every field added after the original model must decode with
   `decodeIfPresent(...) ?? default`; a missing new field may never invalidate an
   older library.
@@ -127,12 +122,13 @@ manage media files, or construct desktop windows independently.
 ## Verification layers
 
 1. Model: legacy/current `PhotoItem` decoding and round-trip behavior.
-2. Pure behavior: schedules and relative layouts.
-3. Persistence integration: isolated save/reload, bounded recovery, media
-   retention, and transactional archive merge/replace.
+2. Pure behavior: relative layouts and updater version precedence.
+3. Persistence integration: isolated save/reload, transactional archive
+   merge/replace, damaged-input preservation, and durable Space replacement.
 4. Window contract: Settings collection behavior without user data.
 5. UI integration: launch isolated Arras, assert one Settings window, visit all
-   tabs, and exercise schedule, Frame, and destructive confirmation controls.
+   tabs, and exercise the Frame inspector's Advanced disclosure plus destructive
+   confirmation controls.
 6. Release: generate the project, run tests, build with the macOS 27 SDK, and
    inspect the produced app version/build.
 7. Manual: launch the actual Release artifact and verify native appearance,

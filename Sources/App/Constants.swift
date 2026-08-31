@@ -3,9 +3,8 @@ import Foundation
 struct Constants {
     static let appName = "Arras"
 
-    /// The Settings rows include a seven-day schedule control and a reserved value/accessory
-    /// column. Keep the SwiftUI root, its tab content, and the AppKit window constraint aligned so
-    /// the window cannot be resized below the layout's actual minimum.
+    /// Keep the SwiftUI root, its tab content, and the AppKit window constraint aligned so the
+    /// window cannot be resized below the layout's actual minimum.
     static let settingsMinimumWidth: CGFloat = 460
     static let settingsMinimumHeight: CGFloat = 480
 

@@ -73,14 +73,15 @@ struct PhotoItem: Identifiable, Codable {
     var isHiddenForDisplay: Bool                // true when auto-hidden because displayIdentifier's screen is currently disconnected — distinct from the user-controlled isVisible
     var isSpaceBound: Bool                      // pin to whichever Space the window is on instead of joining all Spaces (see DesktopPhotoWindow.setSpaceBound)
 
-    // v1.6 — Schedule (see PresenceManager.Schedule for the active-window math)
-    var scheduleEnabled: Bool                   // opt-in: only show this photo during the window below
-    var scheduleStartMinutes: Int               // minutes after midnight, local time
-    var scheduleEndMinutes: Int                 // minutes after midnight; less than start means an overnight window (e.g. 22:00-06:00)
-    var scheduleWeekdays: Int                   // bitmask; bit (Calendar.weekday - 1), so bit 0 = Sunday ... bit 6 = Saturday
+    // Legacy v1.6 schedule fields. Retained in the Codable model so existing photos.json and
+    // .arras payloads continue to decode; the v2.4.6 runtime no longer exposes or evaluates them.
+    var scheduleEnabled: Bool
+    var scheduleStartMinutes: Int
+    var scheduleEndMinutes: Int
+    var scheduleWeekdays: Int
 
     // v1.6 — Presence & Privacy
-    var isHiddenForPresence: Bool               // true when auto-hidden by schedule, a fullscreen app, or conferencing-app detection — distinct from isVisible, same precedent as isHiddenForDisplay
+    var isHiddenForPresence: Bool               // true when auto-hidden by fullscreen/conferencing detection — distinct from isVisible, same precedent as isHiddenForDisplay
 
     init(filename: String, width: CGFloat = 300) {
         self.id = UUID()

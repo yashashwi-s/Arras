@@ -30,7 +30,6 @@ struct PreferencesView: View {
                 shortcut
                 menuBarSection
                 updates
-                layoutRecovery
                 backup
             }
             .padding(16)
@@ -146,15 +145,6 @@ struct PreferencesView: View {
             }
 
             UpdateStatusLine()
-        }
-    }
-
-    // MARK: - Local recovery
-
-    private var layoutRecovery: some View {
-        section("RECENT LAYOUT HISTORY") {
-            caption("Arras keeps up to five earlier versions of your widgets automatically. Use this only to undo an unwanted layout change; it stays on this Mac and is not a portable backup.")
-            PersistenceStatusView(manager: manager, showFailures: false, showRecoveryWhenHealthy: true)
         }
     }
 

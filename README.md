@@ -26,10 +26,12 @@ Version 2.4.6 is the current release:
   tilt;
 - Photos library, file picker, clipboard, drag-and-drop, screen-region, PDF,
   GIF, and APNG input;
-- global visibility shortcut, Shortcuts actions, privacy controls, and portable
-  `.arras` layout backups;
-- daily verified automatic updates, local layout recovery, per-photo schedules,
-  and durable replacement of the current image in a Space;
+- global visibility shortcut, Shortcuts actions, privacy controls, and safe
+  portable `.arras` layout backups;
+- daily verified automatic updates, atomic damaged-data handling, and durable
+  replacement of the current image in a Space;
+- accessibility labels and keyboard-reachable controls, including the Advanced
+  Frame disclosure;
 - unit, persistence-integration, compatibility, and real-app Settings UI tests.
 
 The exhaustive shipped contract and honest remaining work live in
@@ -125,7 +127,7 @@ xcodegen generate
   `PreferencesView.swift`, and `PrivacyView.swift`: Settings UI.
 - `Sources/App/SnapEngine.swift`, `DisplayManager.swift`, and
   `PresenceManager.swift`: placement and environment behavior.
-- `Tests/Unit/`: model, scheduling, persistence, layout, and compatibility tests.
+- `Tests/Unit/`: model, persistence, layout, updater, and compatibility tests.
 - `Tests/UI/`: launched-app Settings integration test.
 
 Runtime ownership flows:
@@ -161,4 +163,6 @@ The researched near-term candidates are rotation policies, click actions,
 captions, format validation, energy-aware behavior, richer import reporting,
 image metadata, and stronger Shortcuts. Living Collage, multi-selection, saved
 scenes, live albums/video, wallpaper engines, and the widget-platform roadmap
-remain deferred product work.
+remain deferred product work. Per-photo schedules, automatic layout history,
+and Settings-facing persistence banners are deliberately outside the current
+product scope.
