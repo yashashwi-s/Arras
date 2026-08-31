@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.4.5",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.5/Arras.app.zip?source=arras-updater&version=2.4.5",
-  "sha256": "e37b21bc7e7a60bc8801fd93889b6e4472f46fce0da190a88b28572314abf465",
-  "releaseNotes": "UI changes: Native glass Settings, the Arras wordmark, and active-Space window placement make the app feel at home on macOS.",
+  "latestVersion": "2.4.6",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.6/Arras.app.zip?source=arras-updater&version=2.4.6",
+  "sha256": "ccaab2c709fc402bdf2571650dc854e13739d6ee7c48885ca1fda6bef1002870",
+  "releaseNotes": "Updates and durable backups: Daily verified updates, atomic damaged-data handling, safe portable backups, and durable Space-image replacement make Arras easier to trust.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
