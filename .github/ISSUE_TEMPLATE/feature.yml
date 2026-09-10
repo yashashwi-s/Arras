@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement grounded in a real use case
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem or use case
+      description: What are you trying to do, and what makes it difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What would a good result look like? A specific implementation is optional.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional screenshots, examples, alternatives, or constraints.

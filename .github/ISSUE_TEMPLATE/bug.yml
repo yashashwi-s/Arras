@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible problem with Arras
+title: "[Bug] "
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: What actions consistently cause the problem?
+      placeholder: |
+        1. Open Arras...
+        2. Choose...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: input
+    id: arras-version
+    attributes:
+      label: Arras version
+      placeholder: 2.4.6
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.0
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Mac and display setup
+      description: Include Mac model/chip and display arrangement, scaling, or Spaces details that may matter.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: Optional. Remove personal or sensitive information before attaching files.

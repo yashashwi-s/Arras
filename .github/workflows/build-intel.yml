@@ -1,0 +1,77 @@
+name: Build Arras Intel
+
+# Credit: @ghostvarg introduced the manual Intel build and artifact upload in
+# https://github.com/ghostvarg/Arras (commits 7fb9070, 3991c6a, bb57c82).
+# Adapted to main's macOS 27 SDK requirement with explicit x86_64 compilation.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Match CI/release's SDK; cross-compile when this runner is Apple Silicon.
+    runs-on: xcode-27
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify SDK
+        run: |
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" = "27"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build Intel release
+        run: |
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme Arras \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/arras-intel-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build/Intel" \
+            ARCHS=x86_64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Verify Intel architecture
+        run: |
+          APP_PATH="build/Intel/Arras.app"
+          test -d "$APP_PATH"
+          test "$(lipo -archs "$APP_PATH/Contents/MacOS/Arras")" = "x86_64"
+
+      - name: Package Intel build
+        run: |
+          mkdir -p dist
+          rm -f dist/Arras.app.zip dist/Arras.dmg
+          ditto -c -k --sequesterRsrc --keepParent build/Intel/Arras.app dist/Arras.app.zip
+          STAGE="$(mktemp -d "$RUNNER_TEMP/arras-intel-dmg.XXXXXX")"
+          trap 'rm -rf "$STAGE"' EXIT
+          cp -R build/Intel/Arras.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname Arras -srcfolder "$STAGE" -ov -format UDZO dist/Arras.dmg
+          test -s dist/Arras.app.zip
+          test -s dist/Arras.dmg
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arras-Intel
+          if-no-files-found: error
+          path: |
+            dist/Arras.dmg
+            dist/Arras.app.zip
