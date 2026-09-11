@@ -10,15 +10,16 @@ display placement without using WidgetKit's fixed grid or fixed sizes.
   <img src="assets/demo.gif" alt="Arras photo widgets on a macOS desktop" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.6-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.7-green?style=flat-square)
 
 Arras was previously Photo Widget OSX and Tableau. The bundle identifier and
 storage location stayed the same, so existing layouts remain compatible.
 
 ## Current build
 
-Version 2.4.6 is the current release:
+Version 2.4.7 is the current release:
 
+- a new native macOS app icon built around the Arras mark;
 - native glass Settings with Photos, Preferences, and Privacy tabs;
 - one Settings window that opens on the active desktop Space;
 - independent photo widgets with true-ratio resizing, four depth levels,

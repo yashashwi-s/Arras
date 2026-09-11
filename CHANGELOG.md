@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.7 — New Arras icon
+
+**Arras has a new app icon.** The cream, charcoal, and terracotta design brings
+the Arras mark to Finder, the Dock, and system surfaces without changing app
+behavior.
+
 ## 2.4.6 — Updates and durable backups
 
 **Verified automatic updates now default to daily.** Arras checks once a day,

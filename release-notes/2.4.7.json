@@ -1,0 +1,9 @@
+{
+  "version": "2.4.7",
+  "title": "New Arras icon",
+  "summary": "Arras now has a new cream, charcoal, and terracotta app icon, with no other feature changes in this release.",
+  "details": [
+    "The new Arras mark now appears in Finder, the Dock, and macOS system surfaces.",
+    "This release intentionally contains no other feature changes."
+  ]
+}
