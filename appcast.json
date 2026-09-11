@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.4.6",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.6/Arras.app.zip?source=arras-updater&version=2.4.6",
-  "sha256": "ccaab2c709fc402bdf2571650dc854e13739d6ee7c48885ca1fda6bef1002870",
-  "releaseNotes": "Updates and durable backups: Daily verified updates, atomic damaged-data handling, safe portable backups, and durable Space-image replacement make Arras easier to trust.",
+  "latestVersion": "2.4.7",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.7/Arras.app.zip?source=arras-updater&version=2.4.7",
+  "sha256": "dd51987c3861cc2d5c60d49c1bef70df49fcbae019276ec901f1329b35634aa4",
+  "releaseNotes": "New Arras icon: Arras now has a new cream, charcoal, and terracotta app icon, with no other feature changes in this release.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
