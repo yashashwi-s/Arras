@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Tableau is actively maintained. Security updates and patches are provided for the latest major versions as outlined below.
+Arras is actively maintained. Security updates and patches are provided for the latest major versions as outlined below.
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -12,7 +12,7 @@ Tableau is actively maintained. Security updates and patches are provided for th
 
 ## Reporting a Vulnerability
 
-We take the security of Tableau seriously. If you discover a security vulnerability, please report it privately to ensure it can be addressed safely before public disclosure.
+We take the security of Arras seriously. If you discover a security vulnerability, please report it privately to ensure it can be addressed safely before public disclosure.
 
 **How to Report:**
 1. Please use the [Private Vulnerability Reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) feature on this GitHub repository, OR
