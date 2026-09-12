@@ -10,14 +10,28 @@ display placement without using WidgetKit's fixed grid or fixed sizes.
   <img src="assets/demo.gif" alt="Arras photo widgets on a macOS desktop" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![Version](https://img.shields.io/badge/Version-2.4.7-green?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) [![Latest release](https://img.shields.io/github/v/release/yashashwi-s/Arras?style=flat-square)](https://github.com/yashashwi-s/Arras/releases/latest) [![CI](https://github.com/yashashwi-s/Arras/actions/workflows/ci.yml/badge.svg)](https://github.com/yashashwi-s/Arras/actions/workflows/ci.yml)
 
 Arras was previously Photo Widget OSX and Tableau. The bundle identifier and
 storage location stayed the same, so existing layouts remain compatible.
 
-## Current build
+## Get Arras
 
-Version 2.4.7 is the current release:
+**[Download the latest DMG](https://github.com/yashashwi-s/Arras/releases/latest/download/Arras.dmg)** · [Installation guide](https://arras.yashashwi.me/#install) · [All releases](https://github.com/yashashwi-s/Arras/releases)
+
+macOS 14 Sonoma or later. Public downloads are for Apple Silicon; Intel is supported from source.
+
+### Homebrew
+
+```sh
+brew tap yashashwi-s/tap
+brew trust --cask yashashwi-s/tap/arras
+brew install --cask yashashwi-s/tap/arras
+```
+
+## What Arras does
+
+Latest release: [Arras v2.4.7](https://github.com/yashashwi-s/Arras/releases/latest). See the release page for what changed in this version.
 
 - a new native macOS app icon built around the Arras mark;
 - native glass Settings with Photos, Preferences, and Privacy tabs;
@@ -49,16 +63,20 @@ source builds also work on Intel.
 
 ```sh
 brew tap yashashwi-s/tap
-brew install --cask arras
-xattr -dr com.apple.quarantine /Applications/Arras.app
+brew trust --cask yashashwi-s/tap/arras
+brew install --cask yashashwi-s/tap/arras
 ```
 
 ### Direct download
 
 1. Download `Arras.dmg` from the [latest release](https://github.com/yashashwi-s/Arras/releases/latest).
 2. Open it and drag Arras onto the Applications shortcut.
-3. If macOS blocks the first launch, open System Settings → Privacy & Security
-   and choose Open Anyway, or clear quarantine:
+3. If macOS blocks the first launch, first verify that you obtained Arras from
+   the official source and trust that download. Then open System Settings →
+   Privacy & Security and choose Open Anyway.
+
+If Gatekeeper still blocks that verified, trusted official download, use this
+fallback to clear quarantine:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Arras.app

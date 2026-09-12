@@ -1,6 +1,6 @@
 # Arras feature contract
 
-Status: active for version 2.4.6. This document records reachable behavior, its
+Status: active for version 2.4.7. This document records reachable behavior, its
 limits, and the next work in priority order. It is not a dump of every idea the
 project has had.
 
@@ -137,7 +137,7 @@ project has had.
 - `.arras` bundles contain Arras's stored/re-encoded media rather than original
   source files; they are layout backups, not archival masters.
 - Per-photo schedules, automatic layout history, and a Settings-facing
-  persistence diagnostics surface are not part of the 2.4.6 shipped scope;
+  persistence diagnostics surface are not part of the current shipped scope;
   explicit `.arras` backups are the supported recovery path.
 - Public release artifacts are Apple Silicon and ad-hoc signed. Intel is
   supported only through a source build.

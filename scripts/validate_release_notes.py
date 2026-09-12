@@ -24,6 +24,15 @@ PLACEHOLDER_RE = re.compile(
 )
 
 
+PRODUCT_FOOTER = """---
+
+Arras is a free, open-source native macOS desktop photo widget that keeps each photo at its original aspect ratio.
+
+[Official website](https://arras.yashashwi.me/) · [Installation guide](https://arras.yashashwi.me/#install) · [Source](https://github.com/yashashwi-s/Arras)
+
+macOS 14+ · Apple Silicon release downloads · Intel supported from source"""
+
+
 def fail(message: str) -> NoReturn:
     raise ValueError(message)
 
@@ -120,6 +129,7 @@ def main() -> int:
             print("## Details\n")
             for detail in current["details"]:
                 print(f"- {detail}")
+        print("\n" + PRODUCT_FOOTER)
     else:
         print(f"validated human-authored release notes for {args.version}")
     return 0
