@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "name": "Arras",
+  "canonicalUrl": "https://arras.yashashwi.me/",
+  "repositoryUrl": "https://github.com/yashashwi-s/Arras",
+  "publisher": {
+    "name": "PureMac",
+    "url": "https://puremac.yashashwi.me/"
+  },
+  "category": "native macOS desktop photo widget",
+  "shortDescription": "Native macOS photo widget that preserves each image's original aspect ratio.",
+  "repositoryDescription": "Put any photo on your macOS desktop as a borderless widget at its true aspect ratio",
+  "bundleIdentifier": "com.yashashwi.tableau",
+  "historicalNames": [
+    "Photo Widget OSX",
+    "Tableau"
+  ],
+  "minimumMacOS": "14.0",
+  "publicRelease": {
+    "architectures": [
+      "arm64"
+    ],
+    "notarized": false
+  },
+  "sourceBuild": {
+    "intelSupported": true
+  },
+  "license": {
+    "spdx": "MIT",
+    "url": "https://github.com/yashashwi-s/Arras/blob/main/LICENSE"
+  },
+  "telemetry": false,
+  "featureContractPath": "FEATURES.md",
+  "homebrew": {
+    "tap": "yashashwi-s/tap",
+    "tapRepository": "https://github.com/yashashwi-s/homebrew-tap",
+    "cask": "arras",
+    "trustScope": "tap",
+    "commands": [
+      "brew tap yashashwi-s/tap",
+      "brew trust yashashwi-s/tap",
+      "brew install --cask arras"
+    ]
+  }
+}

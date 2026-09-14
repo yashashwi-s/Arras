@@ -25,15 +25,16 @@ macOS 14 Sonoma or later. Public downloads are for Apple Silicon; Intel is suppo
 
 ```sh
 brew tap yashashwi-s/tap
-brew trust --cask yashashwi-s/tap/arras
-brew install --cask yashashwi-s/tap/arras
+brew trust yashashwi-s/tap
+brew install --cask arras
 ```
+
+Published by [PureMac](https://puremac.yashashwi.me/) · [Homebrew tap source](https://github.com/yashashwi-s/homebrew-tap) · [Arras source](https://github.com/yashashwi-s/Arras)
 
 ## What Arras does
 
-Latest release: [Arras v2.4.7](https://github.com/yashashwi-s/Arras/releases/latest). See the release page for what changed in this version.
+Latest release: [GitHub Releases](https://github.com/yashashwi-s/Arras/releases/latest). See the release page for what changed in the current version.
 
-- a new native macOS app icon built around the Arras mark;
 - native glass Settings with Photos, Preferences, and Privacy tabs;
 - one Settings window that opens on the active desktop Space;
 - independent photo widgets with true-ratio resizing, four depth levels,
@@ -63,8 +64,8 @@ source builds also work on Intel.
 
 ```sh
 brew tap yashashwi-s/tap
-brew trust --cask yashashwi-s/tap/arras
-brew install --cask yashashwi-s/tap/arras
+brew trust yashashwi-s/tap
+brew install --cask arras
 ```
 
 ### Direct download

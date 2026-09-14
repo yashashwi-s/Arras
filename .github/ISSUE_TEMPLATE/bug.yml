@@ -24,7 +24,7 @@ body:
     id: arras-version
     attributes:
       label: Arras version
-      placeholder: 2.4.6
+      placeholder: e.g. 2.x.y
     validations:
       required: true
   - type: input
