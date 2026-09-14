@@ -41,6 +41,7 @@ jobs:
           test -f CHANGELOG.md
           test -f scripts/validate_release_notes.py
           PROJECT_VERSION="$(awk '/MARKETING_VERSION:/ { print $2; exit }' project.yml)"
+          python3 scripts/validate_product_metadata.py
           python3 scripts/validate_release_notes.py \
             --version "$PROJECT_VERSION" \
             --all
