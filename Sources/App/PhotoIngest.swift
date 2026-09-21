@@ -55,7 +55,7 @@ enum PhotoIngest {
             }
             return nil
         }
-        return write(downsampled, extension: "jpg", in: directory, originalName: originalName)
+        return write(downsampled.data, extension: downsampled.fileExtension, in: directory, originalName: originalName)
     }
 
     nonisolated static func prepare(contentsOf url: URL, in directory: URL) -> Prepared? {
@@ -85,7 +85,7 @@ enum PhotoIngest {
         }
     }
 
-    private nonisolated static func downsample(_ source: CGImageSource) -> Data? {
+    private nonisolated static func downsample(_ source: CGImageSource) -> (data: Data, fileExtension: String)? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
@@ -96,13 +96,18 @@ enum PhotoIngest {
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
+        let hasAlpha = cgImage.hasAlphaChannel
+        let outputType: UTType = hasAlpha ? .png : .jpeg
         let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
+        guard let destination = CGImageDestinationCreateWithData(output, outputType.identifier as CFString, 1, nil) else {
             return nil
         }
-        CGImageDestinationAddImage(destination, cgImage, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        let properties: [CFString: Any] = hasAlpha
+            ? [:]
+            : [kCGImageDestinationLossyCompressionQuality: 0.9]
+        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
-        return output as Data
+        return (output as Data, hasAlpha ? "png" : "jpg")
     }
 
     private nonisolated static func write(_ data: Data, extension ext: String, in directory: URL,
@@ -114,6 +119,20 @@ enum PhotoIngest {
             return Prepared(filename: filename, url: url, originalName: originalName)
         } catch {
             return nil
+        }
+    }
+}
+
+extension CGImage {
+    /// Whether the pixel format carries alpha. The skip variants are padding, not alpha.
+    var hasAlphaChannel: Bool {
+        switch alphaInfo {
+        case .premultipliedLast, .premultipliedFirst, .last, .first, .alphaOnly:
+            return true
+        case .none, .noneSkipLast, .noneSkipFirst:
+            return false
+        @unknown default:
+            return false
         }
     }
 }

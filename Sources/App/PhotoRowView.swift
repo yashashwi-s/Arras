@@ -289,6 +289,23 @@ struct PhotoRowView: View {
                 .accessibilityValue("\(Int(item.opacity * 100)) percent")
             }
 
+            SettingRow("Reveal") {
+                Toggle("On hover", isOn: Binding(
+                    get: { item.revealOnHover },
+                    set: { manager.setRevealOnHover(item.id, $0) }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+                .disabled(!item.depth.isInteractive)
+                .help(item.depth.isInteractive
+                    ? "Hide this widget until the pointer moves over it."
+                    : "Behind Icons cannot reveal on hover because macOS does not deliver pointer events at that depth.")
+                .accessibilityLabel("Reveal on hover")
+                .accessibilityHint(item.depth.isInteractive
+                    ? "Hides this photo until the pointer moves over it"
+                    : "Unavailable Behind Icons because macOS does not deliver pointer events there")
+            }
+
             SettingRow("Depth") {
                 Picker("", selection: Binding(
                     get: { item.depth },

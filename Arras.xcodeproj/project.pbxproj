@@ -19,6 +19,7 @@
 		2BD78C42CDC71A7D392C5F36 /* SnapGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1787B2589BC4882E8036F45C /* SnapGuideOverlay.swift */; };
 		2EA3B8C4BEEE09BDC0B54F02 /* AnimatedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7AEA5E819859422666217C /* AnimatedImage.swift */; };
 		2FEE2113746297DA236F1410 /* InstallLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD824CCB2FEBC83F9AD88A35 /* InstallLocation.swift */; };
+		317B42C9DC5AC037C5CB19BA /* PhotoIngestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 478E2B29EDCF355E5F63451A /* PhotoIngestTests.swift */; };
 		34F4F91CC6C62C7F19A6226A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4868990D1CCCE3B60E72B59A /* Assets.xcassets */; };
 		413749B9849073EEDF63129B /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0573D96CEEB4166F8C965D78 /* DisplayManager.swift */; };
 		41B9913510A6AF8035512E55 /* UpdateStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D2F553D5CE44A0C65253CBC /* UpdateStatusView.swift */; };
@@ -79,6 +80,7 @@
 		35CC783B47668E620C9F7642 /* ScreenshotCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotCapture.swift; sourceTree = "<group>"; };
 		3A508370E55D73DFCEF08D7A /* FrameStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStyle.swift; sourceTree = "<group>"; };
 		3D2F553D5CE44A0C65253CBC /* UpdateStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatusView.swift; sourceTree = "<group>"; };
+		478E2B29EDCF355E5F63451A /* PhotoIngestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoIngestTests.swift; sourceTree = "<group>"; };
 		4868990D1CCCE3B60E72B59A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4E764F69D20E265EDF9B54A0 /* PersistenceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceIntegrationTests.swift; sourceTree = "<group>"; };
 		51776C5AC96C9EC44D7F1A16 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 			children = (
 				E4165FC89E280E4E25A652E6 /* LayoutAndUpdaterTests.swift */,
 				4E764F69D20E265EDF9B54A0 /* PersistenceIntegrationTests.swift */,
+				478E2B29EDCF355E5F63451A /* PhotoIngestTests.swift */,
 				0B4EB926FBEE548482A8BA50 /* PhotoItemTests.swift */,
 			);
 			path = Unit;
@@ -370,6 +373,7 @@
 			files = (
 				148A2AE507B2D683E1AE0279 /* LayoutAndUpdaterTests.swift in Sources */,
 				8A56B53613E9818E8A214A93 /* PersistenceIntegrationTests.swift in Sources */,
+				317B42C9DC5AC037C5CB19BA /* PhotoIngestTests.swift in Sources */,
 				B7C16DA0ACDC5CF1BB2FC25B /* PhotoItemTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -475,7 +479,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -487,7 +491,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.7;
+				MARKETING_VERSION = 2.4.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;
@@ -621,7 +625,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -633,7 +637,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.7;
+				MARKETING_VERSION = 2.4.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_NAME = Arras;
 				SDKROOT = macosx;

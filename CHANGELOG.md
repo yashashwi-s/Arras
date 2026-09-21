@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.8 — Transparent PNGs and hover reveal
+
+**Transparent images stay transparent.** Large PNGs keep their alpha when Arras
+downsamples them, and replacing an image no longer flattens transparent stills
+to JPEG.
+
+**Widgets can reveal on hover.** Each widget can stay visually hidden until the
+pointer moves over it, then fade to its configured opacity without changing the
+saved opacity. Behind Icons keeps the widget visible because macOS does not
+deliver pointer events at that depth.
+
 ## 2.4.7 — New Arras icon
 
 **Arras has a new app icon.** The cream, charcoal, and terracotta design brings

@@ -124,6 +124,18 @@ enum WidgetDepth: String, Codable, CaseIterable {
     }
 }
 
+/// Keeps the user's saved opacity separate from the alpha currently drawn on screen.
+/// Behind Icons is deliberately always visible because Finder prevents hover events there.
+func effectivePhotoAlpha(
+    configuredOpacity: CGFloat,
+    revealOnHover: Bool,
+    isHovering: Bool,
+    isInteractive: Bool
+) -> CGFloat {
+    let opacity = max(0.1, min(1.0, configuredOpacity))
+    return revealOnHover && isInteractive && !isHovering ? 0 : opacity
+}
+
 /// A borderless, always-on-desktop panel that displays a photo.
 ///
 /// The window frame is a *canvas*: the photo's own rect inset outward by `canvasInset` (see
@@ -147,6 +159,11 @@ class DesktopPhotoWindow: NSPanel {
 
     /// Padding between the window frame and the photo rect, on every side.
     private(set) var canvasInset: CGFloat = 0
+
+    private(set) var configuredOpacity: CGFloat = 1
+    private var revealOnHover = false
+    private var pointerIsInside = false
+    private var widgetDepth: WidgetDepth = .onDesktop
 
     init() {
         super.init(
@@ -262,6 +279,7 @@ class DesktopPhotoWindow: NSPanel {
         container.onRemove = { [weak self] in self?.onRemove?() }
         container.onResizeFinished = { [weak self] newWidth in self?.onResize?(newWidth) }
         container.onOpacityChanged = { [weak self] newOpacity in self?.onOpacityChanged?(newOpacity) }
+        container.onHoverChanged = { [weak self] hovering in self?.setPointerInside(hovering) }
         container.onBringToFront = { [weak self] in self?.onBringToFront?() }
         container.onSendToBack = { [weak self] in self?.onSendToBack?() }
 
@@ -282,6 +300,7 @@ class DesktopPhotoWindow: NSPanel {
         if let s = settings {
             setDepth(s.depth)
             setPhotoOpacity(s.opacity)
+            setRevealOnHover(s.revealOnHover, animated: false)
         }
 
         // orderFront, never makeKeyAndOrderFront: showing a widget must not pull the app to
@@ -342,16 +361,51 @@ class DesktopPhotoWindow: NSPanel {
     // MARK: - Depth
 
     func setDepth(_ depth: WidgetDepth) {
+        widgetDepth = depth
         level = depth.windowLevel
         // A widget behind Finder's desktop window can never be clicked, so there is no reason
         // to keep hit-testing it — and letting go of the events means the desktop underneath
         // behaves exactly as it would with no widget there.
         ignoresMouseEvents = !depth.isInteractive
         hidesOnDeactivate = false
+        updateEffectiveAlpha(animated: false)
     }
 
     func setPhotoOpacity(_ value: CGFloat) {
-        contentView?.alphaValue = max(0.1, min(1.0, value))
+        configuredOpacity = max(0.1, min(1.0, value))
+        updateEffectiveAlpha(animated: false)
+    }
+
+    func setRevealOnHover(_ enabled: Bool, animated: Bool = true) {
+        revealOnHover = enabled
+        updateEffectiveAlpha(animated: animated)
+    }
+
+    private func setPointerInside(_ hovering: Bool) {
+        guard pointerIsInside != hovering else { return }
+        pointerIsInside = hovering
+        updateEffectiveAlpha(animated: true)
+    }
+
+    private func updateEffectiveAlpha(animated: Bool) {
+        guard let contentView else { return }
+        let target = effectivePhotoAlpha(
+            configuredOpacity: configuredOpacity,
+            revealOnHover: revealOnHover,
+            isHovering: pointerIsInside,
+            isInteractive: widgetDepth.isInteractive
+        )
+        guard contentView.alphaValue != target else { return }
+
+        if !animated || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            contentView.alphaValue = target
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            contentView.animator().alphaValue = target
+        }
     }
 
     // MARK: - v1.3 / v2.1 Shadow
@@ -574,6 +628,7 @@ class DraggablePhotoView: NSView {
     var onRemove: (() -> Void)?
     var onResizeFinished: ((CGFloat) -> Void)?
     var onOpacityChanged: ((CGFloat) -> Void)?
+    var onHoverChanged: ((Bool) -> Void)?
     var onClickAdvance: (() -> Void)?
     var onBringToFront: (() -> Void)?
     var onSendToBack: (() -> Void)?
@@ -1080,11 +1135,13 @@ class DraggablePhotoView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         isHovering = true
+        onHoverChanged?(true)
         updateHandles()
     }
 
     override func mouseExited(with event: NSEvent) {
         isHovering = false
+        onHoverChanged?(false)
         updateHandles()
         NSCursor.arrow.set()
     }
@@ -1202,9 +1259,9 @@ class DraggablePhotoView: NSView {
     override func scrollWheel(with event: NSEvent) {
         guard !isLocked else { return }
         let delta = event.deltaY * 0.02
-        guard let currentAlpha = window?.contentView?.alphaValue else { return }
-        let newAlpha = max(0.1, min(1.0, currentAlpha + delta))
-        window?.contentView?.alphaValue = newAlpha
+        guard let photoWindow = window as? DesktopPhotoWindow else { return }
+        let newAlpha = max(0.1, min(1.0, photoWindow.configuredOpacity + delta))
+        photoWindow.setPhotoOpacity(newAlpha)
         onOpacityChanged?(newAlpha)
     }
 

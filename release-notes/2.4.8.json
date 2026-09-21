@@ -1,0 +1,11 @@
+{
+  "version": "2.4.8",
+  "title": "Transparent PNGs and hover reveal",
+  "summary": "Transparent images now keep their alpha when Arras resizes or replaces them, and widgets can optionally stay hidden until the pointer moves over them.",
+  "details": [
+    "Large transparent PNGs are downsampled without being flattened to JPEG.",
+    "Image replacement also preserves alpha instead of forcing transparent stills through JPEG.",
+    "Reveal on hover is a per-widget option that fades to the configured opacity without changing the saved opacity.",
+    "Behind Icons keeps widgets visible because macOS does not deliver pointer events at that depth."
+  ]
+}

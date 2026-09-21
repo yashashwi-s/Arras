@@ -513,6 +513,7 @@ extension PhotoManager {
         item.depth = source.depth
         item.stackOrder = source.stackOrder
         item.opacity = source.opacity
+        item.revealOnHover = source.revealOnHover
         item.customName = source.customName
         item.cornerRadius = source.cornerRadius
         item.shadowEnabled = source.shadowEnabled

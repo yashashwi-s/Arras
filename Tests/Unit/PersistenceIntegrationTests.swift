@@ -46,6 +46,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         item.customName = "Backup round trip"
         item.isVisible = false
         item.stackOrder = 42
+        item.revealOnHover = true
         item.matWidth = 18
         item.matColorHex = "#123456"
         item.shapeMask = PhotoShapeMask.arch.rawValue
@@ -70,6 +71,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         let imported = try XCTUnwrap(target.photos.first)
         XCTAssertEqual(imported.customName, "Backup round trip")
         XCTAssertEqual(imported.stackOrder, 42)
+        XCTAssertTrue(imported.revealOnHover)
         XCTAssertEqual(imported.matWidth, 18)
         XCTAssertEqual(imported.matColorHex, "#123456")
         XCTAssertEqual(imported.shapeMask, PhotoShapeMask.arch.rawValue)

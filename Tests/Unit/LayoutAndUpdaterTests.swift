@@ -3,6 +3,33 @@ import XCTest
 @testable import Arras
 
 final class LayoutAndUpdaterTests: XCTestCase {
+    func testRevealOnHoverDerivesEffectiveAlphaWithoutChangingConfiguredOpacity() {
+        XCTAssertEqual(effectivePhotoAlpha(
+            configuredOpacity: 0.65,
+            revealOnHover: false,
+            isHovering: false,
+            isInteractive: true
+        ), 0.65)
+        XCTAssertEqual(effectivePhotoAlpha(
+            configuredOpacity: 0.65,
+            revealOnHover: true,
+            isHovering: false,
+            isInteractive: true
+        ), 0)
+        XCTAssertEqual(effectivePhotoAlpha(
+            configuredOpacity: 0.65,
+            revealOnHover: true,
+            isHovering: true,
+            isInteractive: true
+        ), 0.65)
+        XCTAssertEqual(effectivePhotoAlpha(
+            configuredOpacity: 0.65,
+            revealOnHover: true,
+            isHovering: false,
+            isInteractive: false
+        ), 0.65)
+    }
+
     func testRelativeFrameRestoresProportionalPlacement() {
         let sourceScreen = NSRect(x: 0, y: 0, width: 1000, height: 800)
         let sourceFrame = NSRect(x: 600, y: 300, width: 200, height: 100)

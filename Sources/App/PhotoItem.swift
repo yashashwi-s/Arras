@@ -26,6 +26,7 @@ struct PhotoItem: Identifiable, Codable {
     /// build doesn't strand a floating widget back on the desktop. Keep the two in sync.
     var isFloating: Bool
     var opacity: CGFloat
+    var revealOnHover: Bool
 
     // v2.3 — Desktop stacking
     var depth: WidgetDepth
@@ -94,6 +95,7 @@ struct PhotoItem: Identifiable, Codable {
         // v1.1 defaults
         self.isFloating = false
         self.opacity = 1.0
+        self.revealOnHover = false
         self.depth = .onDesktop
         self.stackOrder = 0
 
@@ -145,7 +147,7 @@ struct PhotoItem: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, filename, frameString, widgetWidth, isLocked, isVisible
-        case isFloating, opacity, depth, stackOrder
+        case isFloating, opacity, revealOnHover, depth, stackOrder
         case customName
         case cornerRadius, shadowEnabled, shadowBlur, shadowOpacity
         case borderWidth, borderColorHex, vignetteEnabled
@@ -169,6 +171,7 @@ struct PhotoItem: Identifiable, Codable {
 
         isFloating = try c.decodeIfPresent(Bool.self, forKey: .isFloating) ?? false
         opacity = try c.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 1.0
+        revealOnHover = try c.decodeIfPresent(Bool.self, forKey: .revealOnHover) ?? false
         // Absent from every photos.json written before 2.3, so fall back to the boolean it
         // replaced rather than to a bare default — otherwise every existing floating widget
         // would silently drop back onto the desktop on first launch after updating.

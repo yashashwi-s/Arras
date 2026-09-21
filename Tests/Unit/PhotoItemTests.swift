@@ -18,6 +18,7 @@ final class PhotoItemTests: XCTestCase {
 
         XCTAssertEqual(item.depth, .onDesktop)
         XCTAssertEqual(item.opacity, 1)
+        XCTAssertFalse(item.revealOnHover)
         XCTAssertEqual(item.cornerRadius, 16)
         XCTAssertEqual(item.rotationInterval, "click")
         XCTAssertFalse(item.isSpaceBound)
@@ -28,6 +29,7 @@ final class PhotoItemTests: XCTestCase {
         original.customName = "Aurora"
         original.depth = .floating
         original.opacity = 0.65
+        original.revealOnHover = true
         original.shapeMask = PhotoShapeMask.arch.rawValue
         original.stylePreset = StylePreset.modern.rawValue
 
@@ -38,6 +40,7 @@ final class PhotoItemTests: XCTestCase {
         XCTAssertEqual(decoded.customName, "Aurora")
         XCTAssertEqual(decoded.depth, .floating)
         XCTAssertEqual(decoded.opacity, 0.65)
+        XCTAssertTrue(decoded.revealOnHover)
         XCTAssertEqual(decoded.shapeMask, PhotoShapeMask.arch.rawValue)
         XCTAssertEqual(decoded.stylePreset, StylePreset.modern.rawValue)
     }

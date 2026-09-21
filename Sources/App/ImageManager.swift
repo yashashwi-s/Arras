@@ -435,10 +435,9 @@ class PhotoManager: ObservableObject {
     ///
     /// Animated GIFs/APNGs are detected via `AnimatedImageIO.extractFrames`
     /// and re-encoded to a standalone `.gif` (see AnimatedImage.swift for
-    /// why re-muxing to GIF, rather than the JPEG transcode below, is the
-    /// right call for those). Everything else keeps the app's original
-    /// behavior of flattening to JPEG unchanged, so ordinary photo storage
-    /// size/quality doesn't regress.
+    /// why re-muxing to GIF is the right call for those). Alpha-bearing stills
+    /// are stored as PNG; opaque stills keep the app's JPEG storage behavior so
+    /// ordinary photo size and quality do not regress.
     private func saveImportedImage(_ image: NSImage) -> (filename: String, url: URL)? {
         if let frames = AnimatedImageIO.extractFrames(from: image) {
             let filename = UUID().uuidString + ".gif"
@@ -451,21 +450,38 @@ class PhotoManager: ObservableObject {
             // the import entirely.
         }
 
-        guard let tiffData = image.tiffRepresentation,
-              let bitmapRep = NSBitmapImageRep(data: tiffData),
-              let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
+        guard let encoded = Self.encodeImportedStill(image) else {
             recordMediaImportFailure("The selected image could not be decoded.")
             return nil
         }
-        let filename = UUID().uuidString + ".jpg"
+        let filename = UUID().uuidString + "." + encoded.fileExtension
         let url = storageDir.appendingPathComponent(filename)
         do {
-            try jpegData.write(to: url)
+            try encoded.data.write(to: url)
             return (filename, url)
         } catch {
             recordMediaImportFailure("The selected image could not be stored: \(error.localizedDescription).")
             return nil
         }
+    }
+
+    /// Encodes an alpha-bearing still without flattening it. Kept internal so unit tests can
+    /// exercise the NSImage-based import path without constructing windows or a full manager.
+    static func encodeImportedStill(_ image: NSImage) -> (data: Data, fileExtension: String)? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+        guard let cgImage = bitmapRep.cgImage else { return nil }
+        let hasAlpha = cgImage.hasAlphaChannel
+        let format: NSBitmapImageRep.FileType = hasAlpha ? .png : .jpeg
+        let properties: [NSBitmapImageRep.PropertyKey: Any] = hasAlpha
+            ? [:]
+            : [.compressionFactor: 0.9]
+        guard let data = bitmapRep.representation(using: format, properties: properties) else {
+            return nil
+        }
+        return (data, hasAlpha ? "png" : "jpg")
     }
 
     func addPhoto(_ image: NSImage) {
@@ -765,6 +781,13 @@ class PhotoManager: ObservableObject {
         persist()
     }
 
+    func setRevealOnHover(_ id: UUID, _ enabled: Bool) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        photos[index].revealOnHover = enabled
+        windows[id]?.setRevealOnHover(enabled)
+        persist()
+    }
+
     func setOpacity(_ id: UUID, _ value: CGFloat) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].opacity = max(0.1, min(1.0, value))
@@ -1012,6 +1035,7 @@ class PhotoManager: ObservableObject {
         dst.depth = src.depth
         dst.stackOrder = src.stackOrder
         dst.opacity = src.opacity
+        dst.revealOnHover = src.revealOnHover
         dst.cornerRadius = src.cornerRadius
         dst.shadowEnabled = src.shadowEnabled
         dst.shadowBlur = src.shadowBlur
