@@ -38,9 +38,8 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     /// How often the app checks on its own.
     ///
-    /// Daily is the automatic default. Manual-install mode can use a different
-    /// cadence, but anything shorter than an hour would needlessly hammer the
-    /// update feed.
+    /// Daily is the default. Anything shorter than an hour would needlessly
+    /// hammer the update feed.
     enum CheckFrequency: TimeInterval, CaseIterable, Identifiable, Equatable {
         case hourly = 3600
         case everySixHours = 21600
@@ -64,9 +63,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     private let frequencyKey = "updateCheckFrequency"
     private let automaticUpdatesKey = "automaticUpdatesEnabled"
 
-    /// The cadence used when automatic installation is disabled. Automatic installation has
-    /// its own fixed daily cadence so changing this value remains a useful, preserved choice
-    /// rather than changing the update policy behind the user's back.
+    /// The selected cadence applies to both automatic installation and notification-only mode.
     var checkFrequency: CheckFrequency {
         get {
             let stored = UserDefaults.standard.object(forKey: frequencyKey) as? TimeInterval
@@ -92,10 +89,10 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         }
     }
 
-    /// Automatic updates always check daily; manual-install mode retains the user's chosen
-    /// cadence, including Never for users who only check from the Settings button.
+    /// A single effective cadence keeps the setting honest in both modes. Never
+    /// disables scheduled checks, including automatic installation.
     var activeCheckFrequency: CheckFrequency {
-        automaticUpdatesEnabled ? .daily : checkFrequency
+        checkFrequency
     }
 
     enum Phase: Equatable {
@@ -120,6 +117,10 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
     private var pending: Appcast?
     private var timer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
+    private var started = false
+    private var lastAutomaticAttempt: Date?
     private var idleResetTask: Task<Void, Never>?
     private var notificationRequestsInFlight = Set<String>()
 
@@ -148,6 +149,8 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     // MARK: - Lifecycle
 
     func start() {
+        guard !started else { return }
+        started = true
         // Register the delegate as soon as the updater starts so a later notification tap can be
         // delivered even when the first check finds nothing. This intentionally does not ask for
         // permission; authorization is requested only by postNotification when needed.
@@ -155,29 +158,57 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             UNUserNotificationCenter.current().delegate = self
         }
 
-        let interval = activeCheckFrequency.rawValue
-        guard interval > 0 else { return }
-
-        // Only reach for the network if we haven't looked in a while.
-        let due = lastChecked.map { Date().timeIntervalSince($0) >= interval } ?? true
-        if due, phase == .idle {
-            Task { await check(userInitiated: false) }
+        // A sleeping Mac can miss a scheduled timer fire. Check elapsed wall-clock time
+        // again on wake and when the app becomes active, independently of timer cadence.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.checkIfDue() }
         }
-
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.checkIfDue() }
+        }
         rescheduleTimer()
     }
 
-    /// Restarts the background timer for the current frequency.
+    /// Poll the due time, not a repeating interval from launch: sleep and manual checks
+    /// otherwise shift or skip the user's selected schedule.
     private func rescheduleTimer() {
         timer?.invalidate()
         timer = nil
 
-        let interval = activeCheckFrequency.rawValue
-        guard interval > 0 else { return }
+        guard started, activeCheckFrequency != .never else { return }
 
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.check(userInitiated: false) }
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkIfDue() }
         }
+        checkIfDue()
+    }
+
+    static func shouldCheck(now: Date, lastChecked: Date?, lastAttempted: Date?, frequency: CheckFrequency) -> Bool {
+        guard frequency != .never else { return false }
+        let due = lastChecked.map { now.timeIntervalSince($0) >= frequency.rawValue } ?? true
+        // A failed fetch must retry, but not once per timer tick during an outage.
+        let retryAllowed = lastAttempted.map { now.timeIntervalSince($0) >= 15 * 60 } ?? true
+        return due && retryAllowed
+    }
+
+    private func checkIfDue() {
+        let now = Date()
+        guard Self.shouldCheck(
+            now: now, lastChecked: lastChecked,
+            lastAttempted: lastAutomaticAttempt, frequency: activeCheckFrequency
+        ) else { return }
+        switch phase {
+        case .checking, .downloading, .installing:
+            return
+        default:
+            break
+        }
+        lastAutomaticAttempt = now
+        Task { await check(userInitiated: false) }
     }
 
     /// `UNUserNotificationCenter.current()` traps when the process has no bundle

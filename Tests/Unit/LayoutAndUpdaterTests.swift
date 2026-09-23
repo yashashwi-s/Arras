@@ -77,7 +77,7 @@ final class LayoutAndUpdaterTests: XCTestCase {
     }
 
     @MainActor
-    func testAutomaticUpdatesDefaultOnAndUseDailyCadence() {
+    func testAutomaticUpdatesDefaultOnAndHonorSelectedCadence() {
         let defaults = UserDefaults.standard
         let updater = Updater.shared
         let previousAutomatic = defaults.object(forKey: "automaticUpdatesEnabled")
@@ -107,9 +107,31 @@ final class LayoutAndUpdaterTests: XCTestCase {
         XCTAssertEqual(updater.activeCheckFrequency, .daily)
 
         updater.checkFrequency = .weekly
-        XCTAssertEqual(updater.activeCheckFrequency, .daily)
+        XCTAssertEqual(updater.activeCheckFrequency, .weekly)
         updater.automaticUpdatesEnabled = false
         XCTAssertEqual(updater.activeCheckFrequency, .weekly)
+        updater.checkFrequency = .hourly
+        updater.automaticUpdatesEnabled = true
+        XCTAssertEqual(updater.activeCheckFrequency, .hourly)
+    }
+
+    @MainActor
+    func testAutomaticCheckUsesElapsedTimeAndThrottlesFailures() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let hourAgo = now.addingTimeInterval(-3600)
+        let recentAttempt = now.addingTimeInterval(-60)
+
+        XCTAssertTrue(Updater.shouldCheck(now: now, lastChecked: hourAgo, lastAttempted: nil, frequency: .hourly))
+        XCTAssertFalse(Updater.shouldCheck(now: now, lastChecked: hourAgo, lastAttempted: recentAttempt, frequency: .hourly))
+        XCTAssertTrue(Updater.shouldCheck(now: now, lastChecked: hourAgo, lastAttempted: now.addingTimeInterval(-900), frequency: .hourly))
+        XCTAssertFalse(Updater.shouldCheck(now: now, lastChecked: hourAgo, lastAttempted: nil, frequency: .daily))
+        XCTAssertFalse(Updater.shouldCheck(now: now, lastChecked: nil, lastAttempted: nil, frequency: .never))
+    }
+
+    func testLastCheckedPhrasingUsesCurrentTime() {
+        let checked = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertEqual(UpdateCheckPhrasing.lastChecked(checked, now: checked), "Checked just now.")
+        XCTAssertNotEqual(UpdateCheckPhrasing.lastChecked(checked, now: checked.addingTimeInterval(7200)), "Checked just now.")
     }
 
     @MainActor

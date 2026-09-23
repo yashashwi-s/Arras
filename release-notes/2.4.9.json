@@ -1,0 +1,11 @@
+{
+  "version": "2.4.9",
+  "title": "Reliable update checks and a clearer menu",
+  "summary": "Update checks now follow your selected schedule, recover after Mac sleep, and show a live last-checked time. The menu bar groups existing commands under Add, Widgets, and Options.",
+  "details": [
+    "Hourly and other selected check intervals apply with verified automatic installation enabled.",
+    "Arras checks again after the Mac wakes and retries failed checks without excessive requests.",
+    "The last-checked time updates while Settings remains open.",
+    "Existing menu bar commands are grouped under Add, Widgets, and Options."
+  ]
+}

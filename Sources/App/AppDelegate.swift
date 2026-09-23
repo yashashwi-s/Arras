@@ -52,8 +52,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             showSettingsWindow()
         }
 
-        // Polls the appcast on launch and at the configured cadence (daily for automatic
-        // installs). Notification permission is requested only if a notification is needed.
+        // Polls the appcast on launch and at the configured cadence. Notification
+        // permission is requested only if a notification is needed.
         if !isUITesting {
             Updater.shared.start()
         }
@@ -267,19 +267,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let menu = statusItem?.menu else { return }
         menu.removeAllItems()
 
+        let addMenu = NSMenu(title: "Add")
+        let addRoot = NSMenuItem(title: "Add", action: nil, keyEquivalent: "")
+        addRoot.submenu = addMenu
+        menu.addItem(addRoot)
+
         // Add Photo
         let addItem = NSMenuItem(title: "Add Photo…", action: #selector(addPhoto), keyEquivalent: "")
         addItem.target = self
-        menu.addItem(addItem)
+        addMenu.addItem(addItem)
 
         // Optional commands are opt-in from Preferences; the menu stays short by
         // default rather than growing a slot per feature.
         let visible = MenuBarCustomization.shared
 
         if visible.isVisible(.addSpace) {
-            let addSpaceItem = NSMenuItem(title: "Add Space…", action: #selector(addSpace), keyEquivalent: "")
+            let addSpaceItem = NSMenuItem(title: "Create Slideshow…", action: #selector(addSpace), keyEquivalent: "")
             addSpaceItem.target = self
-            menu.addItem(addSpaceItem)
+            addMenu.addItem(addSpaceItem)
         }
 
         if visible.isVisible(.paste) {
@@ -287,19 +292,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let pasteItem = NSMenuItem(title: "Paste as Widget", action: #selector(pasteAsWidget), keyEquivalent: "v")
             pasteItem.target = self
             pasteItem.isEnabled = manager.pasteboardHasImage
-            menu.addItem(pasteItem)
+            addMenu.addItem(pasteItem)
         }
 
         if visible.isVisible(.captureRegion) {
             let captureItem = NSMenuItem(title: "Capture Screen Region…", action: #selector(captureRegion), keyEquivalent: "")
             captureItem.target = self
-            menu.addItem(captureItem)
+            addMenu.addItem(captureItem)
         }
 
         if visible.isVisible(.pdfPage) {
             let pdfItem = NSMenuItem(title: "Add PDF Page…", action: #selector(addPDFPage), keyEquivalent: "")
             pdfItem.target = self
-            menu.addItem(pdfItem)
+            addMenu.addItem(pdfItem)
         }
 
         // Settings
@@ -314,7 +319,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let anyVisible = manager.photos.contains { $0.isVisible }
             if visible.isVisible(.toggleAll) {
             let toggleAllItem = NSMenuItem(
-                title: anyVisible ? "Hide All Photos" : "Show All Photos",
+                title: anyVisible ? "Hide All Widgets" : "Show All Widgets",
                 action: #selector(toggleAllVisibility),
                 keyEquivalent: ""
             )
@@ -325,6 +330,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(toggleAllItem)
             menu.addItem(.separator())
             }
+
+            let widgetsMenu = NSMenu(title: "Widgets")
+            let widgetsRoot = NSMenuItem(title: "Widgets (\(manager.photos.count))", action: nil, keyEquivalent: "")
+            widgetsRoot.submenu = widgetsMenu
+            menu.addItem(widgetsRoot)
 
             for (index, item) in manager.photos.enumerated() {
                 let submenu = NSMenu()
@@ -446,37 +456,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     photoItem.attributedTitle = Self.attributedLabel(label, thumbnail: thumb)
                 }
 
-                menu.addItem(photoItem)
+                widgetsMenu.addItem(photoItem)
             }
 
-            menu.addItem(.separator())
-
-            let removeAllItem = NSMenuItem(title: "Remove All Photos", action: #selector(removeAllPhotos), keyEquivalent: "")
+            let removeAllItem = NSMenuItem(title: "Remove All Widgets", action: #selector(removeAllPhotos), keyEquivalent: "")
             removeAllItem.target = self
-            menu.addItem(removeAllItem)
+            widgetsMenu.addItem(.separator())
+            widgetsMenu.addItem(removeAllItem)
         }
 
         menu.addItem(.separator())
+
+        let optionsMenu = NSMenu(title: "Options")
+        let optionsRoot = NSMenuItem(title: "Options", action: nil, keyEquivalent: "")
+        optionsRoot.submenu = optionsMenu
+        menu.addItem(optionsRoot)
 
         // Launch at Login
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
         loginItem.target = self
         loginItem.state = manager.launchAtLogin ? .on : .off
-        menu.addItem(loginItem)
+        optionsMenu.addItem(loginItem)
 
         if visible.isVisible(.privacy) {
-            menu.addItem(privacyMenuItem())
+            optionsMenu.addItem(privacyMenuItem())
         }
 
         // Hide Menu Bar Icon
         let hideItem = NSMenuItem(title: "Hide Menu Bar Icon", action: #selector(hideMenuBarIcon), keyEquivalent: "")
         hideItem.target = self
-        menu.addItem(hideItem)
+        optionsMenu.addItem(hideItem)
 
         // Check for Updates
         let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.target = self
-        menu.addItem(updateItem)
+        optionsMenu.addItem(updateItem)
 
         menu.addItem(.separator())
 

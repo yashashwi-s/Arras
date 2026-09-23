@@ -6,14 +6,14 @@ import SwiftUI
 /// finished: the timestamp is written a hair after `Date()` is sampled, so the formatter reads
 /// it as the future and uses future tense. Anything inside a minute is just "just now".
 enum UpdateCheckPhrasing {
-    static func lastChecked(_ date: Date?) -> String {
+    static func lastChecked(_ date: Date?, now: Date = Date()) -> String {
         guard let date else { return "Never checked for updates." }
-        let elapsed = Date().timeIntervalSince(date)
+        let elapsed = now.timeIntervalSince(date)
         guard elapsed >= 60 else { return "Checked just now." }
 
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
-        return "Checked \(formatter.localizedString(for: date, relativeTo: Date()))."
+        return "Checked \(formatter.localizedString(for: date, relativeTo: now))."
     }
 }
 
@@ -93,14 +93,17 @@ struct UpdateStatusLine: View {
     @ObservedObject private var updater = Updater.shared
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel(text)
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let label = text(now: context.date)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(label)
+        }
     }
 
-    private var text: String {
+    private func text(now: Date) -> String {
         switch updater.phase {
         case .available(let version, let notes):
             return UpdateStatusPhrasing.availableUpdate(
@@ -121,7 +124,7 @@ struct UpdateStatusLine: View {
         case .installing:
             return "Installing verified update…"
         case .idle:
-            return UpdateCheckPhrasing.lastChecked(updater.lastChecked)
+            return UpdateCheckPhrasing.lastChecked(updater.lastChecked, now: now)
         }
     }
 }

@@ -117,12 +117,12 @@ struct PreferencesView: View {
                 get: { updater.automaticUpdatesEnabled },
                 set: { updater.automaticUpdatesEnabled = $0 }
             ))
-            .accessibilityHint("When enabled, checks daily and installs updates after checksum and app-bundle validation. When disabled, checks on the selected schedule and notifies you when a new version is found.")
+            .accessibilityHint("Checks on the selected schedule. When enabled, installs updates after checksum and app-bundle validation. When disabled, notifies you when a new version is found.")
 
-            caption(updater.automaticUpdatesEnabled
-                ? "Checks daily and installs verified updates automatically."
-                : updater.checkFrequency == .never
-                    ? "Automatic checking is off. Use Check Now to look for updates."
+            caption(updater.checkFrequency == .never
+                ? "Automatic checking is off. Use Check Now to look for updates."
+                : updater.automaticUpdatesEnabled
+                    ? "Checks \(updater.checkFrequency.label.lowercased()) and installs verified updates automatically."
                     : "Checks \(updater.checkFrequency.label.lowercased()) and notifies you when a newer version is found.")
 
             HStack(spacing: 8) {
@@ -136,8 +136,7 @@ struct PreferencesView: View {
                 }
                 .pickerStyle(.menu)
                 .fixedSize()
-                .disabled(updater.automaticUpdatesEnabled)
-                .accessibilityHint("Used when automatic installation is disabled")
+                .accessibilityHint("Controls how often updates are checked")
 
                 UpdateActionButton()
 

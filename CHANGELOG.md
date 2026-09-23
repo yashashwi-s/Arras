@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.9 — Reliable update checks and a clearer menu
+
+**Update checks follow the selected schedule.** Hourly and other chosen check
+intervals now apply when verified automatic installation is enabled too. Arras
+checks again after the Mac wakes, retries a failed check without excessive
+requests, and refreshes the last checked time while Settings stays open.
+
+**The menu bar is easier to scan.** Add commands now live under Add, individual
+widgets and removal live under Widgets, and app controls live under Options.
+This release contains the menu organization for the existing features.
+
 ## 2.4.8 — Transparent PNGs and hover reveal
 
 **Transparent images stay transparent.** Large PNGs keep their alpha when Arras

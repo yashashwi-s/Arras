@@ -27,8 +27,8 @@ final class MenuBarCustomization: ObservableObject {
             case .paste: return "Paste as Widget"
             case .captureRegion: return "Capture Screen Region"
             case .pdfPage: return "Add PDF Page"
-            case .addSpace: return "Add Space"
-            case .toggleAll: return "Show / Hide All Photos"
+            case .addSpace: return "Create Slideshow"
+            case .toggleAll: return "Show / Hide All Widgets"
             case .privacy: return "Privacy submenu"
             }
         }
@@ -38,7 +38,7 @@ final class MenuBarCustomization: ObservableObject {
             case .paste: return "Turn a copied image into a widget"
             case .captureRegion: return "Drag a region of the screen and pin it"
             case .pdfPage: return "Place a page of a PDF on the desktop"
-            case .addSpace: return "Create a rotating set of photos"
+            case .addSpace: return "Create a slideshow of photos"
             case .toggleAll: return "Clear the desktop and bring it back"
             case .privacy: return "Screen sharing and fullscreen behaviour"
             }
