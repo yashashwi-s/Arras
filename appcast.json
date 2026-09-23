@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.4.8",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.8/Arras.app.zip?source=arras-updater&version=2.4.8",
-  "sha256": "120a0fcdc56f9d53bcf8bec4caa2fd3c4090c82a560f4c8e18611ae497283c37",
-  "releaseNotes": "Transparent PNGs and hover reveal: Transparent images now keep their alpha when Arras resizes or replaces them, and widgets can optionally stay hidden until the pointer moves over them.",
+  "latestVersion": "2.4.9",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.9/Arras.app.zip?source=arras-updater&version=2.4.9",
+  "sha256": "4adb380e83f836946b08bf733291d0502cc7c2c0573f9fd675db0cab83fffab7",
+  "releaseNotes": "Reliable update checks and a clearer menu: Update checks now follow your selected schedule, recover after Mac sleep, and show a live last-checked time. The menu bar groups existing commands under Add, Widgets, and Options.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
