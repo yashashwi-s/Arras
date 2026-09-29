@@ -43,3 +43,6 @@ ExportOptions.plist
 
 # Scratch worktrees used by parallel agents
 .claude/worktrees/
+
+# Documentation validator caches
+__pycache__/

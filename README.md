@@ -1,122 +1,73 @@
 # Arras
 
-[Official website](https://arras.yashashwi.me/) · [Demo and quick start](https://arras.yashashwi.me/#how-to-use) · [Installation guide](https://arras.yashashwi.me/#install)
+[Website](https://arras.yashashwi.me/) · [FAQ](https://arras.yashashwi.me/faqs) · [Security & Privacy](https://arras.yashashwi.me/security)
 
-Arras puts photos on the macOS desktop as borderless widgets at their real
-aspect ratio. Each photo keeps its own size, position, depth, appearance, and
-display placement without using WidgetKit's fixed grid or fixed sizes.
+Arras places photos on the macOS desktop as independent, borderless widgets at
+their natural aspect ratios. Each widget keeps its own position, size, depth,
+appearance, display placement, and desktop Space behavior; it does not use
+WidgetKit's fixed grid or fixed sizes.
 
 <p align="center">
   <img src="assets/demo.gif" alt="Arras photo widgets on a macOS desktop" width="100%" />
 </p>
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square&logo=swift) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) [![Latest release](https://img.shields.io/github/v/release/yashashwi-s/Arras?style=flat-square)](https://github.com/yashashwi-s/Arras/releases/latest) [![CI](https://github.com/yashashwi-s/Arras/actions/workflows/ci.yml/badge.svg)](https://github.com/yashashwi-s/Arras/actions/workflows/ci.yml)
+![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) [![Latest release](https://img.shields.io/github/v/release/yashashwi-s/Arras?style=flat-square)](https://github.com/yashashwi-s/Arras/releases/latest)
 
-Arras was previously Photo Widget OSX and Tableau. The bundle identifier and
-storage location stayed the same, so existing layouts remain compatible.
+## Download
 
-## Get Arras
+**[Download the current DMG](https://github.com/yashashwi-s/Arras/releases/latest/download/Arras.dmg)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/latest)
 
-**[Download the latest DMG](https://github.com/yashashwi-s/Arras/releases/latest/download/Arras.dmg)** · [Installation guide](https://arras.yashashwi.me/#install) · [All releases](https://github.com/yashashwi-s/Arras/releases)
+The public download requires macOS 14 Sonoma or later. The current DMG and ZIP
+contain a universal executable for Apple Silicon (`arm64`) and Intel (`x86_64`).
 
-macOS 14 Sonoma or later. Public downloads are for Apple Silicon; Intel is supported from source.
+The public app is ad-hoc signed and is not notarized. On first launch, verify
+that the file came from the official GitHub release, then use System Settings →
+Privacy & Security → Open Anyway if Gatekeeper blocks it. See the
+[installation guide](https://arras.yashashwi.me/#install) for the current steps.
 
-### Homebrew
+## Highlights
 
-```sh
-brew tap yashashwi-s/tap
-brew trust yashashwi-s/tap
-brew install --cask arras
-```
+- Independent, true-ratio widgets with movement, resizing, snapping, locking,
+  opacity, hover reveal, four depth levels, stack order, and per-display restore.
+- Slideshows (“Spaces”) with click or timed advance, previous/next navigation,
+  crossfade, and dynamic or fixed sizing.
+- Presets, masks, mats, borders, gradient strokes, two-layer shadows, edge fade,
+  corner control, and tilt.
+- Finder, Photos, clipboard, drag-and-drop, GIF/APNG, PDF page, and screen-region
+  input. Transparent still images keep alpha-aware PNG storage when re-encoded.
+- Local `.arras` backups, global visibility shortcut, Shortcuts actions, and
+  privacy controls for screen capture, conferencing apps, and fullscreen apps.
+- Verified in-place updates whose automatic-install and notification-only modes
+  both follow the frequency selected in Settings.
 
-Published by [PureMac](https://puremac.yashashwi.me/) · [Homebrew tap source](https://github.com/yashashwi-s/homebrew-tap) · [Arras source](https://github.com/yashashwi-s/Arras)
+The reviewed current behavior, including limits and permission requirements, is
+the [shipped feature contract](FEATURES.md). Release-by-release history belongs
+in the [changelog](CHANGELOG.md) and [GitHub releases](https://github.com/yashashwi-s/Arras/releases).
 
-## What Arras does
+## Basic use
 
-Latest release: [GitHub Releases](https://github.com/yashashwi-s/Arras/releases/latest). See the release page for what changed in the current version.
+Arras is a menu bar agent. It has no Dock icon and does not appear in
+Command-Tab.
 
-- native glass Settings with Photos, Preferences, and Privacy tabs;
-- one Settings window that opens on the active desktop Space;
-- independent photo widgets with true-ratio resizing, four depth levels,
-  opacity, locking, snapping, and per-display restoration;
-- Spaces that rotate several images in one widget with dynamic or fixed sizing;
-- frame presets, shape masks, mats, two-layer shadows, borders, edge fade, and
-  tilt;
-- Photos library, file picker, clipboard, drag-and-drop, screen-region, PDF,
-  GIF, and APNG input;
-- global visibility shortcut, Shortcuts actions, privacy controls, and safe
-  portable `.arras` layout backups;
-- daily verified automatic updates, atomic damaged-data handling, and durable
-  replacement of the current image in a Space;
-- accessibility labels and keyboard-reachable controls, including the Advanced
-  Frame disclosure;
-- unit, persistence-integration, compatibility, and real-app Settings UI tests.
+1. Use **Add** in the menu bar, drop image files on the status item, paste with
+   Command-V, or add from Photos in Settings.
+2. Drag a widget to move it and drag a corner to resize without changing its
+   ratio. Scroll over it to adjust opacity.
+3. Right-click a widget for lock, stack, and removal commands. Use the
+   **Widgets** menu for naming, replacement, duplication, and slideshow controls;
+   Settings also exposes appearance and all four depths.
+4. Open Settings for appearance, snapping, the global shortcut, backups,
+   updates, and privacy controls.
 
-The exhaustive shipped contract and honest remaining work live in
-[FEATURES.md](FEATURES.md).
+Arras was previously Photo Widget OSX and Tableau. Its bundle identifier and
+Application Support location remain unchanged so existing layouts continue to
+load.
 
-## Install
+## Build and test
 
-Requirements: macOS 14 Sonoma or later. Public artifacts are Apple Silicon;
-source builds also work on Intel.
-
-### Homebrew
-
-```sh
-brew tap yashashwi-s/tap
-brew trust yashashwi-s/tap
-brew install --cask arras
-```
-
-### Direct download
-
-1. Download `Arras.dmg` from the [latest release](https://github.com/yashashwi-s/Arras/releases/latest).
-2. Open it and drag Arras onto the Applications shortcut.
-3. If macOS blocks the first launch, first verify that you obtained Arras from
-   the official source and trust that download. Then open System Settings →
-   Privacy & Security and choose Open Anyway.
-
-If Gatekeeper still blocks that verified, trusted official download, use this
-fallback to clear quarantine:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/Arras.app
-```
-
-Arras is ad-hoc signed and not notarized because the project does not currently
-have a paid Apple Developer certificate.
-
-### Updates
-
-In current source, verified automatic updates default on and check daily. Turn
-automatic installation off to keep background checks without installation; the
-default cadence is daily, and a newly available version produces one macOS
-notification containing its human-authored release summary. The cadence can
-also be changed or disabled in Settings, and Check Now remains available.
-
-Every public version owns `release-notes/<version>.json`; CI rejects missing or
-placeholder copy. The same metadata becomes the GitHub release body, and the
-release workflow stamps its validated title and summary into `appcast.json`
-after uploading the artifact.
-
-## Use
-
-Arras is a menu bar agent. It has no Dock icon and does not appear in Command-Tab.
-
-- Add from the menu, drop image files onto the status item, or paste with
-  Command-V.
-- Drag a widget to move it; drag any corner to resize without changing ratio.
-- Scroll over a widget to change opacity.
-- Right-click a desktop widget for lock, layering, and removal actions; use its
-  Settings row or menu bar submenu for rename, replacement, duplication, and
-  Space navigation.
-- Double-click a Space to advance when its interval is set to On Click.
-- Open Settings for full frame, global behavior, backup, and privacy controls.
-
-## Run and verify
-
-The intended Settings appearance is linked-SDK dependent. Use Xcode with the
-macOS 27 SDK and install XcodeGen.
+Arras uses Apple frameworks and has no third-party runtime dependencies. The
+project file is generated from `project.yml` with XcodeGen. The current Settings
+appearance requires Xcode with the macOS 27 SDK.
 
 ```sh
 brew install xcodegen
@@ -130,61 +81,17 @@ xcodegen generate
   test
 ```
 
-`./build.sh --run` installs the local build into Applications and launches it.
-`./build.sh --release` creates local ZIP and DMG artifacts in `dist/`.
-
-## Source map
-
-- `Sources/App/PhotoItem.swift`: backward-compatible persisted widget model.
-- `Sources/App/ImageManager.swift`: `PhotoManager`, the main state and window
-  owner.
-- `Sources/App/DesktopPhotoWindow.swift`: desktop window and interactive canvas.
-- `Sources/App/FrameStyle.swift` and `PhotoAppearanceControls.swift`: frame model
-  and mutations.
-- `Sources/App/PhotoIngest.swift` and `PhotoImport.swift`: normalized import
-  pipeline.
-- `Sources/App/LayoutArchive.swift` and `BackupFormat.swift`: portable `.arras`
-  bundles.
-- `Sources/App/MainWindowView.swift`, `ContentView.swift`, `FrameInspector.swift`,
-  `PreferencesView.swift`, and `PrivacyView.swift`: Settings UI.
-- `Sources/App/SnapEngine.swift`, `DisplayManager.swift`, and
-  `PresenceManager.swift`: placement and environment behavior.
-- `Tests/Unit/`: model, persistence, layout, updater, and compatibility tests.
-- `Tests/UI/`: launched-app Settings integration test.
-
-Runtime ownership flows:
-
-`input → stored media + PhotoItem → PhotoManager → AppKit windows → Core Animation`
-
-SwiftUI edits state through `PhotoManager`; it does not own desktop windows or
-persistence. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full contract.
+`./build.sh --run` installs and launches a local build. `./build.sh --release`
+creates local ZIP and DMG artifacts in `dist/`; it does not publish a release.
 
 ## Project documents
 
-- [FEATURES.md](FEATURES.md): shipped behavior, limits, and prioritized remaining work.
-- [ARCHITECTURE.md](ARCHITECTURE.md): owners, dependency boundaries, persistence,
-  windows, performance, and verification.
-- [CHANGELOG.md](CHANGELOG.md): public version history.
-- [CLAUDE.md](CLAUDE.md): repository-specific engineering and agent rules.
+- [FEATURES.md](FEATURES.md): exhaustive current shipped behavior and limits.
+- [ARCHITECTURE.md](ARCHITECTURE.md): state, window, media, update, and release ownership.
+- [SECURITY.md](SECURITY.md): download trust, data and network behavior, and private vulnerability reporting.
+- [CONTRIBUTING.md](CONTRIBUTING.md): focused build, test, and documentation rules.
+- [CHANGELOG.md](CHANGELOG.md): historical public release record.
 - [LICENSE](LICENSE): MIT license.
 
-## Working rules
-
-- Generate `Arras.xcodeproj` from `project.yml`; never hand-edit the project.
-- Preserve backward decoding for every `PhotoItem` field.
-- Use isolated storage for tests; never point a harness at the user's real
-  Application Support directory.
-- Keep idle work event-, timer-, or render-server-driven.
-- Update README, FEATURES, and ARCHITECTURE whenever product truth or ownership
-  changes.
-- Keep this README at or below 200 lines.
-
-## What remains
-
-The researched near-term candidates are rotation policies, click actions,
-captions, format validation, energy-aware behavior, richer import reporting,
-image metadata, and stronger Shortcuts. Living Collage, multi-selection, saved
-scenes, live albums/video, wallpaper engines, and the widget-platform roadmap
-remain deferred product work. Per-photo schedules, automatic layout history,
-and Settings-facing persistence banners are deliberately outside the current
-product scope.
+Arras is published by [Yashashwi Singhania](https://yashashwi.me/) and developed
+in the open at [yashashwi-s/Arras](https://github.com/yashashwi-s/Arras).

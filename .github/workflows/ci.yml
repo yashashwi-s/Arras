@@ -7,6 +7,47 @@ on:
     branches: [main]
 
 jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Documentation
+        run: |
+          set -euo pipefail
+          PROJECT_VERSION="$(awk '/MARKETING_VERSION:/ { print $2; exit }' project.yml)"
+          python3 scripts/validate_product_metadata.py
+          python3 scripts/test_validate_product_metadata.py
+          python3 scripts/test_audit_public_release.py
+          python3 scripts/test_validate_pr_documentation.py
+          python3 scripts/test_validate_release_notes.py
+          python3 scripts/validate_release_notes.py \
+            --version "$PROJECT_VERSION" \
+            --all
+
+      - name: Require documentation declaration for behavior changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          CHANGED_FILES="$RUNNER_TEMP/arras-changed-files.txt"
+          PR_BODY_FILE="$RUNNER_TEMP/arras-pr-body.md"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$CHANGED_FILES"
+          printf '%s' "$PR_BODY" > "$PR_BODY_FILE"
+          python3 scripts/validate_pr_documentation.py \
+            --changed-files "$CHANGED_FILES" \
+            --pr-body-file "$PR_BODY_FILE"
+
+
   build:
     # SwiftUI's native settings tabs are linked-SDK dependent. The reference UI
     # is the macOS 27 presentation, so CI must exercise the same SDK as release.
@@ -27,24 +68,6 @@ jobs:
 
       - name: Verify Generated Project Is Current
         run: git diff --exit-code -- Arras.xcodeproj
-
-      - name: Validate Documentation
-        run: |
-          set -euo pipefail
-          README_LINES="$(wc -l < README.md | tr -d ' ')"
-          if [ "$README_LINES" -gt 200 ]; then
-            echo "README.md has ${README_LINES} lines; the project limit is 200."
-            exit 1
-          fi
-          test -f FEATURES.md
-          test -f ARCHITECTURE.md
-          test -f CHANGELOG.md
-          test -f scripts/validate_release_notes.py
-          PROJECT_VERSION="$(awk '/MARKETING_VERSION:/ { print $2; exit }' project.yml)"
-          python3 scripts/validate_product_metadata.py
-          python3 scripts/validate_release_notes.py \
-            --version "$PROJECT_VERSION" \
-            --all
 
       - name: Test
         run: |

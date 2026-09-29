@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "Arras",
   "canonicalUrl": "https://arras.yashashwi.me/",
   "repositoryUrl": "https://github.com/yashashwi-s/Arras",
   "publisher": {
-    "name": "PureMac",
-    "url": "https://puremac.yashashwi.me/"
+    "name": "Yashashwi Singhania",
+    "url": "https://yashashwi.me/"
   },
   "category": "native macOS desktop photo widget",
   "shortDescription": "Native macOS photo widget that preserves each image's original aspect ratio.",
@@ -16,13 +16,27 @@
     "Tableau"
   ],
   "minimumMacOS": "14.0",
+  "documentation": {
+    "mainUrl": "https://arras.yashashwi.me/",
+    "installationUrl": "https://arras.yashashwi.me/#install",
+    "quickStartUrl": "https://arras.yashashwi.me/faqs#how-to-use",
+    "faqUrl": "https://arras.yashashwi.me/faqs",
+    "securityUrl": "https://arras.yashashwi.me/security",
+    "featureContractUrl": "https://github.com/yashashwi-s/Arras/blob/main/FEATURES.md",
+    "architectureUrl": "https://github.com/yashashwi-s/Arras/blob/main/ARCHITECTURE.md",
+    "securityPolicyUrl": "https://github.com/yashashwi-s/Arras/blob/main/SECURITY.md"
+  },
   "publicRelease": {
+    "sourceUrl": "https://github.com/yashashwi-s/Arras/releases/latest",
     "architectures": [
-      "arm64"
+      "arm64",
+      "x86_64"
     ],
+    "signing": "ad-hoc",
     "notarized": false
   },
   "sourceBuild": {
+    "sourceUrl": "https://github.com/yashashwi-s/Arras",
     "intelSupported": true
   },
   "license": {
@@ -30,16 +44,5 @@
     "url": "https://github.com/yashashwi-s/Arras/blob/main/LICENSE"
   },
   "telemetry": false,
-  "featureContractPath": "FEATURES.md",
-  "homebrew": {
-    "tap": "yashashwi-s/tap",
-    "tapRepository": "https://github.com/yashashwi-s/homebrew-tap",
-    "cask": "arras",
-    "trustScope": "tap",
-    "commands": [
-      "brew tap yashashwi-s/tap",
-      "brew trust yashashwi-s/tap",
-      "brew install --cask arras"
-    ]
-  }
+  "featureContractPath": "FEATURES.md"
 }

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 
+ROOT = Path(__file__).resolve().parent.parent
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 PLACEHOLDER_RE = re.compile(
     r"\b(?:todo|tbd|placeholder|fill\s+this\s+in|coming\s+soon|lorem\s+ipsum|n/?a)\b",
@@ -24,17 +25,61 @@ PLACEHOLDER_RE = re.compile(
 )
 
 
-PRODUCT_FOOTER = """---
+def fail(message: str) -> NoReturn:
+    raise ValueError(message)
+
+
+def product_footer(metadata_path: Path = ROOT / "product-metadata.json") -> str:
+    """Render release boilerplate from the version-independent product contract."""
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        documentation = metadata["documentation"]
+        public_release = metadata["publicRelease"]
+        minimum_macos = metadata["minimumMacOS"]
+        repository_url = metadata["repositoryUrl"]
+        architectures = public_release["architectures"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        fail(f"cannot read product metadata for the release footer: {error}")
+
+    if not isinstance(minimum_macos, str) or not minimum_macos:
+        fail("product metadata minimumMacOS must be a non-empty string")
+    if not isinstance(repository_url, str) or not repository_url:
+        fail("product metadata repositoryUrl must be a non-empty string")
+    if not isinstance(documentation, dict):
+        fail("product metadata documentation must be an object")
+    main_url = documentation.get("mainUrl")
+    installation_url = documentation.get("installationUrl")
+    if not isinstance(main_url, str) or not isinstance(installation_url, str):
+        fail("product metadata documentation URLs must be strings")
+    if not isinstance(architectures, list) or not architectures or not all(
+        isinstance(architecture, str) and architecture for architecture in architectures
+    ):
+        fail("product metadata publicRelease.architectures must be a non-empty string array")
+
+    architecture_names = {
+        "arm64": "Apple Silicon (`arm64`)",
+        "x86_64": "Intel (`x86_64`)",
+    }
+    display_architectures = [architecture_names.get(value, f"`{value}`") for value in architectures]
+    if len(display_architectures) == 1:
+        architecture_summary = display_architectures[0]
+    elif len(display_architectures) == 2:
+        architecture_summary = " and ".join(display_architectures)
+    else:
+        architecture_summary = ", ".join(display_architectures[:-1]) + f", and {display_architectures[-1]}"
+    universal = architectures == ["arm64", "x86_64"]
+    release_architecture = f"{'Universal ' if universal else ''}{architecture_summary} release downloads"
+
+    return f"""---
 
 Arras is a free, open-source native macOS desktop photo widget that keeps each photo at its original aspect ratio.
 
-[Official website](https://arras.yashashwi.me/) · [Installation guide](https://arras.yashashwi.me/#install) · [Source](https://github.com/yashashwi-s/Arras)
+[Official website]({main_url}) · [Installation guide]({installation_url}) · [Source]({repository_url})
 
-macOS 14+ · Apple Silicon release downloads · Intel supported from source"""
+macOS {minimum_macos}+ · {release_architecture}"""
 
 
-def fail(message: str) -> NoReturn:
-    raise ValueError(message)
+PRODUCT_FOOTER = product_footer()
 
 
 def validate(path: Path, expected_version: str) -> dict[str, Any]:
@@ -94,6 +139,12 @@ def main() -> int:
     parser.add_argument("--version", required=True, help="public version to validate")
     parser.add_argument("--notes-dir", type=Path, default=Path("release-notes"))
     parser.add_argument(
+        "--product-metadata",
+        type=Path,
+        default=ROOT / "product-metadata.json",
+        help="version-independent product contract used for generated release boilerplate",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="also validate every release-notes/*.json file in the directory",
@@ -129,7 +180,7 @@ def main() -> int:
             print("## Details\n")
             for detail in current["details"]:
                 print(f"- {detail}")
-        print("\n" + PRODUCT_FOOTER)
+        print("\n" + product_footer(args.product_metadata))
     else:
         print(f"validated human-authored release notes for {args.version}")
     return 0

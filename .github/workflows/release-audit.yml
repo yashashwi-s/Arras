@@ -1,0 +1,23 @@
+name: Public Release Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit latest public release
+        run: python3 scripts/audit_public_release.py --output release-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-release-audit
+          path: release-audit.json
+          if-no-files-found: error

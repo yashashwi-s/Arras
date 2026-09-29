@@ -1,181 +1,119 @@
-# CLAUDE.md — Arras
+# Repository guidance for coding agents
 
-Guidance for AI coding agents working in this repo.
+Use this file with [ARCHITECTURE.md](ARCHITECTURE.md), which owns subsystem
+boundaries, and [FEATURES.md](FEATURES.md), which owns current shipped behavior.
+Inspect source and tests before changing either contract.
 
-The first half is general working principles, adapted from
-[Andrej Karpathy's observations on LLM coding pitfalls](https://github.com/multica-ai/andrej-karpathy-skills).
-The second half is what this specific codebase will bite you with.
+## Working principles
 
----
+- State uncertain assumptions and verify AppKit behavior on a real build when it
+  matters. A plausible framework explanation is not a diagnosis.
+- Make the smallest focused change that fixes the requested behavior. Preserve
+  unrelated user work and match the surrounding style.
+- Report what was actually tested, including failures and manual checks that
+  remain.
+- Arras uses Swift/AppKit with SwiftUI for Settings and has no third-party
+  runtime dependencies. Keep idle work event-, timer-, or render-server-driven.
+- Use four-space indentation, `// MARK: -` section headings, and comments that
+  explain non-obvious reasons. SwiftUI motion uses `easeInOut`, with Reduce
+  Motion respected.
+- Anything touching windows or `PhotoManager` belongs on the main actor.
 
-## 1. Think before coding
+## Build and project
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+`project.yml` owns build configuration and the generated
+`Arras.xcodeproj`. New source files are discovered by XcodeGen. Never hand-edit
+the project file; regenerate it after configuration or file changes.
 
-- State assumptions explicitly — if uncertain, ask rather than guess
-- Present multiple interpretations rather than silently picking one
-- Push back when a simpler approach exists
-- Stop when confused; name what's unclear instead of writing code around it
+```sh
+xcodegen generate
+./build.sh
 
-In this repo specifically: **don't theorise about AppKit, test it.** Three
-separate bugs here were diagnosed by adding an `NSLog` and running the app,
-after plausible-sounding theories turned out to be wrong. See §7.
-
-## 2. Simplicity first
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked
-- No abstractions for single-use code
-- No "flexibility" or "configurability" that wasn't requested
-- No error handling for impossible scenarios
-- If 200 lines could be 50, rewrite it
-
-## 3. Surgical changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-- Don't "improve" adjacent code, comments, or formatting
-- Don't refactor things that aren't broken
-- Match existing style even if you'd do it differently
-- If you notice unrelated dead code, mention it — don't delete it
-- Remove imports/variables your change orphaned; leave pre-existing dead code alone
-
-## 4. Goal-driven execution
-
-**Define success criteria. Loop until verified.**
-
-Turn vague instructions into checkable steps:
-
-```
-1. [Step] -> verify: [check]
-2. [Step] -> verify: [check]
+/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
+  -project Arras.xcodeproj \
+  -scheme Arras \
+  -destination 'platform=macOS' \
+  test
 ```
 
-For this repo the verification bar is concrete: **`./build.sh` prints
-`** BUILD SUCCEEDED **`, the app launches, and `photos.json` still decodes.**
-"It compiles" is not done.
+The deployment target is macOS 14. The intended current Settings presentation
+depends on the macOS 27 SDK. Compiler warnings alone are not an API audit across
+the supported OS range.
 
-## 5. Report honestly
+`./build.sh --run` installs and launches a local build.
+`./build.sh --release` creates local ZIP and DMG files; it does not publish.
 
-- If tests fail, say so and show the output
-- If you skipped part of the task, say which part and why
-- Don't describe work as verified when it was only written
-- A plausible explanation is not a diagnosis — say which one you actually confirmed
+## Load-bearing compatibility rules
 
----
+### Persisted models
 
-## 6. What this project is
+`PhotoItem.init(from:)` is hand-written. Every new field needs
+`decodeIfPresent(...) ?? default` or another explicit backward-compatible
+migration. A decoding failure can strand the entire widget library. Test a real
+older `photos.json`, current round-trip behavior, and `.arras` import when the
+schema changes.
 
-A macOS menu bar agent (`LSUIElement`) that puts photo widgets on the desktop.
-Swift + AppKit, with SwiftUI for the settings panel. No dependencies.
+Production storage is `~/Library/Application Support/PhotoWidget/`. Tests must
+inject `PhotoManager(storageDirectory:)` or set
+`ARRAS_UI_TEST_STORAGE_DIR`, and clean up only that scratch location.
 
-One file per feature under `Sources/App/`; see FEATURES.md.
+Do not change the historic bundle identifier or storage path for naming
+cleanliness. Do not enable App Sandbox: the updater replaces the bundle and
+starts a helper that outlives the process, and sandboxing would also move
+Application Support.
 
-**Build:** `./build.sh` (xcodegen + xcodebuild). `--run` installs to
-`/Applications` and launches; `--release` packages local ZIP and DMG artifacts.
+### Windows, menus, and animation
 
-The ownership and dependency contract lives in `ARCHITECTURE.md`; update it when
-a change moves persistence, window, import, rendering, or UI responsibility.
+`PhotoManager` owns state and desktop windows; SwiftUI views call it rather than
+writing storage or creating another window authority. Persist the visible photo
+frame, not shadow/tilt-expanded window geometry.
 
-**New files are picked up automatically by xcodegen** — never hand-edit
-`Arras.xcodeproj`, it's generated. If it conflicts in a merge, run
-`xcodegen generate` instead of resolving it by hand.
+`NSMenuItem.image` does not render reliably in status menus with the current
+SDK. Widget thumbnails use `NSTextAttachment` in `attributedTitle` while the
+plain title remains for VoiceOver and menu search.
 
----
+GIF/APNG playback uses `CAKeyframeAnimation`. Do not add per-frame Timer or
+display-link work to the app process. Reveal-on-hover effective alpha is derived
+from saved opacity and pointer/depth state; do not overwrite the saved opacity.
 
-## 7. Traps specific to this codebase
+Termination handlers must save synchronously on the main actor. A `Task { }`
+scheduled during shutdown may never run.
 
-These have each caused a real bug. They are not hypothetical.
+## Updates and releases
 
-### `PhotoItem` decoding is hand-written and load-bearing
+The selected updater frequency applies to both automatic installation and
+notification-only mode. Wake and app-activation observers re-check elapsed
+wall-clock due time, and failed scheduled fetches use a 15-minute retry
+throttle. Keep automatic and manual installation on the same verification and
+rollback path.
 
-`init(from decoder:)` uses `decodeIfPresent(...) ?? default` for **every** field
-added after v1.0. Any new field must follow that exact pattern.
+To prepare a release:
 
-Get this wrong and `photos.json` fails to decode, `loadSaved()` returns early,
-and **every user loses every widget silently**. There is no error surfaced.
-Before shipping a schema change, decode a real pre-change `photos.json` against
-the new model and confirm it survives.
+1. change `MARKETING_VERSION` in `project.yml`;
+2. add `release-notes/X.Y.Z.json` with a matching version and meaningful title,
+   summary, and optional details; and
+3. after tests and explicit publishing authorization, create and push the
+   matching `vX.Y.Z` tag.
 
-### Don't `Task { }` in a termination handler
+The release workflow owns the GitHub release body, artifacts, and generated
+`appcast.json` URL/checksum. Never insert a locally calculated artifact hash:
+the runner rebuilds the downloadable archive.
 
-`willTerminate` ran its save inside a `Task`, which schedules work for a
-main-queue turn that never arrives during shutdown. The save silently never
-happened for months. Notifications delivered on `.main` are already on the main
-actor — use `MainActor.assumeIsolated` and run synchronously.
+Do not create tags, releases, or publish artifacts unless the user explicitly
+authorizes publication.
 
-### `NSMenuItem.image` does not render on macOS 27
+## Documentation ownership
 
-Confirmed on macOS 27.0: images assigned to status bar menu items are simply not
-drawn, including plain SF Symbols, with or without a submenu. Use an
-`NSTextAttachment` in `attributedTitle` instead. Keep the plain `title` set too,
-for VoiceOver and menu search.
+- `README.md`: concise GitHub front door, at most 200 lines.
+- `FEATURES.md`: reviewed current shipped and reachable behavior, without a
+  patch-version heading or roadmap.
+- `ARCHITECTURE.md`: durable ownership and engineering contracts.
+- `SECURITY.md`: distribution trust, data/network behavior, and reporting.
+- `CHANGELOG.md` and `release-notes/`: truthful historical records.
+- `product-metadata.json`: stable machine-readable public facts. GitHub
+  Releases/appcast own release-specific version, date, URLs, and digests.
 
-### Compiler warnings are not an OS audit
-
-The deployment target is 14.0, so the compiler stays silent about anything
-deprecated in macOS 15+. `disableScreenUpdatesUntilFlush()` sat in the code for
-two releases doing nothing. Check SourceKit diagnostics against the current SDK.
-
-### The app is deliberately not sandboxed
-
-The updater has to replace `Arras.app` and spawn a helper that outlives the
-process; App Sandbox forbids both. Don't "fix" this by re-adding the entitlement
-— it would break updates and silently move Application Support back into
-`~/Library/Containers`, orphaning everyone's data. See `StorageMigration.swift`.
-
-### Never let animation cost the idle CPU budget
-
-Near-zero idle CPU is a stated feature. GIF playback uses a
-`CAKeyframeAnimation` that runs on the render server. A `Timer` or
-`CADisplayLink` per widget would wake the app process constantly. Keep animation
-declarative and on the render server.
-
-### Don't test against the user's real data
-
-Production `PhotoManager.storageDir` points at
-`~/Library/Application Support/PhotoWidget/`, which holds real photos and
-`photos.json`. Tests must pass `storageDirectory:` or set
-`ARRAS_UI_TEST_STORAGE_DIR`, keep imported items invisible unless window behavior
-is the subject, and delete their scratch directory afterward.
-
----
-
-## 8. Conventions
-
-- 4-space indent, `// MARK: -` section headers
-- **Comments explain _why_, not _what_.** The codebase justifies non-obvious
-  decisions (`isReleasedWhenClosed = false ... to prevent use-after-free on
-  re-show`). Match that voice. Don't narrate what the code plainly does
-- No emoji in source
-- SwiftUI animations use `easeInOut` only — no springs, matching native macOS feel
-- `@MainActor` on anything touching windows or `PhotoManager`
-- Keep `FEATURES.md` truthful. It documented click-through as shipped for two
-  releases after it was removed
-- Keep `README.md` at or below 200 lines. Move durable detail into
-  `FEATURES.md` or `ARCHITECTURE.md` instead of growing the front page
-
-## 9. Releasing
-
-1. Bump `MARKETING_VERSION` in `project.yml` and add
-   `release-notes/X.Y.Z.json` with a deliberate `version`, `title`, and
-   non-placeholder `summary` (optional `details` entries can hold longer copy).
-2. `git tag vX.Y.Z && git push origin vX.Y.Z`
-
-CI validates the release metadata before testing, builds and attaches the artifacts,
-uses the validated metadata as the GitHub release body, and stamps `appcast.json`
-with the checksum of the zip it uploaded plus the validated `title: summary` text
-consumed by updater notifications. Do not edit `appcast.json`'s release notes by
-hand for a new version; the release workflow is the source of that generated
-field.
-
-**Never put a locally computed checksum in `appcast.json`.** Pushing the tag
-makes the Release workflow rebuild on its own runner and *overwrite* the release
-assets, so a local hash describes a binary nobody downloads. The updater refuses
-any mismatch, so every update then fails with "the download didn't match" — which
-is exactly how 2.2.0 and 2.2.1 shipped broken. Verifying right after `gh release
-create` is not enough either: CI overwrites the asset a minute later, so an early
-check passes and the real state is wrong.
-
-Publishing is outward-facing — confirm with the user before doing it.
+Whenever user-visible behavior changes, the same pull request must update the
+relevant product documentation or explicitly demonstrate why no documentation
+change is needed. Do not infer shipped behavior from an unreleased code path,
+old prose, or a release tag whose documentation was already stale.
