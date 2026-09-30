@@ -123,7 +123,7 @@ def validate_local_doc_links(root: Path, documents: list[str]) -> None:
 
 
 def validate_documentation(root: Path) -> None:
-    documents = ["README.md", "FEATURES.md", "ARCHITECTURE.md", "CHANGELOG.md"]
+    documents = ["README.md", "SECURITY.md", "FEATURES.md", "ARCHITECTURE.md", "CHANGELOG.md"]
     for document in documents:
         if not (root / document).is_file():
             fail(f"required documentation is missing: {document}")
@@ -136,6 +136,32 @@ def validate_documentation(root: Path) -> None:
         readme,
     ):
         fail("README.md must not advertise Homebrew distribution")
+
+    current_docs = {
+        document: (root / document).read_text(encoding="utf-8")
+        for document in ("README.md", "SECURITY.md", "FEATURES.md")
+    }
+    deprecated_trust_phrases = re.compile(
+        r"(?i)(?:"
+        r"does not establish that a download is safe|"
+        r"does not establish whether an app is safe|"
+        r"matching checksum verifies bytes, not safety|"
+        r"only proceed if you trust\b[^.\n]*|"
+        r"if you trust (?:that(?: the official)?|the official) download|"
+        r"do not bypass a warning about (?:detected )?malware or a damaged app|"
+        r"material distribution limitations?"
+        r")"
+    )
+    for document, contents in current_docs.items():
+        normalized = re.sub(r"\s+", " ", contents)
+        if deprecated_trust_phrases.search(normalized):
+            fail(f"{document} contains deprecated trust or quarantine guidance")
+    for document in ("README.md", "SECURITY.md"):
+        contents = current_docs[document]
+        if "Open Anyway" not in contents:
+            fail(f"{document} must explain the macOS Open Anyway path")
+        if not re.search(r"(?i)password\s+or\s+touch id", contents):
+            fail(f"{document} must explain the Mac password or Touch ID confirmation")
 
     features = (root / "FEATURES.md").read_text(encoding="utf-8")
     if re.search(r"(?im)^#{1,6}\s+.*\b\d+\.\d+(?:\.\d+)?\b", features):

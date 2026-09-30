@@ -24,7 +24,10 @@ class ProductMetadataTests(unittest.TestCase):
             destination,
             ignore=shutil.ignore_patterns(".git", "build", "DerivedData", "__pycache__"),
         )
-        (destination / "README.md").write_text("# Arras\n", encoding="utf-8")
+        (destination / "README.md").write_text(
+            "# Arras\n\nOpen Anyway with your Mac password or Touch ID.\n",
+            encoding="utf-8",
+        )
         (destination / "FEATURES.md").write_text("# Arras feature contract\n", encoding="utf-8")
         (destination / "ARCHITECTURE.md").write_text("# Architecture\n", encoding="utf-8")
         (destination / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
@@ -74,6 +77,64 @@ class ProductMetadataTests(unittest.TestCase):
             path.write_text(path.read_text(encoding="utf-8") + "\n[Missing guide](missing-guide.md)\n", encoding="utf-8")
 
         self.assert_invalid(mutate, "local link target does not exist")
+
+    def test_rejects_deprecated_consumer_trust_phrases(self):
+        phrases = (
+            "does not establish that a download is safe",
+            "does not establish\nwhether an app is safe",
+            "matching checksum verifies bytes, not safety",
+            "only proceed if you trust the official download",
+            "if you trust that the official download",
+            "if you trust the official download",
+            "if you trust that download",
+            "Do not bypass a warning about detected malware or a damaged app",
+            "material distribution limitation",
+            "material distribution limitations",
+        )
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assert_invalid(
+                    lambda repository, phrase=phrase: (
+                        repository / "SECURITY.md"
+                    ).write_text(
+                        (repository / "SECURITY.md").read_text(encoding="utf-8")
+                        + f"\n{phrase}\n",
+                        encoding="utf-8",
+                    ),
+                    "deprecated trust or quarantine guidance",
+                )
+
+    def test_allows_technical_checksum_quarantine_and_historical_copy(self):
+        directory, repository = self.with_repository_copy()
+        with directory:
+            security = repository / "SECURITY.md"
+            security.write_text(
+                security.read_text(encoding="utf-8")
+                + "\nThe updater checks the matching checksum and removes quarantine from the verified staged bundle.\n",
+                encoding="utf-8",
+            )
+            changelog = repository / "CHANGELOG.md"
+            changelog.write_text(
+                "# Changelog\n\nDo not bypass a warning about detected malware or a damaged app.\n",
+                encoding="utf-8",
+            )
+            validate(repository)
+
+    def test_requires_first_launch_confirmation_in_readme(self):
+        def mutate(repository):
+            path = repository / "README.md"
+            contents = path.read_text(encoding="utf-8").replace("Open Anyway", "Open the app")
+            path.write_text(contents, encoding="utf-8")
+
+        self.assert_invalid(mutate, "README.md must explain the macOS Open Anyway path")
+
+    def test_requires_password_or_touch_id_explanation_in_security(self):
+        def mutate(repository):
+            path = repository / "SECURITY.md"
+            contents = path.read_text(encoding="utf-8").replace("Touch ID", "biometric approval")
+            path.write_text(contents, encoding="utf-8")
+
+        self.assert_invalid(mutate, "SECURITY.md must explain the Mac password or Touch ID confirmation")
 
 
 if __name__ == "__main__":

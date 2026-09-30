@@ -1,6 +1,6 @@
 # Arras security and trust
 
-Arras is open-source software published by
+Arras is free, MIT-licensed open-source software published by
 [Yashashwi Singhania](https://yashashwi.me/). This document records verifiable
 properties of the current distribution and explains how to report a
 vulnerability. The user-facing companion is the official
@@ -22,12 +22,22 @@ The current public app:
 - is ad-hoc signed, without a Developer ID team identity; and
 - is not notarized.
 
-The release therefore does not provide Apple's Developer ID/notarization trust
-chain. Gatekeeper may block first launch. Verify the download source before
-using **Open Anyway** or clearing quarantine. The release asset digest and the
-SHA-256 in [appcast.json](appcast.json) provide visible byte-level
-integrity values from the same GitHub publication infrastructure; the updater refuses a ZIP whose SHA-256 does not match its
-feed.
+Because the public build is not notarized, macOS may show “Apple is not able to
+verify that it is free from malware” on first launch. This is the expected
+Gatekeeper verification warning for an ad-hoc build: Apple has not completed
+developer/notarization verification, and the message is not a malware finding.
+
+Install the official DMG by opening it and dragging Arras to **Applications**.
+Try to open Arras once. If macOS blocks it, go to **System Settings → Privacy
+& Security → Open Anyway**. Confirm with your Mac password or Touch ID if
+requested, then choose **Open**. macOS is confirming your decision to open
+Arras; the password is not shared with the app. After approval, Arras opens
+normally.
+
+The release asset digest and the SHA-256 in [appcast.json](appcast.json) let you
+confirm your download matches the published file. Both values come from the
+same GitHub publication infrastructure; the updater refuses a ZIP whose SHA-256
+does not match its feed.
 
 The source is public in this repository. `project.yml` defines the build
 identity and entitlements, and the tag workflow builds the published artifacts.
@@ -63,8 +73,7 @@ cannot detect browser calls.
 
 Arras is deliberately not App Sandbox-enabled. Its in-place updater must replace
 the app bundle and start a helper that survives the current process. The app
-does use the hardened runtime, but ad-hoc signing and lack of notarization remain
-material distribution limitations.
+does use the hardened runtime.
 
 ## Network behavior
 
@@ -86,8 +95,9 @@ The updater validates HTTPS, a SemVer version, minimum macOS version, SHA-256,
 the presence of an extracted app, bundle identifier, embedded app version, and forward-only version
 precedence before swap. A helper retains the previous bundle until the new
 version writes a startup health marker; failure triggers rollback. The installer
-removes quarantine from the verified staged bundle because the public app is
-not notarized.
+stages and validates the downloaded bundle before replacing the running app; it
+also removes the staged bundle's quarantine attribute as part of that verified
+update flow.
 
 The Arras website is a separate service and may use Vercel Analytics and Speed
 Insights. Those website measurements are not embedded in the Arras app.

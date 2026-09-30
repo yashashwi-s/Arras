@@ -20,10 +20,23 @@ WidgetKit's fixed grid or fixed sizes.
 The public download requires macOS 14 Sonoma or later. The current DMG and ZIP
 contain a universal executable for Apple Silicon (`arm64`) and Intel (`x86_64`).
 
-The public app is ad-hoc signed and is not notarized. On first launch, verify
-that the file came from the official GitHub release, then use System Settings →
-Privacy & Security → Open Anyway if Gatekeeper blocks it. See the
-[installation guide](https://arras.yashashwi.me/#install) for the current steps.
+Arras is free, MIT-licensed open-source software. Official releases are
+published on [GitHub](https://github.com/yashashwi-s/Arras/releases/latest).
+Photos stay on your Mac. Arras has no account, advertising SDK, app analytics,
+telemetry, or external crash-reporting service.
+
+The public app is ad-hoc signed and is not notarized, so macOS may show the
+expected “Apple is not able to verify that it is free from malware” warning.
+That message means Apple could not complete its developer/notarization
+verification for this build; it does not report a malware finding.
+
+To install the official DMG, open it and drag Arras to **Applications**, then
+try to open Arras once. If macOS blocks the first launch, open **System
+Settings → Privacy & Security → Open Anyway**. Confirm with your Mac password
+or Touch ID if requested, then choose **Open**. This is macOS confirming your
+decision to open Arras; the password is not shared with the app. After approval,
+Arras opens normally. See the [installation guide](https://arras.yashashwi.me/#install)
+for the current steps.
 
 ## Highlights
 

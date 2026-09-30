@@ -174,11 +174,17 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 
 ## Distribution and known limits
 
+- Arras is free, MIT-licensed open-source software. Official releases are
+  published through the public GitHub repository and its Releases page.
 - The official macOS 14-or-later DMG and ZIP contain a universal executable with
   both Apple Silicon (`arm64`) and Intel (`x86_64`) slices. Source builds support
   the same architectures when built with an appropriate macOS toolchain.
-- Public builds are ad-hoc signed and are not notarized. Gatekeeper can require
-  **Open Anyway** after the user verifies the official download.
+- Public builds are ad-hoc signed and are not notarized. macOS can therefore
+  show its expected “Apple is not able to verify that it is free from malware”
+  Gatekeeper verification warning on first launch. Installers can choose
+  **Open Anyway** in **System Settings → Privacy & Security**, then confirm
+  with a Mac password or Touch ID if macOS asks and choose **Open** as
+  applicable; macOS records that decision.
 - The app is intentionally not sandboxed because its in-place updater replaces
   its bundle and launches a helper that outlives the running process.
 - Arras stores media locally but is not an original-photo archive. Export

@@ -12,6 +12,13 @@
 | appcast.json, GitHub Releases | Generated updater state and published release-specific artifacts |
 | CODE_OF_CONDUCT.md, LICENSE | Community policy and legal terms |
 
+Signing status comes from canonical product metadata. The website derives its
+first-launch explanation from those facts in one shared helper. Keep the
+corresponding guidance aligned across the website, README.md,
+SECURITY.md, and FEATURES.md: public builds are ad-hoc signed and not
+notarized, and **Open Anyway** plus the Mac password or Touch ID explanation
+must remain available wherever installation is described.
+
 The website reads the main-branch product contract over HTTPS, validates it, and
 uses a generated committed fallback if the network or remote contract fails.
 This is read-only consumption: routine product changes do not require a website
