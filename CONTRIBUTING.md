@@ -893,3 +893,12 @@ Release validation also corrected the old-domain and unsigned-install assumption
 in product-document checks. All 73 Python checks passed, and the compiled source
 digest still matches the notarization receipt. Earlier dated sections retain their
 pre-release holds and limitations as historical evidence.
+
+The first publication CI run exposed three animation-fixture assumptions when
+Reduce Motion was enabled, a duplicate Touch Bar/sheet button query, and four
+other UI failures on its small desktop. Transition-only fixtures now declare
+their system-animation precondition, and the discard action is scoped to its
+sheet. CI preserves native result bundles for remaining pointer/reachability
+investigation. These are test/diagnostic changes; the published app source digest
+and notarized artifacts are unchanged. Passing manual acceptance does not erase
+an automated failure, and a skipped animation check is not animation coverage.

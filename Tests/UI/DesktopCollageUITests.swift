@@ -112,8 +112,9 @@ final class DesktopCollageUITests: XCTestCase {
             XCTAssertTrue(app.descendants(matching: .any)[identifier].waitForExistence(timeout: 3), identifier)
         }
         app.buttons["Cancel"].click()
-        XCTAssertTrue(app.buttons["Discard Changes"].waitForExistence(timeout: 3))
-        app.buttons["Discard Changes"].click()
+        let discard = app.windows["Edit Collage"].sheets.buttons["Discard Changes"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 3))
+        discard.click()
         XCTAssertEqual((try item(collage)["desktopCollage"] as? [String: Any])?["caption"] as? String, "")
         edit.click()
         let material = app.buttons["collage-preset-whitePolaroid"]

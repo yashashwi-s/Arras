@@ -328,6 +328,7 @@ final class DesktopCollageTests: XCTestCase {
 
     @MainActor
     func testBackgroundDragDuringBoundaryAnimationKeepsExplicitPlacementAndCancelsForDepthChange() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "This transition-in-progress check requires system animations; Reduce Motion intentionally completes synchronously.")
         try withManager { manager in
             let photo = try makePhoto(manager, frame: CGRect(x: 100, y: 120, width: 180, height: 240), styled: false)
             let parent = try makeContainer(manager, frame: CGRect(x: 100, y: 150, width: 160, height: 160))
@@ -2091,6 +2092,7 @@ final class DesktopCollageTests: XCTestCase {
 
     @MainActor
     func testClickDuringGapMotionResumesDestinationWithoutWritingIntermediateFrame() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "This transition-in-progress check requires system animations; Reduce Motion intentionally completes synchronously.")
         try withManager { manager in
             let first = try makePhoto(manager, frame: CGRect(x: 100, y: 100, width: 180, height: 240), styled: false)
             let second = try makePhoto(manager, frame: CGRect(x: 300, y: 220, width: 120, height: 120), styled: false)
@@ -2130,6 +2132,7 @@ final class DesktopCollageTests: XCTestCase {
 
     @MainActor
     func testDraggingSpaceDuringGapMotionTranslatesSavedSlotsFromTheirDestination() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "This transition-in-progress check requires system animations; Reduce Motion intentionally completes synchronously.")
         try withManager { manager in
             let first = try makePhoto(manager, frame: CGRect(x: 100, y: 100, width: 180, height: 240), styled: false)
             XCTAssertTrue(manager.addStarterExample(.rotatingSpace))
