@@ -1,5 +1,16 @@
 # Arras feature guide
 
+## App Store target — in preparation
+
+The shared source also builds a sandboxed Mac App Store edition, planned at $4.99.
+The free direct download remains available and primary on the website. The Store
+edition uses Apple's updates, container-local storage, explicit existing-library
+import and native region capture; it excludes app telemetry and the direct updater.
+Its separate target, identity and output directory prevent mixing distribution
+packages. TestFlight and App Review are pending; no App Store badge or availability
+claim should appear until the listing is live. The released 2.5.0 behavior below
+continues to describe the direct-download edition unless stated otherwise.
+
 ## Find your next step
 
 This guide describes **Arras 2.5.0**. Start with an example or your own photos,

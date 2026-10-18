@@ -824,7 +824,7 @@ extension PhotoManager {
     private func makeLiveFolderSource(for url: URL, displayName: String? = nil) -> LiveFolderSource {
         let didStart = url.startAccessingSecurityScopedResource()
         defer { if didStart { url.stopAccessingSecurityScopedResource() } }
-        let bookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)
         return LiveFolderSource(
             bookmarkData: bookmark,
             sourcePath: url.standardizedFileURL.path,
@@ -835,7 +835,7 @@ extension PhotoManager {
 
     private func refreshedBookmark(for url: URL, source: LiveFolderSource?) -> Data? {
         guard source?.bookmarkData != nil else { return nil }
-        return try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        return try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 
     private func updateLiveFolderWindow(for item: PhotoItem) {

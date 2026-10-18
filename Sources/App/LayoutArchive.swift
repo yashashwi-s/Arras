@@ -158,10 +158,12 @@ struct ExportedPreferences: Codable {
             }
             prefs.menuBarItems = items
         }
+#if !ARRAS_APP_STORE
         if groups.contains(.updates) {
             prefs.updateCheckFrequency = Updater.shared.checkFrequency.rawValue
             prefs.automaticUpdatesEnabled = Updater.shared.automaticUpdatesEnabled
         }
+#endif
         if groups.contains(.privacy) {
             prefs.excludeFromScreenCapture = UserDefaults.standard.bool(forKey: "presence.excludeFromScreenCapture")
             prefs.autoHideForConferencingApps = UserDefaults.standard.bool(forKey: "presence.autoHideForConferencingApps")
@@ -769,6 +771,7 @@ extension PhotoManager {
                 }
             }
         }
+#if !ARRAS_APP_STORE
         if let frequency = preferences.updateCheckFrequency,
            let parsed = Updater.CheckFrequency(rawValue: frequency) {
             Updater.shared.checkFrequency = parsed
@@ -776,6 +779,7 @@ extension PhotoManager {
         if let automatic = preferences.automaticUpdatesEnabled {
             Updater.shared.automaticUpdatesEnabled = automatic
         }
+#endif
         if let value = preferences.excludeFromScreenCapture {
             setExcludeFromScreenCapture(value)
         }

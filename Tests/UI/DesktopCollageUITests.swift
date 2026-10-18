@@ -10,7 +10,7 @@ final class DesktopCollageUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        storage = FileManager.default.temporaryDirectory.appendingPathComponent("ArrasDesktopCollageUI-" + UUID().uuidString)
+        storage = uiTestStorage(prefix: "ArrasNativeDesktop")
         try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]

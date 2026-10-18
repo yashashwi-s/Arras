@@ -32,6 +32,49 @@ or Space-switch acceptance.
 `./build.sh --release` packages locally. `./build.sh --pilot BUILD` builds a
 private telemetry pilot; replace BUILD with a new integer (greater than the last shared internal build identifier). Build only from the current source checkout.
 
+### App Store target
+
+Choose **Arras** for free direct-download development and **ArrasAppStore** for
+sandbox work. Both use shared `Sources/App`; Store-only code/resources and
+regressions live in `Sources/AppStore` and `Tests/AppStore`. Do not copy the app
+code into a second tree. `project.yml` generates both targets and schemes.
+
+| Distribution | Release ID | Local output | Updates / statistics |
+| --- | --- | --- | --- |
+| Direct (free) | `com.yashashwi.tableau` | `build/current`, `dist` | Verified GitHub updater; limited statistics |
+| App Store (planned $4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
+
+Store Debug uses `com.yashashwi.arras.appstore.development` and the name
+**Arras App Store Dev**. UI tests own UUID directories under
+`/private/tmp/ArrasAppStoreUITests/`; only Debug app/runner entitlements allow this
+fixture root. Unit tests inject scratch storage. Never test by replacing a user's
+library or launching the production Store identity against personal content.
+
+```sh
+./build.sh --app-store
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project Arras.xcodeproj -scheme ArrasAppStore \
+  -destination 'platform=macOS' test
+./build.sh --app-store-archive
+```
+
+The local build is ad-hoc signed and cannot be uploaded. Archiving requires the
+configured Apple team and signing access; export via **App Store Connect** with
+its distribution provisioning profile and Mac installer signing identity. Upload
+only to Apple, never GitHub Releases or generic public CI artifacts. Use the same
+processed build for TestFlight and review; do not use an internal-only export
+that cannot be submitted to review. Verify actual TestFlight installation,
+container permissions and library import before submitting with **manual release**.
+The website Store badge is gated on an approved, publicly live listing; free
+direct download stays the main button.
+
+The separate sandbox folder's 18 October verification recorded 399 native tests
+with one skip and 77 script checks passing. Its UI runs passed 14 distinct cases;
+three synthetic typing/drag cases remained red despite basic manual typing and
+dragging acceptance. Those results are historical evidence, not results for this
+merged target. Preserve the source folder until the merged build and needed
+recovery data are verified. Signing, TestFlight and App Review remain open.
+
 For Developer ID distribution, build first and run the separate postprocessor:
 
 ```sh
@@ -920,3 +963,27 @@ not guaranteed scores or app battery measurements. Portfolio/CV/PureMac/Fadeo
 pages returned 200, and the public CV PDF remained byte-identical to its
 separately authorized version. The editor-height fix is tracked in PR #3 and is
 not in the immutable 2.5.0 release packages.
+
+### Dual-target merge verification — 18 October 2026
+
+The sandbox implementation was merged into `ArrasAppStore` without replacing the
+free `Arras` target or the direct release workflow. The merged universal Store
+Release passed source, metadata, privacy and both-slice entitlement validation;
+its binary contains no updater, telemetry engine, self-installer or automatic
+legacy migration symbols. All 81 Python checks passed. The merged Store native
+suite ran 399 tests with zero failures and two environment skips (synthetic menu
+activation and WindowServer coverage); those skips remain physical acceptance
+limits. The direct universal Release also built and passed bundle validation.
+
+The direct native suite ran 433 tests with zero failures and one environment
+skip. Two focused Store UI checks passed after preserving its ungrouped Updates
+accessibility structure: footer/update/privacy controls and single-window tab
+navigation. These checks do not establish TestFlight delivery or permission
+recovery on an installed Store build.
+
+Apple registered the separate Store identifier and created app record
+`6824271927`, **Arras: Desktop Photos** (the plain name was unavailable). Version
+2.5.0 customer-facing metadata is saved with manual release selected. The USD
+4.99 base-price schedule is configured. The owner deferred creating distribution
+certificates; signing, upload, TestFlight acceptance, listing completion and App
+Review remain pending. The website must not show an available Store badge yet.

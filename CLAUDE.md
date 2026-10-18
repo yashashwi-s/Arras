@@ -53,10 +53,26 @@ Production storage is `~/Library/Application Support/PhotoWidget/`. Tests must
 inject `PhotoManager(storageDirectory:)` or set
 `ARRAS_UI_TEST_STORAGE_DIR`, and clean up only that scratch location.
 
-Do not change the historic bundle identifier or storage path for naming
-cleanliness. Do not enable App Sandbox: the updater replaces the bundle and
-starts a helper that outlives the process, and sandboxing would also move
-Application Support.
+The `Arras` target is the free direct-download edition. Keep its historic
+identifier and storage path and leave it unsandboxed: its updater replaces the
+bundle and starts a helper that outlives the process.
+
+`ArrasAppStore` is a separate sandboxed target sharing `Sources/App`. Its small
+`Sources/AppStore` directory owns Store updates, selected-library import, native
+region capture, entitlements and its privacy manifest. `ARRAS_APP_STORE` selects
+only distribution-specific behavior. Never include the direct updater,
+self-installer, telemetry or automatic legacy storage migration in that target.
+Its production ID is `com.yashashwi.arras.appstore`; Debug adds `.development`
+and displays as Arras App Store Dev. Storage stays in that app's container.
+Copy an existing library only after an explicit folder selection, into an empty
+Store library; use .arras backups to merge into existing content.
+
+`./build.sh --app-store` validates a local ad-hoc universal sandbox build under
+`build/app-store`. `--app-store-archive` creates a signed archive there for App
+Store Connect. Neither mode creates GitHub release artifacts. Keep credentials,
+archives and packages out of Git. TestFlight and App Review use the Store target;
+App Review must use manual release. The free direct download remains the
+website's main button. Add the Store badge only after the listing is live.
 
 ### Windows, menus, and animation
 

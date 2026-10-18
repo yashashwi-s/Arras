@@ -15,8 +15,7 @@ final class SettingsUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        storageDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ArrasUITests-\(UUID().uuidString)", isDirectory: true)
+        storageDirectory = uiTestStorage(prefix: "ArrasUITests")
         try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
 
         app = XCUIApplication()
@@ -28,6 +27,39 @@ final class SettingsUITests: XCTestCase {
         app.terminate()
         try? FileManager.default.removeItem(at: storageDirectory)
     }
+
+    #if ARRAS_APP_STORE
+    func testAppStoreFooterUpdatesAndPrivacyDisclosure() throws {
+        _ = try seedPhoto()
+        app.launch(); app.activate()
+        let window = app.windows["Arras"]
+        XCTAssertTrue(window.waitForExistence(timeout: 8))
+        XCTAssertTrue(window.links["footer-star-on-github"].waitForExistence(timeout: 5))
+        XCTAssertFalse(window.buttons["Check for Updates"].exists)
+        let photos = XCTAttachment(screenshot: window.screenshot())
+        photos.name = "App Store Photos footer"; photos.lifetime = .keepAlways; add(photos)
+        clickWhenHittable(window.descendants(matching: .any)["Preferences"])
+        let updateAction = window.buttons["settings-update-action"]
+        let preferencesScroll = window.scrollViews.firstMatch
+        for _ in 0..<5 {
+            if updateAction.exists && preferencesScroll.frame.contains(updateAction.frame) { break }
+            preferencesScroll.scroll(byDeltaX: 0, deltaY: -180)
+        }
+        XCTAssertTrue(updateAction.waitForExistence(timeout: 5))
+        XCTAssertFalse(window.checkBoxes["Automatically install updates"].exists)
+        let preferences = XCTAttachment(screenshot: window.screenshot())
+        preferences.name = "App Store update preferences"; preferences.lifetime = .keepAlways; add(preferences)
+        clickWhenHittable(window.descendants(matching: .any)["Privacy"])
+        let disclosure = window.staticTexts["privacy-usage-statistics"]
+        for _ in 0..<5 {
+            if disclosure.exists { break }
+            window.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -180)
+        }
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        XCTAssertTrue((disclosure.value as? String ?? disclosure.label).contains("does not collect or send usage statistics"))
+    }
+
+    #endif
 
     func testToolsPanelOpensReferenceEditorAndPersistsAnEdit() throws {
         _ = try seedPhoto()

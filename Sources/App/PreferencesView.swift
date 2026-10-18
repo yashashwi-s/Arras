@@ -9,10 +9,15 @@ struct PreferencesView: View {
 
     @ObservedObject private var hotKeys = HotKeyManager.shared
     @ObservedObject private var menuBar = MenuBarCustomization.shared
+    #if !ARRAS_APP_STORE
     @ObservedObject private var updater = Updater.shared
+    #endif
 
     @AppStorage(RemovalConfirmation.skipSettingsKey, store: RemovalConfirmation.preferenceStore) private var skipRemovalConfirmation = false
 
+    #if ARRAS_APP_STORE
+    @State private var importingExistingLibrary = false
+    #endif
     @State private var showingSetups = false
     @State private var isPresented = false
     @State private var repositoryStars: Int?
@@ -41,8 +46,12 @@ struct PreferencesView: View {
                     general
                     positioning
                     shortcut
+                    #if ARRAS_APP_STORE
+                    updates.id("updates")
+                    #else
                     updates.id("updates")
                         .accessibilityIdentifier("settings-updates")
+                    #endif
                     backup
                     menuBarSection
                     HStack {
@@ -199,6 +208,13 @@ struct PreferencesView: View {
 
     private var updates: some View {
         section("Updates", icon: "arrow.triangle.2.circlepath") {
+            #if ARRAS_APP_STORE
+            caption("Updates are provided by the Mac App Store. Manage automatic updates in App Store settings.")
+            Button("Check for Updates") { AppStoreUpdates.checkForUpdates() }
+                .controlSize(.small)
+                .accessibilityIdentifier("settings-update-action")
+                .accessibilityHint("Opens the Updates page in the Mac App Store")
+            #else
             if !updater.updatesAllowed {
                 caption("Updates are paused for this private test build. Install a newer test build when it is shared with you.")
             } else {
@@ -235,6 +251,7 @@ struct PreferencesView: View {
 
                 UpdateStatusLine()
             }
+            #endif
         }
     }
 
@@ -249,17 +266,62 @@ struct PreferencesView: View {
                 Button("Import Backup…") { importBackup() }
             }
             Divider().padding(.vertical, 2)
+            #if ARRAS_APP_STORE
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Moving from the direct-download app?").font(.subheadline.weight(.medium))
+                caption("Import its library to bring over photos, saved setups and custom fonts. Your original library stays untouched. Linked folders need to be selected again.")
+                HStack(spacing: 8) {
+                    Button("Import Existing Arras Library…") { importExistingLibrary() }
+                        .disabled(importingExistingLibrary || !manager.canImportExistingLibrary)
+                        .accessibilityIdentifier("import-existing-library")
+                    if importingExistingLibrary { ProgressView().controlSize(.small) }
+                }
+                if !importingExistingLibrary && !manager.canImportExistingLibrary {
+                    caption("This desktop already has saved content. Use Import Backup to merge an exported .arras layout.")
+                }
+            }
+            Divider().padding(.vertical, 2)
+            #endif
             DisclosureGroup("Backup options") {
                 VStack(alignment: .leading, spacing: 10) {
                     Toggle("Include app settings when exporting", isOn: $includeSettingsInBackup)
                     Toggle("Apply app settings when importing", isOn: $applySettingsOnImport)
+                    #if ARRAS_APP_STORE
+                    caption("Settings can include your shortcut, login behavior and privacy choices. Leave these off to transfer only the desktop.")
+                    #else
                     caption("Settings can include your shortcut, login behavior, updates and privacy choices. Leave these off to transfer only the desktop.")
+                    #endif
                     Toggle("Archive-quality export", isOn: $archivalQuality)
                     caption("Preserves Arras’s stored files exactly and records their quality. It cannot recover originals that were resized before storage.")
                 }
             }
         }
     }
+
+    #if ARRAS_APP_STORE
+    private func importExistingLibrary() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Import Library"
+        panel.message = "Choose the PhotoWidget folder in ~/Library/Application Support. You can use Shift–Command–G to enter that location."
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+        importingExistingLibrary = true
+        Task { @MainActor in
+            defer { importingExistingLibrary = false }
+            do {
+                try await manager.importExistingLibrary(from: source)
+                onMenuUpdate?()
+                AppDialog.inform(title: "Library Imported", message: "Your photos, saved setups and fonts are ready. Your original library is unchanged. Use Relink Folder for linked slideshows.")
+            } catch {
+                AppDialog.inform(title: "Couldn’t Import Library", message: error.localizedDescription, style: .warning)
+            }
+        }
+    }
+
+    #endif
 
     private func exportBackup() {
         let groups: Set<ExportedPreferences.Group> =

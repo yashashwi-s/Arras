@@ -23,6 +23,23 @@ enum ScreenCapturePermission {
     }
 }
 
+#if ARRAS_APP_STORE
+extension PhotoManager {
+    func captureScreenshotRegion() {
+        guard ScreenCapturePermission.ensureAccess() else { return }
+        Task { @MainActor in
+            guard let region = await ScreenRegionSelector.select() else { return }
+            do {
+                let image = try await ScreenRegionCapture.capture(region)
+                addPhoto(image)
+            } catch {
+                recordMediaImportFailure("Screen capture failed: \(error.localizedDescription)")
+                AppDialog.inform(title: "Couldn’t Capture Screen Region", message: error.localizedDescription, style: .warning)
+            }
+        }
+    }
+}
+#else
 /// Pins a user-selected region of the screen as a persistent desktop widget --
 /// useful for a chart or reference doc someone wants to keep visible, not just
 /// a photo (see FEATURES.md, "Content sources").
@@ -74,3 +91,5 @@ extension PhotoManager {
         }
     }
 }
+
+#endif

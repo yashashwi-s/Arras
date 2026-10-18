@@ -105,3 +105,19 @@ jobs:
             echo "❌ Build output too small (${SIZE}MB)"
             exit 1
           fi
+
+      - name: Test sandboxed App Store target
+        run: |
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme ArrasAppStore \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:ArrasAppStoreTests \
+            -derivedDataPath "$RUNNER_TEMP/arras-app-store-tests" \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM='' \
+            test
+
+      - name: Build and validate sandboxed App Store target
+        run: ./build.sh --app-store
+        # Never upload this target to GitHub Releases or public build artifacts.
