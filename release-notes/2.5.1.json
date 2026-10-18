@@ -1,0 +1,9 @@
+{
+  "version": "2.5.1",
+  "title": "Keep editing controls within reach",
+  "summary": "Appearance, Reference Tools and Photo Tools fit short displays, keeping their action buttons visible while the controls scroll.",
+  "details": [
+    "Fit editor sheets to the parent window\u2019s display and available vertical space instead of letting footer actions extend below the desktop.",
+    "Keep the normal editor size on larger displays, with the same appearance controls and saved reference edits."
+  ]
+}

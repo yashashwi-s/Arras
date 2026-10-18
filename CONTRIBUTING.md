@@ -940,3 +940,13 @@ not guaranteed scores or app battery measurements. Portfolio/CV/PureMac/Fadeo
 pages returned 200, and the public CV PDF remained byte-identical to its
 separately authorized version. The editor-height fix is tracked in PR #3 and is
 not in the immutable 2.5.0 release packages.
+
+The editor follow-up’s latest native run passed 429 unit checks and all three
+previously failing editor UI checks, including persisted reference edits (15 UI
+passes, one drag failure, five policy skips). The remaining drag fixture closed
+Arras’s last active window before trying to synthesize input. A focused Floating
+variant now leaves Settings visible, additionally exercising the required window
+order while retaining native attach, equal-gap, group-move and detach assertions.
+It does not establish inactive-app input acceptance or erase the earlier trace.
+The prepared 2.5.1 app/DMG passed Apple notarization and exact package checks;
+publication remains pending the owner’s separate choice.

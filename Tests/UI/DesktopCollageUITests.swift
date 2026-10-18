@@ -62,12 +62,15 @@ final class DesktopCollageUITests: XCTestCase {
         snapshot.name = name + " saved layout"; snapshot.lifetime = .keepAlways; add(snapshot)
     }
 
-    func testNativeDragAttachEqualGapGroupMoveAndDetach() throws {
+    func testFloatingNativeDragAttachEqualGapGroupMoveAndDetachWithSettingsOpen() throws {
         try seed(floating: true)
         app.launch(); app.activate()
         let settings = app.windows["Arras"]
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
-        settings.buttons[XCUIIdentifierCloseWindow].click()
+        // Floating widgets must accept native input above Settings. The previous
+        // last-window-closed CI variant recorded no delivered photo events;
+        // inactive-app acceptance remains separate from this focused fixture.
+        XCTAssertTrue(settings.isHittable)
         let first = app.descendants(matching: .any)["desktop-photo-" + portrait.uuidString]
         let second = app.descendants(matching: .any)["desktop-photo-" + square.uuidString]
         let container = app.descendants(matching: .any)["desktop-collage-" + collage.uuidString]

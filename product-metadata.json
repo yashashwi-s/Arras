@@ -34,7 +34,7 @@
     ],
     "signing": "developer-id",
     "notarized": true,
-    "version": "2.5.0"
+    "version": "2.5.1"
   },
   "sourceBuild": {
     "sourceUrl": "https://github.com/yashashwi-s/Arras",

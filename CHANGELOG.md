@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.1 — prepared for review
+
+Not published. Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping footer actions visible and the existing controls scrollable. Preserve preferred sizes on larger displays.
+
 ## 2.5.0
 
 Released 18 October 2026. Developer ID signed and notarized for Apple Silicon and Intel.
