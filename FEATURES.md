@@ -11,6 +11,9 @@ packages. TestFlight and App Review are pending; no App Store badge or availabil
 claim should appear until the listing is live. The released 2.5.0 behavior below
 continues to describe the direct-download edition unless stated otherwise.
 
+[View the Store update preferences](assets/app-store-preferences.png) — a native
+render from the sandbox target, with updates managed by Apple.
+
 ## Find your next step
 
 This guide describes **Arras 2.5.0**. Start with an example or your own photos,
