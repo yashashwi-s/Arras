@@ -52,22 +52,12 @@ jobs:
             test
 
       - name: Build Release
-        run: |
-          xcodebuild \
-            -project Arras.xcodeproj \
-            -scheme Arras \
-            -configuration Release \
-            CONFIGURATION_BUILD_DIR=build/Release \
-            ARCHS="arm64 x86_64" \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="" \
-            build
+        run: ./build.sh
 
       - name: Validate Build
         run: |
-          APP_PATH="build/Release/Arras.app"
+          APP_PATH="build/current/Release/Arras.app"
+          python3 scripts/validate_app_bundle.py "$APP_PATH"
           if [ ! -d "$APP_PATH" ]; then
             echo "❌ Arras.app not found"
             exit 1
@@ -79,26 +69,25 @@ jobs:
             exit 1
           fi
 
-      - name: Package Zip
+      - name: Sign, notarize and verify local packages
+        env:
+          ARRAS_SIGNING_IDENTITY: ${{ vars.ARRAS_SIGNING_IDENTITY }}
+          ARRAS_DEVELOPER_TEAM_ID: ${{ vars.ARRAS_DEVELOPER_TEAM_ID }}
+          ARRAS_NOTARY_PROFILE: ${{ vars.ARRAS_NOTARY_PROFILE }}
         run: |
-          cd build/Release
-          ditto -c -k --sequesterRsrc --keepParent Arras.app Arras.app.zip
-
-      - name: Package DMG
-        run: |
-          # A staging folder with an /Applications symlink, so the disk image is a real
-          # drag-to-install rather than a window containing one loose .app. Running the app
-          # straight off the mounted image is what leaves it unable to update itself.
-          STAGE=build/dmg
-          rm -rf "$STAGE" && mkdir -p "$STAGE"
-          cp -R build/Release/Arras.app "$STAGE/"
-          ln -s /Applications "$STAGE/Applications"
-
-          hdiutil create \
-            -volname "Arras" \
-            -srcfolder "$STAGE" \
-            -ov -format UDZO \
-            build/Release/Arras.dmg
+          set -euo pipefail
+          # The runner must already have the Developer ID private key and
+          # validated notarytool Keychain profile. No credentials enter artifacts.
+          # A pending result exits before publication; retain this work directory
+          # and resume the same command rather than starting another upload.
+          python3 scripts/notarize_distribution.py \
+            --identity "$ARRAS_SIGNING_IDENTITY" \
+            --team-id "$ARRAS_DEVELOPER_TEAM_ID" \
+            --keychain-profile "$ARRAS_NOTARY_PROFILE" \
+            --work-dir build/notarization \
+            --output-dir dist/notarized \
+            --wait-seconds 1800 \
+            --require-release-metadata
 
       - name: Prepare GitHub Release Body
         run: |
@@ -117,8 +106,8 @@ jobs:
           body_path: release-body.md
           generate_release_notes: false
           files: |
-            build/Release/Arras.app.zip
-            build/Release/Arras.dmg
+            dist/notarized/Arras.app.zip
+            dist/notarized/Arras.dmg
 
       # The checksum must come from the artifact this job just uploaded, never
       # from a local build. The appcast update is made in a temporary worktree
@@ -128,7 +117,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA="$(shasum -a 256 build/Release/Arras.app.zip | awk '{print $1}')"
+          SHA="$(shasum -a 256 dist/notarized/Arras.app.zip | awk '{print $1}')"
           echo "Publishing $VERSION with sha256 $SHA"
 
           NOTES_FILE="${RUNNER_TEMP}/arras-release-notes-${VERSION}.json"

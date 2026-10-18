@@ -1,28 +1,54 @@
 import AppKit
+import Darwin
 
 // MARK: - Presence detection
 
-/// Best-effort and reliable signals for keeping photo widgets out of places they don't
-/// belong, gathered in one place since they share the same "auto-hide without touching
-/// the user's own isVisible" contract that PhotoManager applies on top.
+/// Converts noisy fullscreen samples around Space/Mission Control transitions into actions.
+/// Suppression is immediate; only restoration requires a second, stable sample. AppKit exposes
+/// the active-Space notification but no public "Mission Control transition ended" callback.
+enum FullscreenPresencePolicy {
+    enum Action: Equatable {
+        case publishFullscreen
+        case beginExitTransition
+        case unchanged
+    }
+
+    static func action(
+        isPublishedFullscreen: Bool,
+        sampledFullscreen: Bool,
+        isExitTransition: Bool = false
+    ) -> Action {
+        if sampledFullscreen {
+            return !isPublishedFullscreen || isExitTransition ? .publishFullscreen : .unchanged
+        }
+        return isPublishedFullscreen ? .beginExitTransition : .unchanged
+    }
+
+    static func shouldSuppress(
+        isExitTransition: Bool,
+        hideFullscreenEnabled: Bool,
+        isFullscreen: Bool,
+        hideConferencingEnabled: Bool,
+        isConferencing: Bool
+    ) -> Bool {
+        isExitTransition ||
+        (hideFullscreenEnabled && isFullscreen) ||
+        (hideConferencingEnabled && isConferencing)
+    }
+}
+
+/// Privacy preferences and best-effort presence signals. PhotoManager derives
+/// temporary window suppression without changing the user's own isVisible choice.
 ///
-/// Two genuinely different strengths of guarantee live here -- do not blur them:
+/// `excludeFromScreenCapture` retains the legacy `.none` window-sharing request
+/// for compatible older capture paths. Apple's current reference says macOS no
+/// longer uses this constant; it must not be presented as guaranteed exclusion
+/// from ScreenCaptureKit or other recording/sharing tools:
+/// https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none
 ///
-/// - `excludeFromScreenCapture` drives `NSWindow.sharingType = .none`, enforced by the
-///   window server itself. Any capture that goes through the normal window-server
-///   compositing path -- ScreenCaptureKit, `CGWindowListCreateImage`, QuickTime screen
-///   recording, and every video-conferencing app's screen/window share -- simply never
-///   sees a window with this set. It's the same mechanism macOS uses to hide password
-///   fields during screen sharing, needs no detection at all, and so has no false
-///   positives or negatives. It does **not** cover a physical mirror of the display --
-///   AirPlay Mirroring, an HDMI capture dongle -- since those copy the raw framebuffer
-///   rather than asking the window server for a picture.
-/// - `autoHideForConferencingApps` and `hideWhenFullscreenActive` are heuristics. There
-///   is no public API on macOS to ask "is my screen being captured right now." A running
-///   Zoom process doesn't mean a meeting is live, a live meeting doesn't mean the screen
-///   (rather than just the camera) is being shared, and a browser tab running Google Meet
-///   is invisible to a bundle-identifier check entirely. Ship these as best-effort extras
-///   layered on top of the real guarantee above, never as a replacement for it.
+/// Conferencing/fullscreen detection is also heuristic: a running app does not
+/// prove an active share, and browser calls are not detected. Hiding widgets
+/// before starting a share is the user's direct control over desktop visibility.
 @MainActor
 final class PresenceMonitor {
 
@@ -61,11 +87,18 @@ final class PresenceMonitor {
 
     private(set) var isConferencingAppRunning = false
     private(set) var isFullscreenActive = false
+    private(set) var isFullscreenExitTransition = false
+    private var fullscreenRestorationTask: Task<Void, Never>?
 
     /// Whether either enabled global heuristic currently says "hide".
     var shouldSuppressForPresence: Bool {
-        (autoHideForConferencingApps && isConferencingAppRunning) ||
-        (hideWhenFullscreenActive && isFullscreenActive)
+        FullscreenPresencePolicy.shouldSuppress(
+            isExitTransition: isFullscreenExitTransition,
+            hideFullscreenEnabled: hideWhenFullscreenActive,
+            isFullscreen: isFullscreenActive,
+            hideConferencingEnabled: autoHideForConferencingApps,
+            isConferencing: isConferencingAppRunning
+        )
     }
 
     /// Fires whenever any preference or detected value above changes. Callers aren't told
@@ -94,10 +127,16 @@ final class PresenceMonitor {
             Task { @MainActor [weak self] in self?.checkConferencingApps() }
         }
         workspaceCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.checkFullscreen() }
+            Task { @MainActor [weak self] in
+                self?.checkConferencingApps()
+                self?.checkFullscreen()
+            }
         }
         workspaceCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.checkFullscreen() }
+            Task { @MainActor [weak self] in
+                self?.checkConferencingApps()
+                self?.checkFullscreen()
+            }
         }
     }
 
@@ -126,9 +165,21 @@ final class PresenceMonitor {
 
     // MARK: Detection
 
+    static func isLiveConferencingApplication(bundleIdentifier: String?, processIdentifier: Int32,
+                                              isTerminated: Bool, processExists: (Int32) -> Bool) -> Bool {
+        guard let bundleIdentifier, conferencingBundleIDs.contains(bundleIdentifier),
+              processIdentifier > 0, !isTerminated else { return false }
+        return processExists(processIdentifier)
+    }
+
     private func checkConferencingApps() {
-        let running = NSWorkspace.shared.runningApplications.contains {
-            $0.bundleIdentifier.map(Self.conferencingBundleIDs.contains) ?? false
+        let running = NSWorkspace.shared.runningApplications.contains { app in
+            Self.isLiveConferencingApplication(bundleIdentifier: app.bundleIdentifier,
+                processIdentifier: app.processIdentifier, isTerminated: app.isTerminated) { pid in
+                // LaunchServices can retain a dead application with isTerminated == false.
+                // Signal zero checks existence without signalling or changing the process.
+                kill(pid, 0) == 0 || errno == EPERM
+            }
         }
         guard running != isConferencingAppRunning else { return }
         isConferencingAppRunning = running
@@ -150,9 +201,55 @@ final class PresenceMonitor {
     /// trip it too. A fully reliable signal would need Accessibility permission or a
     /// private API, both ruled out for this app.
     private func checkFullscreen() {
-        let fullscreen = NSScreen.screens.contains { $0.frame == $0.visibleFrame }
-        guard fullscreen != isFullscreenActive else { return }
-        isFullscreenActive = fullscreen
-        onChange?()
+        let sampledFullscreen = Self.sampleFullscreen()
+        switch FullscreenPresencePolicy.action(
+            isPublishedFullscreen: isFullscreenActive,
+            sampledFullscreen: sampledFullscreen,
+            isExitTransition: isFullscreenExitTransition
+        ) {
+        case .publishFullscreen:
+            fullscreenRestorationTask?.cancel()
+            fullscreenRestorationTask = nil
+            isFullscreenExitTransition = false
+            isFullscreenActive = true
+            // Re-entering fullscreen cancels the temporary exit gate. The user's normal
+            // fullscreen preference remains the authority once the transition is cancelled.
+            onChange?()
+        case .beginExitTransition:
+            if !isFullscreenExitTransition {
+                isFullscreenExitTransition = true
+                // This narrow blocker is always active: even with the optional memory-saving
+                // fullscreen preference off, windows must leave the compositor before the
+                // outgoing fullscreen Space exposes its black transition surface.
+                onChange?()
+            }
+            scheduleFullscreenRestoration()
+        case .unchanged:
+            break
+        }
+    }
+
+    private static func sampleFullscreen() -> Bool {
+        NSScreen.screens.contains { $0.frame == $0.visibleFrame }
+    }
+
+    private func scheduleFullscreenRestoration() {
+        // Repeated activation/Space notifications during the same animation restart one task.
+        // The delayed second sample is only a fallback because AppKit has no public notification
+        // for the end of another application's fullscreen or Mission Control animation.
+        fullscreenRestorationTask?.cancel()
+        fullscreenRestorationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let self else { return }
+            self.fullscreenRestorationTask = nil
+            guard !Self.sampleFullscreen() else {
+                self.checkFullscreen()
+                return
+            }
+            guard self.isFullscreenActive || self.isFullscreenExitTransition else { return }
+            self.isFullscreenActive = false
+            self.isFullscreenExitTransition = false
+            self.onChange?()
+        }
     }
 }

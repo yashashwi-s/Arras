@@ -12,97 +12,54 @@ import AppKit
 // carried on working.
 
 extension PhotoManager {
-    // MARK: - Mat (passe-partout)
+    /// Persist the photo and its enclosing collage together before changing live windows.
+    /// A failed save must leave both the preview and desktop at their last saved appearance.
+    func editAppearance(_ id: UUID, _ edit: (inout PhotoItem) -> Void) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let previous = photos
+        edit(&photos[index])
+        photos[index].stylePreset = nil
+        let parent = photos[index].collageParentID
+        if let parent { fitCollageModel(parent) }
+        guard persist() else { photos = previous; return }
+        applyLiveAppearance(photos[index])
+        if let parent { fitCollageWindow(parent) }
+    }
 
     func setMat(_ id: UUID, width: CGFloat, colorHex: String) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].matWidth = max(0, width)
-        photos[index].matColorHex = colorHex
-        if let window = windows[id] {
-            (window.contentView as? DraggablePhotoView)?
-                .setMat(width: photos[index].matWidth, color: photos[index].matColor)
-            // The mat grows the widget outward, so the window has to grow with it.
-            window.refreshCanvasInset()
-        }
-        persist()
+        guard width.isFinite else { return }
+        editAppearance(id) { $0.matWidth = max(0, width); $0.matColorHex = colorHex }
     }
-
-    // MARK: - Shape mask
 
     func setShapeMask(_ id: UUID, _ shape: PhotoShapeMask) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].shapeMask = shape.rawValue
-        (windows[id]?.contentView as? DraggablePhotoView)?.setShapeMask(shape)
-        persist()
+        editAppearance(id) { $0.shapeMask = shape.rawValue }
     }
 
-    // MARK: - Border style (dashed/dotted) and gradient
-
     func setBorderStyle(_ id: UUID, _ style: PhotoBorderStyle) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].borderStyle = style.rawValue
-        (windows[id]?.contentView as? DraggablePhotoView)?.setBorderStyle(style)
-        persist()
+        editAppearance(id) { $0.borderStyle = style.rawValue }
     }
 
     func setBorderGradient(_ id: UUID, enabled: Bool, colorHex: String) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].borderGradientEnabled = enabled
-        photos[index].borderGradientColorHex = colorHex
-        (windows[id]?.contentView as? DraggablePhotoView)?
-            .setBorderGradient(enabled: enabled, color: photos[index].borderGradientColor)
-        persist()
+        editAppearance(id) { $0.borderGradientEnabled = enabled; $0.borderGradientColorHex = colorHex }
     }
 
-    // MARK: - Tilt
-
     func setTilt(_ id: UUID, _ degrees: Double) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let clamped = max(-12, min(12, degrees))
-        photos[index].tiltDegrees = clamped
-        if let window = windows[id] {
-            (window.contentView as? DraggablePhotoView)?.setTilt(CGFloat(clamped))
-            // A rotated photo sweeps a larger box; without this the corners are clipped by
-            // the window's own straight edges.
-            window.refreshCanvasInset()
-        }
-        clearStylePreset(id)
-        persist()
+        guard degrees.isFinite else { return }
+        editAppearance(id) { $0.tiltDegrees = max(-12, min(12, degrees)) }
     }
 
     // MARK: - Style presets
 
     func applyPreset(_ id: UUID, _ preset: StylePreset) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let v = preset.values
+        let previous = photos
+        photos[index] = preset.applying(to: photos[index])
 
-        photos[index].stylePreset = preset.rawValue
-        photos[index].cornerRadius = v.cornerRadius
-        photos[index].shadowEnabled = v.shadowEnabled
-        photos[index].shadowBlur = v.shadowBlur
-        photos[index].shadowOpacity = v.shadowOpacity
-        photos[index].borderWidth = v.borderWidth
-        photos[index].borderColorHex = v.borderColorHex
-        photos[index].borderStyle = v.borderStyle.rawValue
-        photos[index].borderGradientEnabled = v.borderGradientEnabled
-        photos[index].borderGradientColorHex = v.borderGradientColorHex
-        photos[index].matWidth = v.matWidth
-        photos[index].matColorHex = v.matColorHex
-        photos[index].shapeMask = v.shapeMask.rawValue
-        photos[index].tiltDegrees = v.tiltDegrees
-        photos[index].vignetteEnabled = v.vignetteEnabled
-
+        let parent = photos[index].collageParentID
+        if let parent { fitCollageModel(parent) }
+        guard persist() else { photos = previous; return }
         applyLiveAppearance(photos[index])
-        persist()
-    }
-
-    /// Marks a photo as hand-tuned rather than following a named preset, so the picker falls
-    /// back to showing no selection instead of a stale preset name after any single-field
-    /// edit. Every fine-grained setter in the appearance panel calls this.
-    func clearStylePreset(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }), photos[index].stylePreset != nil else { return }
-        photos[index].stylePreset = nil
-        persist()
+        if let parent { fitCollageWindow(parent) }
     }
 
     /// Pushes every appearance field of `item` onto its live window in one shot -- used by
@@ -125,7 +82,20 @@ extension PhotoManager {
         } else {
             view.removeVignette()
         }
+        window.setPhotoOpacity(item.opacity)
+        window.setRevealOnHover(item.revealOnHover, animated: false)
+        view.setFocalPoint(
+            item.focalPoint,
+            cropEnabled: !item.spaceImageFilenames.isEmpty && item.folderSizeMode == "fixed"
+        )
         // Mat, shadow and tilt all changed at once; re-derive the padding once at the end.
         window.refreshCanvasInset()
+    }
+
+    /// Re-renders an already-mutated appearance snapshot without saving. Selection-wide style
+    /// paste uses this hook so every target updates together and the manager can perform one
+    /// transactional photos.json write.
+    func refreshLiveAppearance(_ item: PhotoItem) {
+        applyLiveAppearance(item)
     }
 }

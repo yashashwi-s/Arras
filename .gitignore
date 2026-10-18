@@ -46,3 +46,6 @@ ExportOptions.plist
 
 # Documentation validator caches
 __pycache__/
+# Local previews, verification captures and scratch checkouts
+/output/
+*.xcresult/

@@ -1,46 +1,55 @@
 import SwiftUI
 
-/// Privacy and presence settings.
-///
-/// These get their own tab rather than a row in Preferences because each one
-/// needs a sentence of explanation. Two of the three are best-effort, and a
-/// privacy control that overstates what it does is worse than no control at all
-/// — so the limits are on screen, not buried in a tooltip.
+/// App-wide visibility protections, permission recovery and data disclosure.
 struct PrivacyView: View {
     @ObservedObject var manager: PhotoManager
     var onMenuUpdate: (() -> Void)?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Control what others can see").font(.title3.weight(.semibold))
+                    caption("Choose when widgets stay visible and how Arras uses permissions and data.")
+                }
                 screenSharing
                 fullscreen
+                systemPermissions
+                usageStatistics
+                HStack(spacing: 16) {
+                    Link("Security & Privacy", destination: URL(string: "https://tryarras.tech/security")!)
+                    Link("Contact & Support", destination: URL(string: "mailto:yashashwi.singhania.bce23@itbhu.ac.in")!)
+                        .help("Email yashashwi.singhania.bce23@itbhu.ac.in")
+                        .accessibilityHint("Opens your email app to contact support")
+                }
+                .font(.system(size: 11))
                 Spacer(minLength: 0)
             }
-            .padding(16)
+            .padding(20)
         }
     }
 
     // MARK: - Screen sharing
 
     private var screenSharing: some View {
-        section("SCREEN SHARING & RECORDING") {
+        section("Screen sharing & recording", icon: "rectangle.on.rectangle.slash") {
             setting(
-                title: "Hide photos from screen sharing and recordings",
-                detail: "Photos stay visible to you but are left out of screen shares, recordings and screenshots.",
-                caveat: "Does not cover AirPlay or HDMI mirroring, which copy the whole display.",
-                isReliable: true,
+                title: "Request exclusion from screen captures",
+                detail: "Asks compatible screenshot and recording tools to omit visible widgets.",
+                caveat: "Modern screen recorders may still capture widgets. Hide widgets before sharing if they must stay private. AirPlay and HDMI mirroring are not covered.",
+                warning: true,
                 isOn: Binding(
                     get: { manager.excludeFromScreenCapture },
                     set: { manager.setExcludeFromScreenCapture($0); onMenuUpdate?() }
                 )
             )
 
+            Divider().padding(.vertical, 2)
             setting(
-                title: "Also hide them completely during calls",
-                detail: "Hides every photo while Zoom, Teams, QuickTime, OBS or Screenshot is running.",
-                caveat: "Best effort. A running app is not proof of an active share, and calls in a browser. Google Meet, for instance. cannot be detected at all.",
-                isReliable: false,
+                title: "Hide widgets while call or recording apps run",
+                detail: "Removes widgets from your desktop while Zoom, Teams, QuickTime, OBS or Screenshot is running.",
+                caveat: "Best effort. A running app is not proof of an active share. Browser calls, such as Google Meet, cannot be detected.",
+                warning: true,
                 isOn: Binding(
                     get: { manager.autoHideForConferencingApps },
                     set: { manager.setAutoHideForConferencingApps($0); onMenuUpdate?() }
@@ -58,12 +67,12 @@ struct PrivacyView: View {
     // MARK: - Fullscreen
 
     private var fullscreen: some View {
-        section("FULLSCREEN APPS") {
+        section("Fullscreen behavior", icon: "arrow.up.left.and.arrow.down.right") {
             setting(
-                title: "Hide photos behind fullscreen apps",
-                detail: "Photos are invisible behind a fullscreen app anyway. Tearing them down frees memory and stops rotation timers.",
-                caveat: nil,
-                isReliable: true,
+                title: "Hide widgets behind fullscreen apps",
+                detail: "Pauses hidden photo widgets while a fullscreen app covers them, reducing memory and background activity.",
+                caveat: "Detection uses window size. Some fullscreen apps or desktop arrangements may not be recognized.",
+                warning: false,
                 isOn: Binding(
                     get: { manager.hideWhenFullscreenActive },
                     set: { manager.setHideWhenFullscreenActive($0); onMenuUpdate?() }
@@ -74,33 +83,77 @@ struct PrivacyView: View {
 
     // MARK: - Building blocks
 
+    private var systemPermissions: some View {
+        section("macOS permissions", icon: "lock.shield") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Photos").font(.subheadline.weight(.medium))
+                caption("Allows album sync and importing from your Photos library. Arras asks when you choose a Photos feature.")
+                Button("Photos Settings…") { PrivacySettingsPane.photos.open() }
+            }
+            Divider().padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Capture a screen region").font(.subheadline.weight(.medium))
+                caption("Pins a one-time screenshot of an area you select. macOS calls this permission Screen Recording; Arras does not continuously record your screen. Enable Capture Screen Region in Preferences → Menu bar, then choose it from Add. Ordinary photos and hiding widgets from capture do not need this permission.")
+                Button("Screen Recording Settings…") { PrivacySettingsPane.screenRecording.open() }
+            }
+            caption("Opens System Settings → Privacy & Security. After changing access, return to Arras and try the feature again.")
+        }
+    }
+
+    private var usageStatisticsDescription: String {
+        let localContent = " Photos, filenames, paths, captions and personal content stay local."
+        guard let configuration = TelemetryConfiguration.current else {
+            return "Usage statistics are disabled in this build." + localContent
+        }
+        if configuration.dryRun {
+            return "This development build inspects usage statistics locally without uploading them." + localContent
+        }
+        if configuration.environment == .development {
+            return "This development build sends test statistics to a local test server." + localContent
+        }
+        let cadence = configuration.cadence == .weekly ? "weekly" : "daily"
+        return "This build sends limited usage and \(cadence) configuration statistics linked by a random installation ID to improve Arras." + localContent
+    }
+
+    private var usageStatistics: some View {
+        section("Usage statistics", icon: "chart.bar") {
+            Text(usageStatisticsDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Link("What is collected and how long it is kept →", destination: URL(string: "https://tryarras.tech/security")!)
+                .font(.caption)
+            caption("Preferences can read the public GitHub star count. This request contains no photo library or installation ID.")
+        }
+    }
+
     /// One toggle with its explanation, and — where it matters — the limits of
     /// what it can promise.
     private func setting(
         title: String,
         detail: String,
         caveat: String?,
-        isReliable: Bool,
+        warning: Bool,
         isOn: Binding<Bool>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 6) {
             Toggle(title, isOn: isOn)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 12))
 
             Text(detail)
-                .font(.system(size: 10))
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 18)
 
             if let caveat {
                 HStack(alignment: .top, spacing: 4) {
-                    Image(systemName: isReliable ? "info.circle" : "exclamationmark.triangle")
+                    Image(systemName: warning ? "exclamationmark.triangle" : "info.circle")
                         .font(.system(size: 9))
-                        .foregroundStyle(isReliable ? Color.secondary : Color.orange)
+                        .foregroundStyle(warning ? Color.orange : Color.secondary)
                     Text(caveat)
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .foregroundStyle(Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -109,13 +162,21 @@ struct PrivacyView: View {
         }
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func section<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.8)
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .settingsSectionSurface()
+        .font(.system(size: 12))
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

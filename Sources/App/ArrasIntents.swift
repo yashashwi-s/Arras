@@ -14,7 +14,7 @@ import AppIntents
 @MainActor
 enum ArrasIntentBridge {
     static func manager() throws -> PhotoManager {
-        guard let delegate = NSApp.delegate as? AppDelegate else {
+        guard let delegate = AppDelegate.current else {
             throw ArrasIntentError.appNotReady
         }
         return delegate.manager

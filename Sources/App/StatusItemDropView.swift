@@ -55,11 +55,12 @@ final class StatusItemDropView: NSView {
         return true
     }
 
-    /// Dropped file URLs that point at images we can decode.
+    /// Dropped file URLs. Keep unsupported files in the batch so the shared importer can report
+    /// them as skipped alongside accepted and failed images instead of silently discarding them
+    /// at the drag destination boundary.
     private func imageURLs(from sender: NSDraggingInfo) -> [URL] {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [
-            .urlReadingFileURLsOnly: true,
-            .urlReadingContentsConformToTypes: PhotoManager.importableTypes.map(\.identifier)
+            .urlReadingFileURLsOnly: true
         ]
         return sender.draggingPasteboard.readObjects(
             forClasses: [NSURL.self],

@@ -1,110 +1,100 @@
 # Arras
 
-[Website](https://arras.yashashwi.me/) · [FAQ](https://arras.yashashwi.me/faqs) · [Security & Privacy](https://arras.yashashwi.me/security)
+**Your photos. Your kind of desktop.**
 
-Arras places photos on the macOS desktop as independent, borderless widgets at
-their natural aspect ratios. Each widget keeps its own position, size, depth,
-appearance, display placement, and desktop Space behavior; it does not use
-WidgetKit's fixed grid or fixed sizes.
+[Website](https://tryarras.tech/) · [Download for macOS](https://tryarras.tech/download?ref=github) · [FAQ](https://tryarras.tech/faq) · [Security & Privacy](https://tryarras.tech/security)
 
-<p align="center">
-  <img src="assets/demo.gif" alt="Arras photo widgets on a macOS desktop" width="100%" />
-</p>
+Arras is a free, open-source Mac app for photos, slideshows and editable desktop
+collages. Keep a photo’s natural proportions, choose its look and layer, and
+arrange a desktop that feels like yours.
+
+[![Watch the 10.4-second Arras 2.5.0 desktop film](assets/launch-2.5.0-poster.jpg)](https://tryarras.tech/puremac/arras/launch-2.5.0.mp4)
+
+**[Watch the launch film](https://tryarras.tech/puremac/arras/launch-2.5.0.mp4)** — real Arras windows on a Mac desktop, with sample artwork. No audio required.
 
 ![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) [![Latest release](https://img.shields.io/github/v/release/yashashwi-s/Arras?style=flat-square)](https://github.com/yashashwi-s/Arras/releases/latest)
 
-## Download
+## Download Arras 2.5.0
 
-**[Download the current DMG](https://github.com/yashashwi-s/Arras/releases/latest/download/Arras.dmg)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/latest)
+**[Download the DMG](https://tryarras.tech/download?ref=github)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.0)
 
-The public download requires macOS 14 Sonoma or later. The current DMG and ZIP
-contain a universal executable for Apple Silicon (`arm64`) and Intel (`x86_64`).
+Requires **macOS 14 Sonoma or later**. One universal app supports **Apple Silicon
+and Intel**. The official 2.5.0 app and DMG are **Developer ID signed and notarized
+by Apple**, with stapled tickets. Open the DMG, drag Arras to Applications, then
+open it. macOS may ask you to confirm opening an app downloaded from the internet.
 
-Arras is free, MIT-licensed open-source software. Official releases are
-published on [GitHub](https://github.com/yashashwi-s/Arras/releases/latest).
-Photos stay on your Mac. Arras has no account, advertising SDK, app analytics,
-telemetry, or external crash-reporting service.
+Arras is MIT-licensed and free, with no account or subscription. Photos and layouts
+stay on your Mac. Version 2.5.0 sends limited usage and weekly configuration
+statistics; photos, filenames, paths, layouts and personal content are excluded.
+Read [Security & Privacy](https://tryarras.tech/security) for permissions,
+network behavior and retention.
 
-The public app is ad-hoc signed and is not notarized, so macOS may show the
-expected “Apple is not able to verify that it is free from malware” warning.
-That message means Apple could not complete its developer/notarization
-verification for this build; it does not report a malware finding.
+## Make the desktop yours
 
-To install the official DMG, open it and drag Arras to **Applications**, then
-try to open Arras once. If macOS blocks the first launch, open **System
-Settings → Privacy & Security → Open Anyway**. Confirm with your Mac password
-or Touch ID if requested, then choose **Open**. This is macOS confirming your
-decision to open Arras; the password is not shared with the app. After approval,
-Arras opens normally. See the [installation guide](https://arras.yashashwi.me/#install)
-for the current steps.
+- **Editable collages.** Move a group by its background, or move and resize each
+  photo independently. Its boundary grows and shrinks as you work. Choose a
+  material, spacing, captions and freely placed text labels.
+- **Slideshows and linked collections.** Rotate local photos, link a Finder folder
+  or Photos album, and keep a managed snapshot for offline use. Add still images,
+  GIF/APNG animations and local videos.
+- **Layers and placement.** Choose Desktop, Above Widgets, Floating or Always on
+  Top. Snap, align, distribute and lock widgets. Collages own their depth and
+  Space pinning while keeping each photo’s standalone values for detaching.
+- **Your own look.** Use visual presets, masks, mats, frames, tilt, opacity,
+  shadows and gradients. Copy appearance between photos. Crop, rotate, flip or
+  grayscale a reference without rewriting its managed original.
+- **Room to experiment.** Undo arrangement changes, save named desktop setups,
+  restore the previous setup and recover the most recently removed widgets.
+  Export a portable `.arras` backup when you want to keep or share a layout.
+- **Native Mac controls.** A compact menu bar app, Shortcuts actions, configurable
+  update checks, a global visibility shortcut and dedicated Privacy controls.
 
-## Highlights
+[![An editable Arras collage with sample photos](assets/collages-2.5.0.webp)](https://tryarras.tech/#details)
 
-- Independent, true-ratio widgets with movement, resizing, snapping, locking,
-  opacity, hover reveal, four depth levels, stack order, and per-display restore.
-- Slideshows (“Spaces”) with click or timed advance, previous/next navigation,
-  crossfade, and dynamic or fixed sizing.
-- Presets, masks, mats, borders, gradient strokes, two-layer shadows, edge fade,
-  corner control, and tilt.
-- Finder, Photos, clipboard, drag-and-drop, GIF/APNG, PDF page, and screen-region
-  input. Transparent still images keep alpha-aware PNG storage when re-encoded.
-- Local `.arras` backups, global visibility shortcut, Shortcuts actions, and
-  privacy controls for screen capture, conferencing apps, and fullscreen apps.
-- Verified in-place updates whose automatic-install and notification-only modes
-  both follow the frequency selected in Settings.
+See [more real screenshots](https://tryarras.tech/#workflows), the
+[2.5.0 feature guide](FEATURES.md) and [changelog](CHANGELOG.md#250) for details.
 
-The reviewed current behavior, including limits and permission requirements, is
-the [shipped feature contract](FEATURES.md). Release-by-release history belongs
-in the [changelog](CHANGELOG.md) and [GitHub releases](https://github.com/yashashwi-s/Arras/releases).
+## Start here
 
-## Basic use
+1. Open Arras Settings from its menu bar icon. Use **Add → Try an Example** for an
+   editable collage, moodboard or slideshow, or add your own photos.
+2. Drag a photo to move it; drag a corner to resize. A collage’s background moves
+   its whole group, while its photos remain independently editable.
+3. Use **Tools** to change appearance or reference edits. Save a setup before
+   experimenting with another arrangement.
+4. Use **Preferences** for app-wide behavior and updates, and **Privacy** for
+   capture and presence controls. Capture exclusion is a compatibility request;
+   manually hide widgets before a recording that must exclude them.
 
-Arras is a menu bar agent. It has no Dock icon and does not appear in
-Command-Tab.
-
-1. Use **Add** in the menu bar, drop image files on the status item, paste with
-   Command-V, or add from Photos in Settings.
-2. Drag a widget to move it and drag a corner to resize without changing its
-   ratio. Scroll over it to adjust opacity.
-3. Right-click a widget for lock, stack, and removal commands. Use the
-   **Widgets** menu for naming, replacement, duplication, and slideshow controls;
-   Settings also exposes appearance and all four depths.
-4. Open Settings for appearance, snapping, the global shortcut, backups,
-   updates, and privacy controls.
-
-Arras was previously Photo Widget OSX and Tableau. Its bundle identifier and
-Application Support location remain unchanged so existing layouts continue to
-load.
+Arras has no Dock icon and does not appear in Command-Tab. It was previously
+Photo Widget OSX and Tableau; its bundle identifier and Application Support
+location stay compatible with existing installations.
 
 ## Build and test
 
-Arras uses Apple frameworks and has no third-party runtime dependencies. The
-project file is generated from `project.yml` with XcodeGen. The current Settings
-appearance requires Xcode with the macOS 27 SDK.
+Arras uses Apple frameworks and has no third-party runtime dependencies. Install
+XcodeGen and Xcode with the macOS 27 SDK for the current Settings appearance.
+The deployment target is macOS 14.
 
 ```sh
 brew install xcodegen
-xcodegen generate
 ./build.sh
-
-/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
-  -project Arras.xcodeproj \
-  -scheme Arras \
-  -destination 'platform=macOS' \
-  test
 ```
 
-`./build.sh --run` installs and launches a local build. `./build.sh --release`
-creates local ZIP and DMG artifacts in `dist/`; it does not publish a release.
+`./build.sh --run` launches the validated local build. `./build.sh --release`
+creates ad-hoc development packages; official distribution uses the separate
+Developer ID signing and notarization step. Builds record their source digest,
+and packaging rejects stale source or LLVM coverage instrumentation.
+See [CONTRIBUTING.md](CONTRIBUTING.md#build-and-test) for testing and release checks.
+Tests must use isolated storage and never the user’s personal library.
 
 ## Project documents
 
-- [FEATURES.md](FEATURES.md): exhaustive current shipped behavior and limits.
-- [ARCHITECTURE.md](ARCHITECTURE.md): state, window, media, update, and release ownership.
-- [SECURITY.md](SECURITY.md): download trust, data and network behavior, and private vulnerability reporting.
-- [CONTRIBUTING.md](CONTRIBUTING.md): focused build, test, and documentation rules.
-- [CHANGELOG.md](CHANGELOG.md): historical public release record.
-- [LICENSE](LICENSE): MIT license.
+- [FEATURES.md](FEATURES.md): user-facing behavior, controls and limits.
+- [ARCHITECTURE.md](ARCHITECTURE.md): subsystem ownership and compatibility.
+- [SECURITY.md](SECURITY.md): signing, permissions, network activity and telemetry.
+- [CONTRIBUTING.md](CONTRIBUTING.md): build, verification and release guidance.
+- [CHANGELOG.md](CHANGELOG.md) and [release notes](release-notes/2.5.0.json): version history.
 
-Arras is published by [Yashashwi Singhania](https://yashashwi.me/) and developed
-in the open at [yashashwi-s/Arras](https://github.com/yashashwi-s/Arras).
+Found a problem? [Open an issue](https://github.com/yashashwi-s/Arras/issues/new/choose).
+If Arras makes your desktop better, [star the repository](https://github.com/yashashwi-s/Arras).

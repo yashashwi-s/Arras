@@ -156,12 +156,17 @@ def validate_documentation(root: Path) -> None:
         normalized = re.sub(r"\s+", " ", contents)
         if deprecated_trust_phrases.search(normalized):
             fail(f"{document} contains deprecated trust or quarantine guidance")
+    notarized = json.loads((root / "product-metadata.json").read_text())["publicRelease"]["notarized"]
     for document in ("README.md", "SECURITY.md"):
         contents = current_docs[document]
-        if "Open Anyway" not in contents:
-            fail(f"{document} must explain the macOS Open Anyway path")
-        if not re.search(r"(?i)password\s+or\s+touch id", contents):
-            fail(f"{document} must explain the Mac password or Touch ID confirmation")
+        if notarized:
+            if not re.search(r"(?i)developer id", contents) or not re.search(r"(?i)notarized", contents):
+                fail(f"{document} must explain Developer ID signing and notarized installation")
+        else:
+            if "Open Anyway" not in contents:
+                fail(f"{document} must explain the macOS Open Anyway path")
+            if not re.search(r"(?i)password\s+or\s+touch id", contents):
+                fail(f"{document} must explain the Mac password or Touch ID confirmation")
 
     features = (root / "FEATURES.md").read_text(encoding="utf-8")
     if re.search(r"(?im)^#{1,6}\s+.*\b\d+\.\d+(?:\.\d+)?\b", features):
@@ -187,8 +192,8 @@ def validate(repository_root: Path = ROOT) -> None:
         fail("schemaVersion must be 2")
     if root.get("name") != "Arras":
         fail('name must be "Arras"')
-    if require_https_url(root.get("canonicalUrl"), "canonicalUrl") != "https://arras.yashashwi.me/":
-        fail("canonicalUrl must be https://arras.yashashwi.me/")
+    if require_https_url(root.get("canonicalUrl"), "canonicalUrl") != "https://tryarras.tech/":
+        fail("canonicalUrl must be https://tryarras.tech/")
     if require_https_url(root.get("repositoryUrl"), "repositoryUrl") != "https://github.com/yashashwi-s/Arras":
         fail("repositoryUrl must be the canonical Arras repository")
 
@@ -206,11 +211,11 @@ def validate(repository_root: Path = ROOT) -> None:
 
     documentation = require_mapping(root.get("documentation"), "documentation")
     expected_documentation = {
-        "mainUrl": "https://arras.yashashwi.me/",
-        "installationUrl": "https://arras.yashashwi.me/#install",
-        "quickStartUrl": "https://arras.yashashwi.me/faqs#how-to-use",
-        "faqUrl": "https://arras.yashashwi.me/faqs",
-        "securityUrl": "https://arras.yashashwi.me/security",
+        "mainUrl": "https://tryarras.tech/",
+        "installationUrl": "https://tryarras.tech/#install",
+        "quickStartUrl": "https://tryarras.tech/faq#how-to-use",
+        "faqUrl": "https://tryarras.tech/faq",
+        "securityUrl": "https://tryarras.tech/security",
         "featureContractUrl": "https://github.com/yashashwi-s/Arras/blob/main/FEATURES.md",
         "architectureUrl": "https://github.com/yashashwi-s/Arras/blob/main/ARCHITECTURE.md",
         "securityPolicyUrl": "https://github.com/yashashwi-s/Arras/blob/main/SECURITY.md",
@@ -227,10 +232,12 @@ def validate(repository_root: Path = ROOT) -> None:
         fail('publicRelease.architectures must be ["arm64", "x86_64"] for the shipped universal artifact')
     if require_https_url(public_release.get("sourceUrl"), "publicRelease.sourceUrl") != "https://github.com/yashashwi-s/Arras/releases/latest":
         fail("publicRelease.sourceUrl must be the GitHub latest-release URL")
-    if public_release.get("signing") != "ad-hoc":
-        fail('publicRelease.signing must be "ad-hoc"')
-    if require_boolean(public_release.get("notarized"), "publicRelease.notarized"):
-        fail("publicRelease.notarized must be false")
+    signing = public_release.get("signing")
+    if signing not in ("ad-hoc", "developer-id"):
+        fail('publicRelease.signing must be "ad-hoc" or "developer-id"')
+    notarized = require_boolean(public_release.get("notarized"), "publicRelease.notarized")
+    if notarized and signing != "developer-id":
+        fail("A notarized distribution requires Developer ID signing")
 
     source_build = require_mapping(root.get("sourceBuild"), "sourceBuild")
     if require_https_url(source_build.get("sourceUrl"), "sourceBuild.sourceUrl") != "https://github.com/yashashwi-s/Arras":
@@ -248,8 +255,11 @@ def validate(repository_root: Path = ROOT) -> None:
     if not release_workflow.is_file():
         fail("the release workflow is missing")
     release_workflow_text = release_workflow.read_text(encoding="utf-8")
-    if "ARCHS=\"arm64 x86_64\"" not in release_workflow_text:
-        fail("the release workflow must explicitly build the public universal architecture set")
+    delegates_build = "run: ./build.sh" in release_workflow_text
+    build_script = repository_root / "build.sh"
+    architecture_owner = build_script.read_text(encoding="utf-8") if delegates_build and build_script.is_file() else release_workflow_text
+    if not re.search(r"ARCHS=['\"]arm64 x86_64['\"]", architecture_owner) or "ONLY_ACTIVE_ARCH=NO" not in architecture_owner:
+        fail("the release build must explicitly build the public universal architecture set")
 
     license_data = require_mapping(root.get("license"), "license")
     if license_data.get("spdx") != "MIT":

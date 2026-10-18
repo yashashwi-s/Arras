@@ -2,10 +2,9 @@ import AppKit
 
 /// Computes magnetic snap adjustments for a photo widget being dragged.
 ///
-/// Targets are gathered once per drag, in `beginDrag(for:)`. Nothing on screen moves while
-/// the user is dragging a desktop widget, so re-querying the window server on every
-/// `mouseDragged` would burn a cross-process round trip per event for data that cannot have
-/// changed — and this app's idle and drag cost is a stated feature.
+/// Ordinary alignment targets are gathered once per drag, in `beginDrag(for:)`.
+/// Collage backgrounds change during dragging and are excluded; their member
+/// placement and gap guides belong to CollageGeometry.
 ///
 /// Everything here works in *visual* rect space — the outermost opaque edge of the widget,
 /// mat included. The window is deliberately larger than that (see `PhotoCanvas`), and
@@ -15,14 +14,15 @@ import AppKit
 /// alignment was not merely inaccurate, it was unreachable.
 final class SnapEngine {
     static let shared = SnapEngine()
-    private init() {}
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     /// How close a proposed edge must land before it locks on, and how far it must then be
     /// pulled before it lets go. A single threshold makes a snap engage and disengage on
     /// alternating events when the cursor sits right at the boundary; the gap between these
     /// two is what stops that flicker.
-    private let engageThreshold: CGFloat = 8
-    private let releaseThreshold: CGFloat = 16
+    private let engageThreshold: CGFloat = 6
+    private let releaseThreshold: CGFloat = 10
 
     private let defaultsKey = "snapToEdgesEnabled"
     private let otherAppsKey = "snapToOtherAppsEnabled"
@@ -31,10 +31,10 @@ final class SnapEngine {
     /// snapping ships enabled by default.
     var isEnabled: Bool {
         get {
-            UserDefaults.standard.object(forKey: defaultsKey) == nil
-                || UserDefaults.standard.bool(forKey: defaultsKey)
+            defaults.object(forKey: defaultsKey) == nil
+                || defaults.bool(forKey: defaultsKey)
         }
-        set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
+        set { defaults.set(newValue, forKey: defaultsKey) }
     }
 
     /// Whether other applications' windows and the system's desktop widgets act as alignment
@@ -43,19 +43,18 @@ final class SnapEngine {
     /// never reads them), so there is nothing to prompt for and nothing to opt into.
     var includesOtherApps: Bool {
         get {
-            UserDefaults.standard.object(forKey: otherAppsKey) == nil
-                || UserDefaults.standard.bool(forKey: otherAppsKey)
+            defaults.object(forKey: otherAppsKey) == nil
+                || defaults.bool(forKey: otherAppsKey)
         }
-        set { UserDefaults.standard.set(newValue, forKey: otherAppsKey) }
+        set { defaults.set(newValue, forKey: otherAppsKey) }
     }
 
     /// Lower number wins when two targets are equally close, so a sibling widget beats a
-    /// screen edge beats another app's window beats a speculative grid line.
+    /// screen edge beats another app's window.
     private enum Priority: Int {
         case widget = 0
         case screen = 1
         case otherApp = 2
-        case lattice = 3
     }
 
     private struct Target {
@@ -79,7 +78,8 @@ final class SnapEngine {
     // MARK: - Drag lifecycle
 
     /// Snapshots every alignment target for the drag about to start.
-    func beginDrag(for window: DesktopPhotoWindow) {
+    @MainActor
+    func beginDrag(for window: DesktopPhotoWindow, excluding excludedIDs: Set<UUID> = [], includeCollages: Bool = false) {
         xTargets = []
         yTargets = []
         lockedX = nil
@@ -98,8 +98,12 @@ final class SnapEngine {
         }
 
         for other in NSApp.windows.compactMap({ $0 as? DesktopPhotoWindow }) {
-            guard other !== window, other.isVisible else { continue }
-            addRect(other.visualFrame, priority: .widget, style: .solid)
+            guard other !== window, other.isVisible, other.photoId.map({ excludedIDs.contains($0) }) != true else { continue }
+            if let collage = other as? CollageDesktopWindow {
+                if includeCollages { addRect(collage.displayedBounds, priority: .widget, style: .solid) }
+            } else {
+                addRect(other.visualFrame, priority: .widget, style: .solid)
+            }
         }
 
         guard includesOtherApps else { return }
@@ -111,7 +115,6 @@ final class SnapEngine {
         for rect in systemWidgets {
             addRect(rect, priority: .screen, style: .solid)
         }
-        addSystemWidgetLattice()
     }
 
     func endDrag() {
@@ -120,6 +123,8 @@ final class SnapEngine {
         lockedX = nil
         lockedY = nil
     }
+
+    func clearLocks() { lockedX = nil; lockedY = nil }
 
     private func addRect(_ r: NSRect, priority: Priority, style: SnapGuide.Style) {
         guard r.width > 0, r.height > 0 else { return }
@@ -132,6 +137,44 @@ final class SnapEngine {
     }
 
     // MARK: - Snapping
+
+    /// Resizing follows the pointer directly, as in 2.4.9. Show nearby
+    /// alignments without a magnetic scale lock that makes the corner stick.
+    func resizeGuides(for rect: CGRect, corner: CollageResizeCorner,
+                      modifiers: NSEvent.ModifierFlags) -> [SnapGuide] {
+        guard isEnabled, !modifiers.contains(.option), !modifiers.contains(.command) else { return [] }
+        let anchor = corner.anchor(in: rect)
+        var guides: [SnapGuide] = []
+        for (orientation, targets, coordinates, fixed) in [
+            (SnapGuide.Orientation.vertical, xTargets, [rect.minX, rect.midX, rect.maxX], anchor.x),
+            (.horizontal, yTargets, [rect.minY, rect.midY, rect.maxY], anchor.y)
+        ] {
+            var winner: (target: Target, distance: CGFloat)?
+            for coordinate in coordinates where abs(coordinate - fixed) > 0.001 {
+                for target in targets where isNearby(target, span: perpendicularSpan(of: rect, orientation: orientation)) {
+                    let distance = abs(target.value - coordinate)
+                    guard distance < engageThreshold else { continue }
+                    if winner == nil || distance < winner!.distance - 0.01 ||
+                        (abs(distance - winner!.distance) <= 0.01 && target.priority.rawValue < winner!.target.priority.rawValue) {
+                        winner = (target, distance)
+                    }
+                }
+            }
+            if let winner { guides.append(resizeGuide(winner.target, orientation: orientation, rect: rect)) }
+        }
+        return guides
+    }
+
+    private func perpendicularSpan(of rect: CGRect, orientation: SnapGuide.Orientation) -> ClosedRange<CGFloat> {
+        orientation == .vertical ? rect.minY...rect.maxY : rect.minX...rect.maxX
+    }
+
+    private func resizeGuide(_ target: Target, orientation: SnapGuide.Orientation, rect: CGRect) -> SnapGuide {
+        let start = orientation == .vertical ? rect.minY : rect.minX
+        let end = orientation == .vertical ? rect.maxY : rect.maxX
+        return SnapGuide(orientation: orientation, position: target.value,
+                         start: min(start, target.extentStart), end: max(end, target.extentEnd), style: target.style)
+    }
 
     /// Returns the snapped *photo* origin plus any guide lines to draw.
     ///
@@ -148,19 +191,23 @@ final class SnapEngine {
         dragStart: NSPoint
     ) -> (origin: NSPoint, guides: [SnapGuide]) {
         var proposed = proposedOrigin
+        var allowsX = true
+        var allowsY = true
 
         // Shift constrains the drag to whichever axis has moved further, the same convention
         // every canvas app uses.
         if modifiers.contains(.shift) {
             if abs(proposed.x - dragStart.x) > abs(proposed.y - dragStart.y) {
                 proposed.y = dragStart.y
+                allowsY = false
             } else {
                 proposed.x = dragStart.x
+                allowsX = false
             }
         }
 
-        // Command suspends snapping outright, for placing something a few points off a guide.
-        guard isEnabled, !modifiers.contains(.command) else {
+        // The same free-placement modifiers work inside and outside a collage.
+        guard isEnabled, !modifiers.contains(.command), !modifiers.contains(.option) else {
             lockedX = nil
             lockedY = nil
             return (proposed, [])
@@ -173,8 +220,12 @@ final class SnapEngine {
         let candidatesX = [visualOrigin.x, visualOrigin.x + visualSize.width / 2, visualOrigin.x + visualSize.width]
         let candidatesY = [visualOrigin.y, visualOrigin.y + visualSize.height / 2, visualOrigin.y + visualSize.height]
 
-        let bestX = resolve(candidates: candidatesX, targets: xTargets, locked: &lockedX)
-        let bestY = resolve(candidates: candidatesY, targets: yTargets, locked: &lockedY)
+        if !allowsX { lockedX = nil }
+        if !allowsY { lockedY = nil }
+        let bestX = allowsX ? resolve(candidates: candidatesX, targets: xTargets,
+                                     span: visualOrigin.y...(visualOrigin.y + visualSize.height), locked: &lockedX) : nil
+        let bestY = allowsY ? resolve(candidates: candidatesY, targets: yTargets,
+                                     span: visualOrigin.x...(visualOrigin.x + visualSize.width), locked: &lockedY) : nil
 
         var snapped = proposed
         var guides: [SnapGuide] = []
@@ -199,16 +250,16 @@ final class SnapEngine {
 
     /// Picks the target to follow on one axis, holding on to the previous one until the drag
     /// has clearly pulled away from it.
-    private func resolve(candidates: [CGFloat], targets: [Target], locked: inout Lock?) -> (delta: CGFloat, target: Target)? {
+    private func resolve(candidates: [CGFloat], targets: [Target], span: ClosedRange<CGFloat>, locked: inout Lock?) -> (delta: CGFloat, target: Target)? {
         if let held = locked {
             let delta = held.target.value - candidates[held.candidate]
-            if abs(delta) < releaseThreshold { return (delta, held.target) }
+            if isNearby(held.target, span: span), abs(delta) < releaseThreshold { return (delta, held.target) }
             locked = nil
         }
 
         var best: (delta: CGFloat, target: Target, candidate: Int)?
         for (index, candidate) in candidates.enumerated() {
-            for target in targets {
+            for target in targets where isNearby(target, span: span) {
                 let delta = target.value - candidate
                 guard abs(delta) < engageThreshold else { continue }
                 guard let current = best else {
@@ -226,6 +277,14 @@ final class SnapEngine {
         guard let winner = best else { return nil }
         locked = Lock(candidate: winner.candidate, target: winner.target)
         return (winner.delta, winner.target)
+    }
+
+    // Keep alignment useful across a small gap, without attracting a photo to
+    // unrelated windows or another display far along the perpendicular axis.
+    private func isNearby(_ target: Target, span: ClosedRange<CGFloat>) -> Bool {
+        let reach: CGFloat = target.priority == .screen ? releaseThreshold : 200
+        return span.upperBound >= target.extentStart - reach
+            && span.lowerBound <= target.extentEnd + reach
     }
 
     // MARK: - Other applications' windows
@@ -279,39 +338,7 @@ final class SnapEngine {
         return (appWindows, systemWidgets)
     }
 
-    /// Speculative grid lines for the empty cells of the system desktop-widget grid.
-    ///
-    /// The occupied cells are already covered by the real window rects above; this only
-    /// extrapolates the rest of the lattice so a widget can be aligned to a slot nothing is
-    /// sitting in yet. The 8pt gutter and 180pt pitch were measured against this machine's
-    /// widget placement store and confirmed against the live window bounds, but neither is
-    /// documented by Apple and neither was tested across display scales — so these are drawn
-    /// dotted, ranked below everything else, and are harmless if the pitch is ever wrong.
-    private func addSystemWidgetLattice() {
-        let pitch: CGFloat = 180
-        let gutter: CGFloat = 8
 
-        for screen in NSScreen.screens {
-            let vf = screen.visibleFrame
-            let originX = vf.minX + gutter
-            let originTopY = vf.maxY - gutter
-
-            let columns = Int((vf.width - gutter) / pitch)
-            let rows = Int((vf.height - gutter) / pitch)
-            guard columns > 0, rows > 0 else { continue }
-
-            for column in 0...columns {
-                let x = originX + pitch * CGFloat(column)
-                guard x <= vf.maxX else { break }
-                xTargets.append(Target(value: x, extentStart: vf.minY, extentEnd: vf.maxY, priority: .lattice, style: .dotted))
-            }
-            for row in 0...rows {
-                let y = originTopY - pitch * CGFloat(row)
-                guard y >= vf.minY else { break }
-                yTargets.append(Target(value: y, extentStart: vf.minX, extentEnd: vf.maxX, priority: .lattice, style: .dotted))
-            }
-        }
-    }
 }
 
 // MARK: - Guide Model
@@ -320,8 +347,7 @@ final class SnapEngine {
 struct SnapGuide {
     enum Orientation { case vertical, horizontal }
 
-    /// Solid for a real edge that exists on screen; dotted for an extrapolated grid line, so
-    /// the user can tell "aligned to that window" from "aligned to where a widget would go".
+    /// Solid for edge alignment; dotted for equal-gap guides within a collage.
     enum Style { case solid, dotted }
 
     let orientation: Orientation

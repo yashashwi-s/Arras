@@ -47,14 +47,11 @@ enum InstallLocation {
         // shouldn't silence the one prompt that can actually unblock them.
         guard force || !UserDefaults.standard.bool(forKey: declinedKey) else { return }
 
-        let alert = NSAlert()
-        alert.messageText = "Move \(Constants.appName) to Applications?"
-        alert.informativeText = isTranslocated || !canSelfUpdate
+        let message = isTranslocated || !canSelfUpdate
             ? "\(Constants.appName) is running from a read-only location, so it can't install its own updates. Moving it to your Applications folder fixes that."
             : "\(Constants.appName) updates itself in place, which works properly once it lives in your Applications folder."
-        alert.addButton(withTitle: "Move and Relaunch")
-        alert.addButton(withTitle: "Not Now")
-        alert.alertStyle = .informational
+        let alert = AppDialog.make(title: "Move \(Constants.appName) to Applications?", message: message,
+                                   actions: [.init(title: "Move and Relaunch"), .init(title: "Cancel", role: .cancel)])
         NSApp.activate(ignoringOtherApps: true)
 
         guard alert.runModal() == .alertFirstButtonReturn else {
@@ -65,12 +62,8 @@ enum InstallLocation {
         do {
             try moveAndRelaunch()
         } catch {
-            let failure = NSAlert()
-            failure.messageText = "Couldn't Move \(Constants.appName)"
-            failure.informativeText = "\(error.localizedDescription)\n\nDrag it to your Applications folder yourself, then reopen it from there."
-            failure.alertStyle = .warning
-            NSApp.activate(ignoringOtherApps: true)
-            failure.runModal()
+            AppDialog.inform(title: "Couldn’t Move \(Constants.appName)",
+                             message: "\(error.localizedDescription)\n\nDrag it to your Applications folder yourself, then reopen it from there.", style: .warning)
         }
     }
 
@@ -108,12 +101,8 @@ enum InstallLocation {
                 // Keep the source instance alive when LaunchServices rejects the copied app.
                 // Terminating unconditionally leaves the user with a copied bundle that never
                 // opened and no running Arras to explain what happened.
-                let failure = NSAlert()
-                failure.messageText = "Couldn't Relaunch \(Constants.appName)"
-                failure.informativeText = "The copy was placed in your Applications folder, but macOS could not open it. \(error.localizedDescription)"
-                failure.alertStyle = .warning
-                NSApp.activate(ignoringOtherApps: true)
-                failure.runModal()
+                AppDialog.inform(title: "Couldn’t Relaunch \(Constants.appName)",
+                                 message: "The copy was placed in your Applications folder, but macOS could not open it. \(error.localizedDescription)", style: .warning)
             }
         }
     }

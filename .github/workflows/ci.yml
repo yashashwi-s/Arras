@@ -23,10 +23,7 @@ jobs:
           set -euo pipefail
           PROJECT_VERSION="$(awk '/MARKETING_VERSION:/ { print $2; exit }' project.yml)"
           python3 scripts/validate_product_metadata.py
-          python3 scripts/test_validate_product_metadata.py
-          python3 scripts/test_audit_public_release.py
-          python3 scripts/test_validate_pr_documentation.py
-          python3 scripts/test_validate_release_notes.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
           python3 scripts/validate_release_notes.py \
             --version "$PROJECT_VERSION" \
             --all
@@ -69,6 +66,9 @@ jobs:
       - name: Verify Generated Project Is Current
         run: git diff --exit-code -- Arras.xcodeproj
 
+      - name: Test updater replacement and rollback
+        run: python3 -m unittest discover -s scripts -p 'test_updater_rollback.py'
+
       - name: Test
         run: |
           xcodebuild \
@@ -79,20 +79,12 @@ jobs:
             test
 
       - name: Build
-        run: |
-          xcodebuild \
-            -project Arras.xcodeproj \
-            -scheme Arras \
-            -configuration Release \
-            CONFIGURATION_BUILD_DIR=build/Release \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="" \
-            build
+        run: ./build.sh
 
       - name: Validate Build
         run: |
-          APP_PATH="build/Release/Arras.app"
+          APP_PATH="build/current/Release/Arras.app"
+          python3 scripts/validate_app_bundle.py "$APP_PATH"
           if [ ! -d "$APP_PATH" ]; then
             echo "❌ Arras.app not found"
             exit 1

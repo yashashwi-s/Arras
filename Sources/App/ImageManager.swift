@@ -1,14 +1,52 @@
 import AppKit
 import SwiftUI
 import ServiceManagement
+import QuickLookUI
+import ImageIO
+
+private final class StoredMediaPreviewItem: NSObject, QLPreviewItem {
+    let previewItemURL: URL?
+    let previewItemTitle: String?
+
+    init(url: URL, title: String) {
+        previewItemURL = url
+        previewItemTitle = title
+    }
+}
+
+private final class StoredMediaPreviewDataSource: NSObject, QLPreviewPanelDataSource {
+    let item: StoredMediaPreviewItem
+
+    init(item: StoredMediaPreviewItem) {
+        self.item = item
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel) -> Int { 1 }
+
+    func previewPanel(_ panel: QLPreviewPanel, previewItemAt index: Int) -> QLPreviewItem {
+        item
+    }
+}
 
 /// Manages multiple desktop photos, persistence, and settings.
 @MainActor
 class PhotoManager: ObservableObject {
     @Published var photos: [PhotoItem] = []
+    /// Selection belongs to the Photos settings UI rather than to a widget's durable model.
+    /// The anchor gives Shift-click the same contiguous-range behaviour as a native list.
+    @Published var selectedPhotoIDs: Set<UUID> = []
+    @Published var arrangementUndo: [ArrangementChange] = []
+    @Published var arrangementRedo: [ArrangementChange] = []
+    @Published var collageEditorID: UUID?
+    var collageDrags: [UUID: CollageDrag] = [:]
+    var collageFlights: [UUID: CollageTransition] = [:]
+    var collageMoveSnapshots: [UUID: CollageMoveSnapshot] = [:]
+    var collageResizeSnapshots: [UUID: CollageResizeSnapshot] = [:]
+    var collageAppearanceDrafts: [UUID: CollageAppearanceDraft] = [:]
+    var collageLabelWindows: [UUID: CollageLabelWindow] = [:]
     @Published var launchAtLogin: Bool = false
 
-    // v1.6 — Presence & Privacy: mirrors of PresenceMonitor's toggles/detected state for
+    // Presence & Privacy: mirrors of PresenceMonitor's toggles/detected state for
     // the Settings UI. Always go through the setX methods below rather than assigning
     // these directly -- PresenceMonitor owns the real (UserDefaults-backed) state, and
     // these are just a read mirror kept in sync via `syncPresenceState()`.
@@ -19,27 +57,80 @@ class PhotoManager: ObservableObject {
     @Published var isFullscreenAppDetected: Bool = false
 
     /// Not private: PhotoAppearanceControls.swift lives in another file and needs the same
-    /// authoritative lookup. It used to scan `NSApp.windows` for a matching `photoId` instead,
-    /// which silently resolved to a *closed* window — widget windows are deliberately never
-    /// released (see `isReleasedWhenClosed` in createWindow), so they stay in `NSApp.windows`
-    /// forever. After a single hide/show cycle, half the appearance panel stopped working.
+    /// authoritative lookup. Scanning `NSApp.windows` can find a closed panel still
+    /// retained by AppKit or a caller instead of the current replacement. Closing
+    /// does not invalidate those references; appearance edits must use this registry.
     var windows: [UUID: DesktopPhotoWindow] = [:]
 
-    // v1.4 — Spaces (Internal rotation timers)
+    // Spaces (Internal rotation timers)
     var spaceImages: [UUID: [URL]] = [:]
-    private var rotationTimers: [UUID: DispatchSourceTimer] = [:]
+    var rotationTimers: [UUID: DispatchSourceTimer] = [:]
 
-    /// Rendered thumbnails, keyed by source filename and point size.
-    ///
-    /// `thumbnail(for:)` decodes the stored image at full resolution and draws it into a
-    /// bitmap. It is called from `PhotoRowView`'s body — so once per visible row per SwiftUI
-    /// pass — and from `rebuildMenu`, once per photo every time the status menu opens. With no
-    /// cache, adding one photo to a library of twenty cost twenty full-resolution decodes on
-    /// the main thread, and so did every click on the menu bar icon.
-    private let thumbnailCache = NSCache<NSString, NSImage>()
+    /// Stops and forgets one slideshow timer. Kept as a narrow internal operation so
+    /// transactional helpers in other source files never need access to the timer registry.
+    func cancelRotationTimer(for id: UUID) {
+        rotationTimers[id]?.cancel()
+        rotationTimers.removeValue(forKey: id)
+    }
+    /// The shared Quick Look panel keeps its data source weak; retain the current source while
+    /// the panel is open so a preview remains valid after the click-action closure returns.
+    private var quickLookDataSource: StoredMediaPreviewDataSource?
+    var selectionAnchorID: UUID?
+    @Published var copiedAppearanceStyle: WidgetAppearanceStyle?
+    /// Bulk duplicate uses the existing single-item path, but turns its per-item saves into
+    /// one transaction so a partial selection cannot leave a half-written layout on disk.
+    var persistenceSuppressed = false
+    var onTelemetryFactsChanged: ((TelemetryFacts) -> Void)?
+    var lastTelemetryFacts: TelemetryFacts?
+    private(set) var settingsWindowIsActive = false
 
-    // v1.6 — Presence & Privacy
+    func setSettingsWindowActive(_ active: Bool) {
+        guard settingsWindowIsActive != active else { return }
+        settingsWindowIsActive = active
+        for window in windows.values { window.setSettingsWindowActive(active) }
+        restoreCollageOrdering()
+        // Activation finishes ordering panels after this callback returns.
+        // Repair once more on the next turn, using their current window IDs.
+        // Read current state so a rapid Settings open/close cannot restore an
+        // obsolete depth or bring a hidden collage back.
+        DispatchQueue.main.async { [weak self] in self?.restoreCollageOrdering() }
+    }
+
+    /// Photos library observation is runtime-only. Collection and asset identities live on the
+    /// PhotoItem model; this reference only keeps the public PhotoKit observer alive.
+    var photosLibraryObserver: PhotosLibraryObserver?
+    /// Restoring a desktop invalidates work started against the previous arrangement,
+    /// including restores that reuse the same widget IDs and source metadata.
+    var desktopGeneration = UUID()
+    private var mediaImportCount = 0
+    var hasPendingMediaImport: Bool { mediaImportCount > 0 }
+
+    // Each async import owns one scope, balanced by defer even on failure or cancellation.
+    func beginMediaImport() { mediaImportCount += 1 }
+    func endMediaImport() { mediaImportCount -= 1 }
+
+    /// Preparation runs off the main actor; each import captures its worker before suspending.
+    var prepareImportedURL: @Sendable (URL, URL) -> PhotoIngest.Prepared? = {
+        PhotoIngest.prepare(contentsOf: $0, in: $1)
+    }
+    var prepareImportedData: @Sendable (Data, URL, String?) -> PhotoIngest.Prepared? = {
+        PhotoIngest.prepare(data: $0, in: $1, originalName: $2)
+    }
+    @Published var removedWidgetCount = 0
+    @Published var photosLibrarySyncState: PhotosLibrarySyncState = .idle
+
+    /// Small first-frame/poster thumbnails keyed by filename, size and reference edits.
+    /// Bounded independently of the number of photos or saved setups visited.
+    private let thumbnailCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 16 * 1024 * 1024
+        return cache
+    }()
+
+    // Presence & Privacy
     private let presence = PresenceMonitor()
+    private let runtimeActivity = RuntimeActivityCenter.shared
     private let storageDirectoryOverride: URL?
     private var storeLoadBlocked = false
     private var didPreserveCorruptStore = false
@@ -62,12 +153,33 @@ class PhotoManager: ObservableObject {
 
     private var dataFile: URL { storageDir.appendingPathComponent("photos.json") }
 
+    static var isUnitTestHost: Bool {
+        ProcessInfo.processInfo.environment["ARRAS_UNIT_TESTING"] == "1"
+            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    /// Explicit test/demo stores retain priority. Either test launch mode must
+    /// stay outside the personal library even when its harness omits a path.
+    static func resolveStorageDirectory(explicitDirectory: URL?, uiTestPath: String?,
+                                        unitTesting: Bool, uiTesting: Bool,
+                                        temporaryDirectory: URL, processIdentifier: Int32) -> URL? {
+        if let explicitDirectory { return explicitDirectory }
+        if let uiTestPath, !uiTestPath.isEmpty { return URL(fileURLWithPath: uiTestPath, isDirectory: true) }
+        guard unitTesting || uiTesting else { return nil }
+        let host = unitTesting ? "ArrasUnitHost" : "ArrasUITestHost"
+        return temporaryDirectory.appendingPathComponent("\(host)-\(processIdentifier)", isDirectory: true)
+    }
+
     init(storageDirectory: URL? = nil) {
-        if let path = ProcessInfo.processInfo.environment["ARRAS_UI_TEST_STORAGE_DIR"], !path.isEmpty {
-            storageDirectoryOverride = URL(fileURLWithPath: path, isDirectory: true)
-        } else {
-            storageDirectoryOverride = storageDirectory
-        }
+        // Hosted XCTest loads AppDelegate too. Default test managers must never
+        // open the real store; explicit per-test/demo directories retain priority.
+        storageDirectoryOverride = Self.resolveStorageDirectory(
+            explicitDirectory: storageDirectory,
+            uiTestPath: ProcessInfo.processInfo.environment["ARRAS_UI_TEST_STORAGE_DIR"],
+            unitTesting: Self.isUnitTestHost,
+            uiTesting: ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+            temporaryDirectory: FileManager.default.temporaryDirectory,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier)
 
         // Must run before anything reads photos.json: dropping the sandbox moved
         // the Application Support directory, and this carries older installs across.
@@ -77,6 +189,7 @@ class PhotoManager: ObservableObject {
         }
 
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        removedWidgetCount = (try? DesktopSetupLibrary.read(in: storageDir).removed?.photos.count) ?? 0
 
         // Listen for window moves
         NotificationCenter.default.addObserver(
@@ -104,12 +217,13 @@ class PhotoManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.cancelCollageInteractions(endAppearancePreviews: true)
                 self?.saveAllPositions()
                 self?.persist()
             }
         }
 
-        // v1.5 — Per-Display Profiles: hide/restore photos as monitors connect/disconnect
+        // Per-Display Profiles: hide/restore photos as monitors connect/disconnect
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -120,7 +234,7 @@ class PhotoManager: ObservableObject {
             }
         }
 
-        // v1.6 — Presence & Privacy: pick up PresenceMonitor's already-computed initial
+        // Presence & Privacy: pick up PresenceMonitor's already-computed initial
         // state (no persist side effects -- see mirrorPresenceState()) and start reacting
         // to future changes. Registered after the initial mirror, and before loadSaved(),
         // so no callback can fire mid-construction: PresenceMonitor's own init() runs its
@@ -128,12 +242,16 @@ class PhotoManager: ObservableObject {
         // are always asynchronous, so nothing arrives until well after this initializer --
         // and therefore after loadSaved() below -- returns.
         mirrorPresenceState()
+        runtimeActivity.setPresenceSuppressed(presence.shouldSuppressForPresence)
         presence.onChange = { [weak self] in
             Task { @MainActor [weak self] in self?.syncPresenceState() }
         }
 
         // Load saved photos immediately
         loadSaved()
+        // Live-folder watchers are runtime-only and are rebuilt from the persisted source
+        // metadata after the model and windows have been restored.
+        installLiveFolderWatchers()
     }
 
     // MARK: - Persistence
@@ -145,6 +263,9 @@ class PhotoManager: ObservableObject {
             let data = try Data(contentsOf: dataFile)
             do {
                 let items = try JSONDecoder().decode([PhotoItem].self, from: data)
+                guard Set(items.map(\.id)).count == items.count else {
+                    throw NSError(domain: "ArrasPersistence", code: 1, userInfo: [NSLocalizedDescriptionKey: "Duplicate widget IDs in the saved layout."])
+                }
                 storeLoadBlocked = false
                 installLoadedItems(items)
             } catch {
@@ -167,33 +288,61 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    /// Rebuilds windows from a decoded model. Keeping this in one place means a successful
-    /// import follows the same presence, Space, display and animation rules as a normal relaunch.
+    /// Replaces the desktop's runtime ownership after a full load or replacement.
+    /// Additive imports activate only their new items, preserving the existing desktop.
     private func installLoadedItems(_ items: [PhotoItem]) {
+        arrangementUndo.removeAll()
+        arrangementRedo.removeAll()
+        desktopGeneration = UUID()
+        photosLibraryObserver?.cancelPendingSync()
+        stopAllLiveFolderWatchers()
+        cancelCollageInteractions(endAppearancePreviews: true)
         for window in windows.values { window.hidePhoto() }
         windows.removeAll()
+        for window in collageLabelWindows.values { window.close() }
+        collageLabelWindows.removeAll()
+        CollageFontLibrary.load(in: storageDir)
         for timer in rotationTimers.values { timer.cancel() }
         rotationTimers.removeAll()
         spaceImages.removeAll()
 
-        photos = items
+        photos = items.filter { !$0.isRetiredCompositionContainer }
+        activateLoadedItems()
+        reportMissingStoredMedia(in: items)
+    }
+
+    /// Uses the same restoration rules for a full library and newly imported items. A merge
+    /// must not normalize or recreate unrelated live previews, windows, timers or watchers.
+    private func activateLoadedItems(only ids: Set<UUID>? = nil) {
+        reconcileDisplayPresence(connected: Set(NSScreen.screens.map(DisplayManager.identifier(for:))), only: ids)
+        // Older saves included manually hidden children in the backdrop bounds.
+        // Refit before screen recovery so those invisible extents cannot move the group.
+        for parent in photos where parent.desktopCollage != nil && ids?.contains(parent.id) != false {
+            if collageMembers(parent.id).contains(where: { !$0.isVisible }) { fitCollageModel(parent.id) }
+        }
+        restoreCollageFramesToVisibleScreens(only: ids)
+        normalizePhotoSelection()
+        let collageIDs = Set(photos.filter { $0.desktopCollage != nil }.map(\.id))
+        for i in photos.indices where photos[i].collageParentID != nil && ids?.contains(photos[i].id) != false {
+            if !collageIDs.contains(photos[i].collageParentID!) || photos[i].desktopCollage != nil || photos[i].collageParentID == photos[i].id { photos[i].collageParentID = nil }
+        }
 
         // Presence suppression (fullscreen / conferencing) depends on which apps happen to be
         // running right now, neither of which survives a relaunch, so it's recomputed fresh here
         // rather than trusting whatever was persisted last session.
-        for index in photos.indices {
+        for index in photos.indices where ids?.contains(photos[index].id) != false {
             photos[index].isHiddenForPresence = isSuppressedForPresence(photos[index])
         }
 
-        // A photo that was auto-hidden because its display was disconnected stays invisible
-        // on relaunch until that display reconnects (window presence == isVisible && !isHiddenForDisplay).
+        // Display suppression was reconciled against the screens present at launch.
+        // User visibility remains independent of automatic display/presence suppression.
         // Ascending stackOrder: each orderFront puts the next one nearer the front, so the
         // saved front-to-back arrangement is rebuilt exactly.
         let ordered = photos
-            .filter { $0.isVisible && !$0.isHiddenForDisplay && !$0.isHiddenForPresence }
+            .filter { ids?.contains($0.id) != false && $0.isVisible && !$0.isHiddenForDisplay && !$0.isHiddenForPresence }
             .sorted { $0.stackOrder < $1.stackOrder }
         var failedMedia = 0
-        for item in ordered {
+        for item in ordered where windows[item.id] == nil && collageAllowsWindow(item) {
             guard let content = loadDisplayContent(for: item) else {
                 failedMedia += 1
                 continue
@@ -209,7 +358,41 @@ class PhotoManager: ObservableObject {
                 "\(failedMedia) saved widget\(failedMedia == 1 ? "" : "s") could not decode its stored image."
             )
         }
+        let parentIDs = ids.map { added in
+            Set(photos.filter { added.contains($0.id) }.compactMap { $0.desktopCollage != nil ? $0.id : $0.collageParentID })
+        }
+        syncCollages(only: parentIDs)
+        if let ids { orderAddedPhotoWindows(ids) }
+        installLiveFolderWatchers(only: ids)
+        // A saved setup or removal recovery can introduce the first linked Photos widget
+        // after startup. The installer checks existing permission and registers only once.
+        installPhotosLibraryObserver()
+    }
+
+    /// Imports and removal recovery share additive runtime restoration after their model save.
+    /// Callers own rollback; this never replaces existing window or import ownership.
+    func activateCommittedAdditions(_ items: [PhotoItem]) {
+        activateLoadedItems(only: Set(items.map(\.id)))
         reportMissingStoredMedia(in: items)
+    }
+
+    /// Insert new photos into the saved stack without ordering existing panels onto this Space.
+    /// Captions retain their foreground position; active photo drags keep their priority.
+    private func orderAddedPhotoWindows(_ ids: Set<UUID>) {
+        let levels = Set(ids.compactMap { windows[$0]?.level })
+        for level in levels {
+            let visible = photos.filter {
+                $0.desktopCollage == nil && windows[$0.id]?.level == level
+                    && windows[$0.id]?.isVisible == true && windows[$0.id]?.isOnActiveSpace == true
+            }.sorted { $0.stackOrder < $1.stackOrder }
+            let ordered = visible.filter { collageDrags[$0.id] == nil } + visible.filter { collageDrags[$0.id] != nil }
+            for index in ordered.indices.reversed() where ids.contains(ordered[index].id) {
+                if index + 1 < ordered.count, let higher = windows[ordered[index + 1].id] {
+                    windows[ordered[index].id]?.order(.below, relativeTo: higher.windowNumber)
+                } else { windows[ordered[index].id]?.orderFront(nil) }
+            }
+            orderCollageLabels(at: level)
+        }
     }
 
     private func reportMissingStoredMedia(in items: [PhotoItem]) {
@@ -217,15 +400,19 @@ class PhotoManager: ObservableObject {
             .flatMap { storedFilenames(in: $0) }
             .filter { !FileManager.default.fileExists(atPath: storageDir.appendingPathComponent($0).path) }
         guard !missing.isEmpty else { return }
-        recordMediaImportFailure(
-            "\(missing.count) stored image file\(missing.count == 1 ? "" : "s") is missing from the photo library."
-        )
+            recordMediaImportFailure(
+                "\(missing.count) stored media file\(missing.count == 1 ? "" : "s") is missing from the photo library."
+            )
     }
 
-    private func storedFilenames(in item: PhotoItem) -> [String] {
+    func storedFilenames(in item: PhotoItem) -> [String] {
         var names: [String] = []
         if !item.filename.isEmpty { names.append(item.filename) }
+        if let poster = item.media.posterFilename, !poster.isEmpty { names.append(poster) }
+        if let paired = item.media.pairedVideoFilename, !paired.isEmpty { names.append(paired) }
         names.append(contentsOf: item.spaceImageFilenames)
+        names.append(contentsOf: item.liveFolderEntries.map(\.managedFilename))
+        names.append(contentsOf: item.photosLibraryAssets.flatMap(\.managedFilenames))
         return names
     }
 
@@ -236,18 +423,35 @@ class PhotoManager: ObservableObject {
     ///
     /// Returns `PhotoContent` rather than `NSImage` so an animated widget keeps animating
     /// through all three of those paths, not just the initial add.
-    private func loadDisplayContent(for item: PhotoItem) -> PhotoContent? {
+    func loadDisplayContent(for item: PhotoItem) -> PhotoContent? {
+        if item.desktopCollage != nil { return .still(NSImage(size: CollageGeometry.emptySize)) }
         if !item.spaceImageFilenames.isEmpty {
             let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
             spaceImages[item.id] = urls
             if let imageURL = urls[safe: item.folderImageIndex],
-               let content = PhotoContent.load(from: imageURL) {
+               let content = loadMediaContent(for: item, filename: imageURL.lastPathComponent, primaryURL: imageURL) {
                 return content
             }
-            return urls.first.flatMap { PhotoContent.load(from: $0) }
+            return urls.first.flatMap { loadMediaContent(for: item, filename: $0.lastPathComponent, primaryURL: $0) }
         } else {
-            return PhotoContent.load(from: storageDir.appendingPathComponent(item.filename))
+            return loadMediaContent(for: item, primaryURL: storageDir.appendingPathComponent(item.filename))
         }
+    }
+
+    func loadMediaContent(for item: PhotoItem, primaryURL: URL) -> PhotoContent? {
+        loadMediaContent(for: item, filename: primaryURL.lastPathComponent, primaryURL: primaryURL)
+    }
+
+    func loadMediaContent(for item: PhotoItem, filename: String, primaryURL: URL) -> PhotoContent? {
+        let media = item.photosLibraryAssets.first(where: { $0.managedFilename == filename })?.media
+            ?? (item.filename == filename ? item.media : .still)
+        let posterURL = media.posterFilename.map { storageDir.appendingPathComponent($0) }
+        let pairedVideoURL = media.pairedVideoFilename.map { storageDir.appendingPathComponent($0) }
+        if media.kind == .livePhoto {
+            guard let pairedVideoURL else { return nil }
+            return PhotoContent.load(from: primaryURL, posterURL: posterURL, pairedVideoURL: pairedVideoURL)
+        }
+        return PhotoContent.load(from: primaryURL, posterURL: posterURL, pairedVideoURL: nil)
     }
 
     /// Not private, for the same reason `windows` isn't — PhotoAppearanceControls.swift used
@@ -255,6 +459,11 @@ class PhotoManager: ObservableObject {
     /// file and a lost-update waiting to happen.
     @discardableResult
     func persist() -> Bool {
+        if persistenceSuppressed { return true }
+        guard Set(photos.map(\.id)).count == photos.count else {
+            logPersistenceFailure("The current layout contains duplicate widget IDs; it was not saved.")
+            return false
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data: Data
@@ -304,6 +513,13 @@ class PhotoManager: ObservableObject {
         do {
             try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
             try data.write(to: dataFile, options: .atomic)
+            if let onTelemetryFactsChanged {
+                let facts = telemetryFacts
+                if facts != lastTelemetryFacts {
+                    lastTelemetryFacts = facts
+                    onTelemetryFactsChanged(facts)
+                }
+            }
             return true
         } catch {
             // `.atomic` leaves the previous file in place when its replacement fails, so a
@@ -373,12 +589,14 @@ class PhotoManager: ObservableObject {
     /// Returns the filenames referenced by the durable current store. If the store cannot be
     /// decoded, media deletion stops conservatively rather than risking data loss.
     private func currentStoredFilenames() -> Set<String>? {
-        guard FileManager.default.fileExists(atPath: dataFile.path) else { return [] }
+        guard let setups = try? DesktopSetupLibrary.read(in: storageDir) else { return nil }
+        let retained = Set(setups.retainedPhotos.flatMap { storedFilenames(in: $0) })
+        guard FileManager.default.fileExists(atPath: dataFile.path) else { return retained }
         guard let data = try? Data(contentsOf: dataFile),
               let items = try? JSONDecoder().decode([PhotoItem].self, from: data) else {
             return nil
         }
-        return Set(items.flatMap { storedFilenames(in: $0) })
+        return retained.union(items.flatMap { storedFilenames(in: $0) })
     }
 
     func recordMediaImportFailure(_ detail: String) {
@@ -402,6 +620,11 @@ class PhotoManager: ObservableObject {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         photos[index].frameString = NSStringFromRect(frame)
         photos[index].widgetWidth = frame.width
+
+        if let parent = photos[index].collageParentID {
+            fitCollageModel(parent)
+            fitCollageWindow(parent)
+        }
 
         // Per-Display Profiles: whichever screen the window's center currently sits on becomes
         // its "home" display, and we remember the exact frame for that display independently
@@ -492,24 +715,44 @@ class PhotoManager: ObservableObject {
             return
         }
 
-        let item = PhotoItem(filename: filename)
-        photos.append(item)
-        if let content = PhotoContent.load(from: url) {
-            createWindow(for: item, content: content)
-        } else {
+        // Validate the staged bytes before exposing a model item or window. This keeps the
+        // synchronous NSImage entry point aligned with the batched importer: a successful write
+        // alone is not enough to claim that an image can be rendered after relaunch.
+        guard let content = PhotoContent.load(from: url) else {
             recordMediaImportFailure("The imported image could not be decoded after it was stored.")
-        }
-        guard persist() else {
-            // The media file is staged before the model write. Keep it available for diagnosis
-            // when the JSON write fails; a later explicit cleanup can remove it safely.
+            removeStoredFileIfUnreferenced(filename)
             return
         }
+
+        var item = PhotoItem(filename: filename)
+        if case .animated = content {
+            item.media = PhotoMedia(kind: .animatedImage)
+        }
+        // This API receives an NSImage rather than source bytes, and its storage path re-encodes
+        // the image. Keep that distinction visible to archival exports instead of implying the
+        // original file is still available.
+        item.mediaFidelity[filename] = .transformed
+        photos.append(item)
+        guard persist() else {
+            // The model write is the commit point. If it fails, remove the window and restore
+            // the in-memory array so this API cannot show a widget that disappears on relaunch.
+            // If the existing store is corrupt, removeStoredFileIfUnreferenced conservatively
+            // keeps the staged bytes for diagnosis because it cannot prove the durable references.
+            photos.removeLast()
+            windows[item.id]?.hidePhoto()
+            windows.removeValue(forKey: item.id)
+            removeStoredFileIfUnreferenced(filename)
+            return
+        }
+        createWindow(for: item, content: content)
     }
 
     /// Removes one stored media file only when no other widget still points at it. Space
     /// duplication intentionally shares its filenames, so deletion must inspect both the
     /// single-image field and every Space slot before touching the bytes on disk.
-    private func removeStoredFileIfUnreferenced(_ filename: String, excluding id: UUID? = nil, spaceSlotIndex: Int? = nil) {
+    // Live-folder and Photos reconciliation commit model changes from their own source files,
+    // then use this same durable-reference check before releasing superseded managed media.
+    func removeStoredFileIfUnreferenced(_ filename: String, excluding id: UUID? = nil, spaceSlotIndex: Int? = nil) {
         guard !filename.isEmpty else { return }
         let stillReferenced = photos.contains { candidate in
             if candidate.id == id, let spaceSlotIndex {
@@ -520,7 +763,14 @@ class PhotoManager: ObservableObject {
                     index != spaceSlotIndex && name == filename
                 }
             }
-            return candidate.filename == filename || candidate.spaceImageFilenames.contains(filename)
+            return candidate.filename == filename
+                || candidate.media.posterFilename == filename
+                || candidate.media.pairedVideoFilename == filename
+                || candidate.photosLibraryAssets.contains(where: { asset in
+                    asset.managedFilenames.contains(filename)
+                })
+                || candidate.spaceImageFilenames.contains(filename)
+                || candidate.liveFolderEntries.contains(where: { $0.managedFilename == filename })
         }
         guard !stillReferenced else { return }
 
@@ -531,38 +781,99 @@ class PhotoManager: ObservableObject {
         try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(filename))
     }
 
+    func removePhoto(_ id: UUID) { removePhotos([id]) }
 
-
-    func removePhoto(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        invalidateThumbnails(for: photos[index])
-        let item = photos[index]
-
-        windows[id]?.hidePhoto()
-        windows.removeValue(forKey: id)
-
-        spaceImages.removeValue(forKey: id)
-        rotationTimers[id]?.cancel()
-        rotationTimers.removeValue(forKey: id)
-
-        photos.remove(at: index)
-        // Keep media in place until the new JSON is durable. If saving fails, the previous
-        // photos.json still references this item and must remain loadable on the next launch.
-        if persist() {
-            if !item.spaceImageFilenames.isEmpty {
-                for filename in item.spaceImageFilenames {
-                    removeStoredFileIfUnreferenced(filename)
-                }
-            } else {
-                removeStoredFileIfUnreferenced(item.filename)
+    /// Commit the complete selection once before tearing down any windows or media.
+    func removePhotos(_ ids: Set<UUID>) {
+        let removed = photos.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        let affectedParents = Set(removed.compactMap(\.collageParentID))
+            .union(removed.filter { $0.desktopCollage != nil }.map(\.id))
+        let affectedIDs = Set(removed.map(\.id)).union(photos.filter {
+            affectedParents.contains($0.id) || $0.collageParentID.map { affectedParents.contains($0) } == true
+        }.map(\.id))
+        // A removal cannot discard an unfinished edit, even if the save later
+        // fails. Unrelated previews and gestures keep their own runtime ownership.
+        guard !hasArrangementInteraction(affecting: affectedIDs) else {
+            let reason = "Finish the affected move, resize or collage appearance edit before removing widgets."
+            recordMediaImportFailure(reason)
+            if !Self.isUnitTestHost { AppDialog.inform(title: "Finish Editing First", message: reason) }
+            return
+        }
+        let previousRecovery: DesktopSetupLibrary
+        do {
+            previousRecovery = try prepareRemovalRecovery(removed)
+        } catch {
+            recordMediaImportFailure("Removal recovery could not be saved: \(error.localizedDescription)")
+            if !Self.isUnitTestHost {
+                AppDialog.inform(title: "Couldn’t Remove Widgets", message: "The recovery copy could not be saved. Your widgets are unchanged. Check available disk space and try again.", style: .warning)
             }
+            return
+        }
+        let oldPhotos = photos
+        let oldSelection = selectedPhotoIDs
+        let oldAnchor = selectionAnchorID
+        let survivingCollageParents = Set(removed.compactMap(\.collageParentID)).subtracting(ids)
+        let detached = photos.filter {
+            $0.collageParentID.map(ids.contains) == true
+                && !ids.contains($0.id)
+        }.map(\.id)
+        for i in photos.indices where photos[i].collageParentID.map(ids.contains) == true {
+            photos[i].collageParentID = nil
+        }
+        photos.removeAll { ids.contains($0.id) }
+        for parent in survivingCollageParents { fitCollageModel(parent) }
+        selectedPhotoIDs.subtract(ids)
+        if let anchor = selectionAnchorID, ids.contains(anchor) { selectionAnchorID = selectedPhotoIDs.first }
+        guard persist() else {
+            photos = oldPhotos
+            selectedPhotoIDs = oldSelection
+            selectionAnchorID = oldAnchor
+            try? previousRecovery.write(in: storageDir)
+            return
+        }
+        removedWidgetCount = removed.count
+        for item in removed {
+            let id = item.id
+            collageDrags.removeValue(forKey: id)
+            collageFlights.removeValue(forKey: id)?.stop()
+            invalidateThumbnails(for: item)
+            windows[id]?.hidePhoto()
+            windows.removeValue(forKey: id)
+            spaceImages.removeValue(forKey: id)
+            rotationTimers[id]?.cancel()
+            rotationTimers.removeValue(forKey: id)
+            stopLiveFolderWatcher(for: id)
+
+            let managedFilenames = [item.filename, item.media.posterFilename, item.media.pairedVideoFilename]
+                .compactMap { $0 }
+                + item.spaceImageFilenames
+                + item.liveFolderEntries.map(\.managedFilename)
+                + item.photosLibraryAssets.flatMap(\.managedFilenames)
+            for filename in managedFilenames where !filename.isEmpty {
+                removeStoredFileIfUnreferenced(filename)
+            }
+        }
+        for id in detached {
+            if let child = photos.first(where: { $0.id == id }) {
+                windows[id]?.setDepth(child.depth)
+                windows[id]?.setSpaceBound(child.isSpaceBound)
+                (windows[id]?.contentView as? DraggablePhotoView)?.isLockedByCollage = false
+                windows[id]?.setLocked(child.isLocked)
+            }
+            if windows[id] == nil, let item = photos.first(where: { $0.id == id }), item.isVisible,
+               !item.isHiddenForDisplay && !item.isHiddenForPresence, let content = loadDisplayContent(for: item) {
+                createWindow(for: item, content: content)
+            }
+        }
+        syncCollages(only: survivingCollageParents)
+        for parent in survivingCollageParents { fitCollageWindow(parent) }
+        for name in (previousRecovery.removed?.photos ?? []).flatMap({ storedFilenames(in: $0) }) {
+            removeStoredFileIfUnreferenced(name)
         }
     }
 
-    func removeAllPhotos() {
-        let ids = photos.map { $0.id }
-        for id in ids { removePhoto(id) }
-    }
+    func removeAllPhotos() { removePhotos(Set(photos.map(\.id))) }
 
     /// Shows every photo, or hides every photo if any are currently showing.
     ///
@@ -573,42 +884,25 @@ class PhotoManager: ObservableObject {
     func toggleAllVisibility() -> Bool {
         guard !photos.isEmpty else { return false }
 
-        let anyVisible = photos.contains { $0.isVisible }
-        let target = !anyVisible
-
-        for photo in photos where photo.isVisible != target {
-            toggleVisibility(photo.id)
-        }
-        return target
+        let target = !photos.contains { $0.isVisible }
+        setVisibility(Set(photos.map(\.id)), to: target)
+        return photos.contains { $0.isVisible }
     }
 
-    /// Appends a fully-formed item (e.g. from an imported `.tableau` layout bundle) and,
-    /// if visible, creates its window. Image/space files must already be written into
-    /// `storageDir` under the names in `item.filename` / `item.spaceImageFilenames`.
-    /// Kept separate from `addPhoto`/`addSpace` since those synthesize a brand-new item
-    /// from an `NSImage` rather than restoring one that already carries saved settings.
-    func addImportedItem(_ item: PhotoItem) {
-        photos.append(item)
-        guard item.isVisible else { persist(); return }
-
-        // Goes through the shared loader so an imported animated widget arrives
-        // animating, rather than as a frozen first frame.
-        if let content = loadDisplayContent(for: item) {
-            createWindow(for: item, content: content)
-        } else {
-            recordMediaImportFailure("The imported widget's stored image could not be decoded.")
-        }
-        if !item.spaceImageFilenames.isEmpty {
-            setupRotationTimer(for: item)
-        }
-        persist()
+    func restoreDesktopSetupItems(_ items: [PhotoItem]) -> Bool {
+        let previous = photos
+        photos = items
+        guard persist() else { photos = previous; return false }
+        installLoadedItems(items)
+        removeStoredFilesNoLongerReferenced(from: previous, after: items)
+        return true
     }
 
     /// Adopts a batch of already-staged imported items in one durable model write. The caller
     /// has validated that every referenced media file decodes before reaching this point, so the
-    /// only fallible operation here is the model save itself. Windows are rebuilt only after the
-    /// save succeeds; if it fails, restoring the old value leaves both the in-memory layout and
-    /// its existing windows untouched.
+    /// only fallible operation here is the model save itself. Runtime changes follow that save;
+    /// additive imports leave existing windows and interactions intact. A failed save restores
+    /// the in-memory layout without touching any windows.
     @discardableResult
     func commitImportedItems(_ importedItems: [PhotoItem], replacing: Bool) -> Bool {
         guard !importedItems.isEmpty else { return false }
@@ -622,9 +916,8 @@ class PhotoManager: ObservableObject {
             return false
         }
 
-        // Rebuild all runtime state (windows, Spaces, timers, presence suppression) only after
-        // photos.json is durable. This keeps import behavior aligned with relaunch.
-        installLoadedItems(committedPhotos)
+        if replacing { installLoadedItems(committedPhotos) }
+        else { activateCommittedAdditions(importedItems) }
 
         // A replacement may orphan the previous library's media. Do this last: until the model
         // commit succeeds, the old JSON is still the source of truth and must remain loadable.
@@ -645,11 +938,15 @@ class PhotoManager: ObservableObject {
     // MARK: - Window Creation
 
     func createWindow(for item: PhotoItem, content: PhotoContent) {
+        if item.desktopCollage != nil { createCollageWindow(item); return }
+        guard collageAllowsWindow(item) else { return }
+
         let window = DesktopPhotoWindow()
+        window.setSettingsWindowActive(settingsWindowIsActive)
         window.isReleasedWhenClosed = false
         window.photoId = item.id
 
-        // v1.6 — Presence & Privacy: new windows pick up the current exclusion
+        // Presence & Privacy: new windows pick up the current exclusion
         // preference immediately; applyScreenCaptureExclusion() handles windows already
         // on screen when the toggle itself changes. `.readOnly` is NSWindow's own
         // documented default, so turning the toggle off restores exactly the behavior
@@ -666,10 +963,18 @@ class PhotoManager: ObservableObject {
                 targetFrame = NSRectFromString(cfg.frameString)
             }
         }
-        
+
         let fallbackRect = NSRectFromString(item.frameString)
         var rectToUse = targetFrame ?? fallbackRect
-        if rectToUse.width > 0 {
+        // Saved placement can predate a crop/quarter-turn edit. Preserve origin
+        // and width, but derive height from the rendered image so masks, shadows
+        // and resize handles do not surround an obsolete letterboxed canvas.
+        // Fixed-frame slideshows intentionally retain their configured canvas.
+        let fixedPlaylist = !item.spaceImageFilenames.isEmpty && item.folderSizeMode == "fixed"
+        if item.reference.hasImageEdits, !fixedPlaylist, rectToUse.width > 0, window.photoFrame.width > 0 {
+            rectToUse.size.height = rectToUse.width * window.photoFrame.height / window.photoFrame.width
+        }
+        if rectToUse.width > 0, item.collageParentID == nil {
             rectToUse = clampToVisibleScreens(rectToUse)
         }
 
@@ -697,30 +1002,33 @@ class PhotoManager: ObservableObject {
             self.persist()
         }
         window.onOpacityChanged = { [weak self] newOpacity in
-            guard let self, let i = self.photos.firstIndex(where: { $0.id == item.id }) else { return }
-            self.photos[i].opacity = newOpacity
-            self.persist()
+            self?.setOpacity(item.id, newOpacity)
         }
 
+        window.arrangementMenuItems = { [weak self] in self?.makeArrangementMenuItems() ?? [] }
         window.onBringToFront = { [weak self] in self?.bringToFront(item.id) }
         window.onSendToBack = { [weak self] in self?.sendToBack(item.id) }
-
-        // Click-to-advance for folder photos
-        window.onClickAdvance = { [weak self] in
-            guard let self else { return }
-            if let idx = self.photos.firstIndex(where: { $0.id == item.id }),
-               !self.photos[idx].spaceImageFilenames.isEmpty,
-               self.photos[idx].rotationInterval == "click" {
-                self.nextFolderImage(item.id)
-            }
+        window.onRuntimeActivityChanged = { [weak self, weak window] decision in
+            guard let self, let window, let id = window.photoId else { return }
+            self.handleRuntimeActivityChanged(id, decision: decision)
         }
-        // Also wire it on the view
-        (window.contentView as? DraggablePhotoView)?.onClickAdvance = window.onClickAdvance
+
+        // The view owns only the gesture; the manager owns which bounded action it invokes and
+        // performs the same lock/depth check for programmatic or stale callbacks.
+        window.onClickAction = { [weak self] in
+            self?.performClickAction(item.id)
+        }
+        // Also wire it on the view. `showPhoto` installs the forwarding closure for future
+        // windows, while this assignment covers the existing construction path explicitly.
+        (window.contentView as? DraggablePhotoView)?.onClickAction = window.onClickAction
 
         windows[item.id] = window
+        wireCollageDrag(window, item: item)
+        if let parentID = item.collageParentID { syncCollages(only: [parentID]) }
+        window.startRuntimeActivityMonitoring()
     }
 
-    // MARK: - v1.1 Controls
+    // MARK: - Controls
 
     /// Raises a widget one step: in front of its siblings first, then up past the desktop
     /// icons, the system's desktop widgets and finally ordinary app windows.
@@ -730,14 +1038,17 @@ class PhotoManager: ObservableObject {
     /// the depth once the widget already leads its own siblings is what makes repeated
     /// "Bring to Front" clicks actually climb the whole stack.
     func bringToFront(_ id: UUID) {
+        if let parent = photos.first(where: { $0.id == id })?.collageParentID { bringToFront(parent); return }
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         let depth = photos[index].depth
         let siblings = photos.filter { $0.id != id && $0.depth == depth }
 
         if !siblings.allSatisfy({ $0.stackOrder < photos[index].stackOrder }) {
+            let before = photos[index].stackOrder
             photos[index].stackOrder = (photos.map(\.stackOrder).max() ?? 0) + 1
+            guard persist() else { photos[index].stackOrder = before; return }
             windows[id]?.orderFront(nil)
-            persist()
+            syncCollages()
             return
         }
         if let next = WidgetDepth(stackIndex: depth.stackIndex + 1) {
@@ -748,14 +1059,17 @@ class PhotoManager: ObservableObject {
     /// The mirror of `bringToFront`: behind its siblings first, then down past the system
     /// widgets and the desktop icons.
     func sendToBack(_ id: UUID) {
+        if let parent = photos.first(where: { $0.id == id })?.collageParentID { sendToBack(parent); return }
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
         let depth = photos[index].depth
         let siblings = photos.filter { $0.id != id && $0.depth == depth }
 
         if !siblings.allSatisfy({ $0.stackOrder > photos[index].stackOrder }) {
+            let before = photos[index].stackOrder
             photos[index].stackOrder = (photos.map(\.stackOrder).min() ?? 0) - 1
+            guard persist() else { photos[index].stackOrder = before; return }
             windows[id]?.orderBack(nil)
-            persist()
+            syncCollages()
             return
         }
         if let next = WidgetDepth(stackIndex: depth.stackIndex - 1) {
@@ -764,7 +1078,10 @@ class PhotoManager: ObservableObject {
     }
 
     func setDepth(_ id: UUID, _ depth: WidgetDepth) {
+        if let parent = photos.first(where: { $0.id == id })?.collageParentID { setDepth(parent, depth); return }
+        if !collageMoveSnapshots.isEmpty { cancelCollageInteractions() }
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index]
         photos[index].depth = depth
         // Kept in sync so an older build reading this file still gets the floating state right.
         photos[index].isFloating = depth == .floating
@@ -774,260 +1091,575 @@ class PhotoManager: ObservableObject {
         // alternative is a widget the user cannot grab and cannot tell why.
         if !depth.isInteractive {
             photos[index].isLocked = true
-            windows[id]?.setLocked(true)
         }
+        guard persist() else { photos[index] = before; return }
 
+        if !depth.isInteractive { windows[id]?.setLocked(true) }
         windows[id]?.setDepth(depth)
-        persist()
+        syncCollages()
     }
 
     func setRevealOnHover(_ id: UUID, _ enabled: Bool) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index].revealOnHover
         photos[index].revealOnHover = enabled
+        guard persist() else { photos[index].revealOnHover = before; return }
         windows[id]?.setRevealOnHover(enabled)
-        persist()
     }
 
     func setOpacity(_ id: UUID, _ value: CGFloat) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index].opacity
         photos[index].opacity = max(0.1, min(1.0, value))
+        guard persist() else { photos[index].opacity = before; return }
         windows[id]?.setPhotoOpacity(photos[index].opacity)
-        persist()
+        updateCollageLabels(id)
     }
 
     func toggleLock(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].isLocked.toggle()
-        let locked = photos[index].isLocked
-
+        // A member's effective unlock action belongs to the locking parent,
+        // rather than turning its saved personal lock on by accident.
+        if isLockedByCollage(photos[index]), let parent = photos[index].collageParentID { toggleLock(parent); return }
+        let locked = !photos[index].isLocked
+        if locked {
+            let drags = collageDrags.filter { $0.key == id || $0.value.parentID == id || $0.value.targetID == id }.map(\.key)
+            for photo in drags { cancelCollageDrag(photo) }
+        }
+        let before = photos
+        photos[index].isLocked = locked
+        guard persist() else { photos = before; return }
         windows[id]?.setLocked(locked)
-        (windows[id]?.contentView as? DraggablePhotoView)?.flashLockState(locked)
-        persist()
+        syncCollages()
+        let affected = photos[index].desktopCollage == nil ? [photos[index]] : collageMembers(id)
+        for item in affected {
+            (windows[item.id]?.contentView as? DraggablePhotoView)?.flashLockState(isEffectivelyLocked(item))
+        }
     }
 
     func toggleVisibility(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].isVisible.toggle()
+        setVisibility([id], to: !photos[index].isVisible)
+    }
 
-        if photos[index].isVisible {
-            // A manual "Show" always wins over the display-disconnect and presence
-            // (fullscreen / conferencing) auto-hides — otherwise a photo could become
-            // permanently unreachable from the UI. This only wins until the next presence
-            // re-evaluation, when the current fullscreen/conferencing state is applied again.
-            // That mirrors how isHiddenForDisplay already behaves: manual show wins now, not
-            // forever.
-            photos[index].isHiddenForDisplay = false
-            photos[index].isHiddenForPresence = false
-            let item = photos[index]
-            if let content = loadDisplayContent(for: item) {
-                createWindow(for: item, content: content)
-            } else {
-                recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
+    /// Global visibility commits once so a partial save cannot split a collage
+    /// or make Shortcuts report the requested state instead of the actual state.
+    private func setVisibility(_ ids: Set<UUID>, to visible: Bool) {
+        let changedIDs = Set(photos.filter { ids.contains($0.id) && $0.isVisible != visible }.map(\.id))
+        guard !changedIDs.isEmpty else { return }
+        cancelCollageInteractions()
+        let before = photos
+        var parents = Set<UUID>()
+        for index in photos.indices where changedIDs.contains(photos[index].id) {
+            photos[index].isVisible = visible
+            if let parent = photos[index].collageParentID { parents.insert(parent) }
+            if visible {
+                // Manual Show clears transient suppression until the next
+                // display/presence evaluation, preserving the stored preference.
+                photos[index].isHiddenForDisplay = false
+                photos[index].isHiddenForPresence = false
             }
-            if !item.spaceImageFilenames.isEmpty {
-                setupRotationTimer(for: item)
-            }
-        } else {
-            windows[id]?.hidePhoto()
-            windows.removeValue(forKey: id)
-            rotationTimers[id]?.cancel()
-            rotationTimers.removeValue(forKey: id)
         }
-        persist()
+        for parent in parents { fitCollageModel(parent) }
+        // Commit visibility and fitted bounds before closing or rebuilding any
+        // windows. A failed write must leave the displayed composition intact.
+        guard persist() else { photos = before; return }
+
+        // Create parents first so members inherit the collage's placement as
+        // they appear. Creating a parent may already restore its members.
+        let changed = photos.filter { changedIDs.contains($0.id) }.sorted {
+            $0.desktopCollage != nil && $1.desktopCollage == nil
+        }
+        for item in changed {
+            if visible {
+                if windows[item.id] == nil {
+                    if let content = loadDisplayContent(for: item) {
+                        createWindow(for: item, content: content)
+                    } else {
+                        recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
+                    }
+                }
+                if !item.spaceImageFilenames.isEmpty { setupRotationTimer(for: item) }
+            } else {
+                windows[item.id]?.hidePhoto()
+                windows.removeValue(forKey: item.id)
+                rotationTimers.removeValue(forKey: item.id)?.cancel()
+            }
+        }
+        for parent in parents { fitCollageWindow(parent) }
+        syncCollages()
+    }
+
+    // MARK: - Widget click action
+
+    func setClickAction(_ id: UUID, _ action: WidgetClickAction) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let previous = photos[index]
+        photos[index].clickAction = action
+        guard persist() else { photos[index] = previous; return }
+    }
+
+    /// Lock Position only affects geometry. Keep visibility and depth guards here because
+    /// stale callbacks must not activate a hidden or noninteractive widget.
+    func performClickAction(_ id: UUID) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let item = photos[index]
+        guard item.isVisible,
+              effectiveDepth(of: item).isInteractive,
+              collageAllowsWindow(item),
+              !item.isHiddenForDisplay,
+              !item.isHiddenForPresence else { return }
+
+        switch item.clickAction {
+        case .advance:
+            guard !item.spaceImageFilenames.isEmpty else { return }
+            nextFolderImage(id)
+        case .quickLook:
+            showQuickLook(for: id)
+        case .revealStoredMedia:
+            revealStoredMedia(id)
+        case .copyPath:
+            copyStoredMediaPath(id)
+        }
+    }
+
+    /// Resolves the currently displayed stored media. Spaces use their selected slot while a
+    /// regular widget uses its primary filename. The URL may point at missing media so Copy Path
+    /// remains useful for diagnosis; display actions check existence before opening anything.
+    func storedMediaURL(for id: UUID) -> URL? {
+        guard let item = photos.first(where: { $0.id == id }) else { return nil }
+        let filename: String
+        if !item.spaceImageFilenames.isEmpty {
+            filename = item.spaceImageFilenames[safe: item.folderImageIndex]
+                ?? item.spaceImageFilenames.first ?? item.filename
+        } else {
+            filename = item.filename
+        }
+        guard !filename.isEmpty else { return nil }
+        return storageDir.appendingPathComponent(filename)
+    }
+
+    func revealStoredMedia(_ id: UUID) {
+        guard let url = storedMediaURL(for: id),
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
+    }
+
+    func copyStoredMediaPath(_ id: UUID) {
+        guard let url = storedMediaURL(for: id) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.path, forType: .string)
+    }
+
+    func mediaPlaybackStatus(for id: UUID) -> VideoPlaybackStatus {
+        windows[id]?.mediaPlaybackStatus ?? .paused
+    }
+
+    private func showQuickLook(for id: UUID) {
+        guard let item = photos.first(where: { $0.id == id }),
+              let url = storedMediaURL(for: id),
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        showQuickLook(for: url, title: label(for: item))
+    }
+
+    private func showQuickLook(for url: URL, title: String) {
+        let previewItem = StoredMediaPreviewItem(url: url, title: title)
+        let dataSource = StoredMediaPreviewDataSource(item: previewItem)
+        quickLookDataSource = dataSource
+
+        // The app is an LSUIElement/accessory app and widget panels are deliberately
+        // non-activating. Activate before presenting Quick Look so the shared panel can become
+        // key and receive Escape/arrow-key focus instead of appearing behind the user's app.
+        NSApp.activate(ignoringOtherApps: true)
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = dataSource
+        panel.reloadData()
+        panel.makeKeyAndOrderFront(nil)
     }
 
     func resize(_ id: UUID, to width: CGFloat) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        guard width.isFinite, width > 0,
+              let index = photos.firstIndex(where: { $0.id == id }),
+              photos[index].desktopCollage == nil else { return }
+        cancelCollageInteractions()
+        let before = photos
+        let target: NSRect?
+        if let window = windows[id] {
+            guard let frame = window.frameForResizing(toWidth: width) else { return }
+            target = frame
+        } else {
+            // A hidden photo has no native view. Resize its stored aspect ratio
+            // so showing it or restoring a setup cannot resurrect the old size.
+            let frame = NSRectFromString(photos[index].frameString)
+            if frame.width.isFinite, frame.height.isFinite, frame.width > 0, frame.height > 0 {
+                let height = width * (frame.height / frame.width)
+                guard height.isFinite, height > 0 else { return }
+                target = NSRect(origin: frame.origin, size: NSSize(width: width, height: height))
+            } else { target = nil }
+        }
         photos[index].widgetWidth = width
+        if let target {
+            if windows[id] != nil { storeCollageFrame(id, target) }
+            else {
+                photos[index].frameString = NSStringFromRect(target)
+                if let display = photos[index].displayIdentifier {
+                    photos[index].savedDisplayFrames[display] = NSStringFromRect(target)
+                }
+            }
+            if photos[index].folderSizeMode == "dynamic",
+               let filename = photos[index].spaceImageFilenames[safe: photos[index].folderImageIndex] {
+                photos[index].folderImageConfigs[filename] = FolderImageConfig(frameString: NSStringFromRect(target), widgetWidth: width)
+            }
+        }
+        let parent = photos[index].collageParentID
+        if let parent { fitCollageModel(parent) }
+        guard persist() else { photos = before; return }
         windows[id]?.resizeTo(width: width)
-        persist()
+        if let parent { fitCollageWindow(parent) }
     }
 
-    // MARK: - v1.2 Naming & Organization
+    // MARK: - Naming & Organization
 
     func renamePhoto(_ id: UUID, to name: String) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let previous = photos[index]
         photos[index].customName = name.isEmpty ? nil : name
-        persist()
+        guard persist() else { photos[index] = previous; return }
     }
 
-    func replacePhoto(_ id: UUID, with newImage: NSImage) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let item = photos[index]
-        invalidateThumbnails(for: item)
+    @discardableResult
+    func replacePhoto(_ id: UUID, with newImage: NSImage) -> Bool {
+        guard let item = photos.first(where: { $0.id == id }), item.allowsManualMediaEditing,
+              !replacementConflictsWithArrangement(item),
+              let stored = saveImportedImage(newImage) else { return false }
+        return replaceStoredImage(id, with: stored, fidelity: .transformed)
+    }
 
-        // Stage the replacement before mutating the model. The generated filename means this
-        // is a copy in our store, not an in-place write that could damage the last known-good
-        // slot if encoding or decoding fails.
-        guard let stored = saveImportedImage(newImage) else { return }
-
-        // Only replace the primary file for single-image photos.
-        if item.spaceImageFilenames.isEmpty {
-            // The extension may change (still <-> animated), so this isn't
-            // always an in-place overwrite of the old file.
-            photos[index].filename = stored.filename
-
-            if let content = PhotoContent.load(from: stored.url) {
-                windows[id]?.swapImage(content, animate: true)
-            } else {
-                // Do not leave an undecodable replacement behind or change the model to point
-                // at it. `saveImportedImage` normally produces a loadable file, but this keeps
-                // a failed conversion recoverable if an encoder ever regresses.
-                recordMediaImportFailure("The replacement image could not be decoded after it was stored.")
-                photos[index].filename = item.filename
-                removeStoredFileIfUnreferenced(stored.filename)
-                return
-            }
-
+    /// Commit prepared image bytes directly so file replacements retain animation and format.
+    private func replaceStoredImage(
+        _ id: UUID,
+        with stored: (filename: String, url: URL),
+        fidelity: ArchiveMediaFidelity
+    ) -> Bool {
+        var committed = false
+        defer { if !committed { removeStoredFileIfUnreferenced(stored.filename) } }
+        guard let original = photos.first(where: { $0.id == id }), original.allowsManualMediaEditing else { return false }
+        guard let content = PhotoContent.load(from: stored.url) else {
+            recordMediaImportFailure("The replacement image could not be decoded after it was stored.")
+            return false
+        }
+        var replacement = original
+        let oldFilename: String
+        let preferredFrame: NSRect?
+        if original.spaceImageFilenames.isEmpty {
+            oldFilename = original.filename
+            preferredFrame = nil
+            replacement.filename = stored.filename
+            replacement.media = content.mediaModel
+            replacement.mediaFidelity = [stored.filename: fidelity]
         } else {
-            // A Space replacement targets the currently selected slot, not the whole Space.
-            // Use the persisted filenames as the source of truth: hidden widgets do not have a
-            // `spaceImages` entry yet, but must still get a durable replacement.
-            let currentIndex = item.spaceImageFilenames.indices.contains(item.folderImageIndex)
-                ? item.folderImageIndex
-                : 0
-            let oldFilename = item.spaceImageFilenames[currentIndex]
-            // Configs are keyed by filename, so a malformed/legacy Space can have two slots
-            // sharing one config. Keep the old key while another slot still uses it, and copy
-            // the same frame to the newly stored filename for the replaced slot.
-            let oldConfig = photos[index].folderImageConfigs[oldFilename]
-            photos[index].spaceImageFilenames[currentIndex] = stored.filename
-            if let oldConfig {
-                photos[index].folderImageConfigs[stored.filename] = oldConfig
+            let index = original.spaceImageFilenames.indices.contains(original.folderImageIndex) ? original.folderImageIndex : 0
+            oldFilename = original.spaceImageFilenames[index]
+            let configuration = original.folderImageConfigs[oldFilename]
+            preferredFrame = configuration.map { NSRectFromString($0.frameString) }
+            replacement.folderImageIndex = index
+            replacement.spaceImageFilenames[index] = stored.filename
+            replacement.mediaFidelity[stored.filename] = fidelity
+            replacement.playbackHistory.removeAll { $0 == oldFilename }
+            if let configuration { replacement.folderImageConfigs[stored.filename] = configuration }
+            // Historical slideshows may share a filename/configuration across slots.
+            if !replacement.spaceImageFilenames.contains(oldFilename) {
+                replacement.mediaFidelity.removeValue(forKey: oldFilename)
+                replacement.folderImageConfigs.removeValue(forKey: oldFilename)
             }
-            if !photos[index].spaceImageFilenames.contains(oldFilename) {
-                photos[index].folderImageConfigs.removeValue(forKey: oldFilename)
-            }
+        }
+        guard commitMediaReplacement(replacement, content: content, preferredFrame: preferredFrame) else { return false }
+        committed = true
+        if original.spaceImageFilenames.isEmpty {
+            for filename in storedMediaFilenames(for: original) { removeStoredFileIfUnreferenced(filename, excluding: id) }
+        } else {
+            removeStoredFileIfUnreferenced(oldFilename, excluding: id, spaceSlotIndex: replacement.folderImageIndex)
+        }
+        return true
+    }
 
-            // Keep the runtime URL cache in sync even when the widget is hidden (and therefore
-            // had never gone through loadDisplayContent). This also makes the next menu
-            // thumbnail/navigation lookup use the new bytes immediately.
-            var urls = photos[index].spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-            if urls.indices.contains(currentIndex) {
-                urls[currentIndex] = stored.url
-            }
-            spaceImages[id] = urls
-
-            guard let content = PhotoContent.load(from: stored.url) else {
-                // Restore the old slot/configuration if the staged file cannot be decoded.
-                recordMediaImportFailure("The replacement Space image could not be decoded after it was stored.")
-                photos[index].spaceImageFilenames[currentIndex] = oldFilename
-                if let oldConfig {
-                    photos[index].folderImageConfigs.removeValue(forKey: stored.filename)
-                    photos[index].folderImageConfigs[oldFilename] = oldConfig
-                }
-                spaceImages[id] = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-                removeStoredFileIfUnreferenced(stored.filename)
-                return
-            }
-
-            // Dynamic Spaces keep the replaced slot's saved photo frame. Fixed Spaces keep the
-            // existing frame regardless of the new image aspect ratio. Passing the mode here is
-            // important: the generic swap default is dynamic, which would resize fixed Spaces.
-            let targetFrame = oldConfig.map { NSRectFromString($0.frameString) }
-            windows[id]?.swapImage(
-                content,
-                targetFrame: targetFrame,
-                mode: item.folderSizeMode,
-                animate: true
-            )
-
+    /// URL-based replacement preserves a movie's managed bytes and generated poster.  Image
+    /// replacement also goes through the same preparation path, so animated files do not depend
+    /// on an NSImage round-trip when they are replaced from Finder.
+    @discardableResult
+    func replacePhoto(_ id: UUID, with sourceURL: URL) async -> ImportBatchResult {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else {
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .failed, reason: "The widget no longer exists.")
+            ])
         }
 
-        // The old filename was invalidated above; invalidate the new key too so this remains
-        // correct if a future ingest path reuses a generated filename in the same process.
-        invalidateThumbnails(for: photos[index])
-        let didPersist = persist()
-        if didPersist {
-            // Remove replaced bytes only after the new JSON is durable, and only when no other
-            // PhotoItem still references the filename. If saving fails, keep both files so the
-            // last known-good photos.json remains usable on the next launch.
-            if item.spaceImageFilenames.isEmpty {
-                removeStoredFileIfUnreferenced(item.filename, excluding: id)
-            } else {
-                let oldIndex = item.spaceImageFilenames.indices.contains(item.folderImageIndex)
-                    ? item.folderImageIndex
-                    : 0
-                removeStoredFileIfUnreferenced(
-                    item.spaceImageFilenames[oldIndex],
-                    excluding: id,
-                    spaceSlotIndex: oldIndex
-                )
+        guard photos[index].allowsManualMediaEditing else {
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .skipped,
+                      reason: "This widget is managed by its linked source. Change its folder or Photos collection instead.")
+            ])
+        }
+        let directory = storageDir
+        let generation = desktopGeneration
+        let original = photos[index]
+        let prepare = prepareImportedURL
+        beginMediaImport()
+        defer { endMediaImport() }
+        let prepared = await Task.detached(priority: .utility) {
+            prepare(sourceURL, directory)
+        }.value
+        guard let prepared else {
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .failed,
+                      reason: "The selected media could not be read, validated, or stored.")
+            ])
+        }
+
+        // Only the requested media may be replaced. A slideshow can advance, or a
+        // newer replacement can commit, while this request prepares off the main actor.
+        // Keep unrelated appearance/name edits by applying to the current item below.
+        guard !Task.isCancelled, desktopGeneration == generation,
+              let item = photos.first(where: { $0.id == id }), item.allowsManualMediaEditing,
+              item.filename == original.filename, item.media == original.media,
+              item.spaceImageFilenames == original.spaceImageFilenames,
+              item.folderImageIndex == original.folderImageIndex else {
+            discardPreparedMedia(prepared)
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .skipped, reason: "The desktop or widget changed during import. Choose the replacement again.")
+            ])
+        }
+        guard !replacementConflictsWithArrangement(item) else {
+            discardPreparedMedia(prepared)
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .skipped,
+                      reason: "Finish moving or editing this photo or its collage, then choose the replacement again.")
+            ])
+        }
+        if !item.spaceImageFilenames.isEmpty {
+            guard !prepared.media.kind.isVideoKind else {
+                discardPreparedMedia(prepared)
+                return ImportBatchResult(entries: [
+                    .init(source: sourceURL.lastPathComponent, status: .failed,
+                          reason: "Videos can be replaced only on standalone widgets.")
+                ])
             }
+            let saved = replaceStoredImage(id, with: (prepared.filename, prepared.url), fidelity: prepared.mediaFidelity)
+            if !saved { discardPreparedMedia(prepared) }
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: saved ? .accepted : .failed,
+                      reason: saved ? nil : "The replacement could not be saved.")
+            ])
+        }
+
+        guard replaceStandaloneMedia(id, with: prepared) else {
+            discardPreparedMedia(prepared)
+            return ImportBatchResult(entries: [
+                .init(source: sourceURL.lastPathComponent, status: .failed,
+                      reason: "The selected media could not be decoded after it was stored.")
+            ])
+        }
+        return ImportBatchResult(entries: [
+            .init(source: sourceURL.lastPathComponent, status: .accepted)
+        ])
+    }
+
+    private func replaceStandaloneMedia(_ id: UUID, with prepared: PhotoIngest.Prepared) -> Bool {
+        guard let original = photos.first(where: { $0.id == id }), original.spaceImageFilenames.isEmpty,
+              let content = PhotoContent.load(from: prepared.url, posterURL: prepared.posterURL,
+                                              pairedVideoURL: prepared.pairedVideoURL) else { return false }
+        var replacement = original
+        replacement.filename = prepared.filename
+        replacement.media = prepared.media
+        replacement.mediaFidelity = prepared.mediaFidelityByFilename
+        guard commitMediaReplacement(replacement, content: content) else { return false }
+        for filename in storedMediaFilenames(for: original) { removeStoredFileIfUnreferenced(filename, excluding: id) }
+        return true
+    }
+
+    /// Save content identity and its destination geometry before touching native media.
+    /// Failed writes keep the existing decoder/player, URL cache and collage scene intact.
+    private func commitMediaReplacement(_ replacement: PhotoItem, content: PhotoContent, preferredFrame: NSRect? = nil) -> Bool {
+        guard let index = photos.firstIndex(where: { $0.id == replacement.id }),
+              !replacementConflictsWithArrangement(photos[index]) else { return false }
+        let previous = photos
+        let original = photos[index]
+        let id = replacement.id
+        let mode = replacement.spaceImageFilenames.isEmpty ? "dynamic" : replacement.folderSizeMode
+        let frame = windows[id]?.photoFrame ?? NSRectFromString(original.frameString)
+        let size = replacement.reference.hasImageEdits
+            ? PhotoReferenceRenderer.outputSize(for: content.size, settings: replacement.reference) : content.size
+        let target = DesktopPhotoWindow.frameForSwapping(contentSize: size, photoFrame: frame,
+                                                        targetFrame: preferredFrame, mode: mode)
+        photos[index] = replacement
+        if let target {
+            if windows[id] != nil { storeCollageFrame(id, target) }
+            else {
+                photos[index].frameString = NSStringFromRect(target)
+                photos[index].widgetWidth = target.width
+                if let display = photos[index].displayIdentifier {
+                    photos[index].savedDisplayFrames[display] = NSStringFromRect(target)
+                }
+            }
+            if mode == "dynamic", let filename = replacement.spaceImageFilenames[safe: replacement.folderImageIndex] {
+                photos[index].folderImageConfigs[filename] = FolderImageConfig(frameString: NSStringFromRect(target), widgetWidth: target.width)
+            }
+        }
+        let parent = replacement.collageParentID
+        if let parent { fitCollageModel(parent) }
+        guard persist() else { photos = previous; return false }
+        invalidateThumbnails(for: original)
+        invalidateThumbnails(for: photos[index])
+        if !replacement.spaceImageFilenames.isEmpty {
+            spaceImages[id] = replacement.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+        }
+        // This transaction already owns the fitted bounds. The normal swap callback
+        // would save them a second time after the native content had changed.
+        windows[id]?.swapImage(content, targetFrame: target, mode: mode, animate: true, notifyGeometryChange: false)
+        if let parent { fitCollageWindow(parent) }
+        return true
+    }
+
+    /// A replacement changes this scene's media geometry. Leave unrelated scenes
+    /// alone, and never cancel a gesture just because background preparation ends.
+    func replacementConflictsWithArrangement(_ item: PhotoItem) -> Bool {
+        let root = item.collageParentID ?? item.id
+        let sceneIDs = Set([root] + collageMembers(root).map(\.id))
+        return hasArrangementInteraction(affecting: sceneIDs)
+    }
+
+    /// Background source refreshes keep one completed result pending until its
+    /// affected scene is idle. Revalidate identity after each cancellable wait;
+    /// ordinary idle operation creates no polling task.
+    func waitForMediaReplacement(_ currentIndex: () -> Int?, onWait: () -> Void = {}) async -> Int? {
+        var reportedWait = false
+        while !Task.isCancelled, let index = currentIndex() {
+            if !replacementConflictsWithArrangement(photos[index]) { return index }
+            if !reportedWait { onWait(); reportedWait = true }
+            do { try await Task.sleep(for: .milliseconds(100)) }
+            catch { return nil }
+        }
+        return nil
+    }
+
+    private func storedMediaFilenames(for item: PhotoItem) -> [String] {
+        [item.filename, item.media.posterFilename, item.media.pairedVideoFilename]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+    }
+
+    private func discardPreparedMedia(_ prepared: PhotoIngest.Prepared) {
+        for url in prepared.managedURLs {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
     func duplicatePhoto(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        let original = photos[index]
+        guard let original = photos.first(where: { $0.id == id }), original.desktopCollage == nil else { return }
+        let previous = photos
+        var newItem = PhotoItem(filename: "", width: original.widgetWidth)
+        newItem.customName = (original.customName ?? "Photo") + " (Copy)"
+        copyAppearanceSettings(from: original, to: &newItem)
 
-        if !original.spaceImageFilenames.isEmpty {
-            // Duplicate folder photo — just copy the settings
-            var newItem = PhotoItem(filename: "")
-            newItem.customName = (original.customName ?? "Photo") + " (Copy)"
-            newItem.spaceImageFilenames = original.spaceImageFilenames
-            newItem.rotationInterval = original.rotationInterval
-            newItem.folderImageIndex = original.folderImageIndex
-            newItem.widgetWidth = original.widgetWidth
-            copyAppearanceSettings(from: original, to: &newItem)
-
-            // Offset position
-            if !original.frameString.isEmpty {
-                var rect = NSRectFromString(original.frameString)
-                rect.origin.x += 30
-                rect.origin.y -= 30
-                newItem.frameString = NSStringFromRect(rect)
-            }
-
-            photos.append(newItem)
-
-            if let images = spaceImages[original.id],
-               let imageURL = images[safe: newItem.folderImageIndex],
-               let content = PhotoContent.load(from: imageURL) {
-                spaceImages[newItem.id] = images
-                createWindow(for: newItem, content: content)
-                setupRotationTimer(for: newItem)
-            }
-        } else {
-            // Copy the file, preserving its extension -- an animated photo
-            // is stored as `.gif`, and renaming the copy to `.jpg` while
-            // keeping GIF bytes would make PhotoContent.load misidentify it
-            // as a still on the next load.
-            let ext = (original.filename as NSString).pathExtension
-            let newFilename = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
-            let srcURL = storageDir.appendingPathComponent(original.filename)
-            let dstURL = storageDir.appendingPathComponent(newFilename)
-            try? FileManager.default.copyItem(at: srcURL, to: dstURL)
-
-            var newItem = PhotoItem(filename: newFilename, width: original.widgetWidth)
-            newItem.customName = (original.customName ?? "Photo") + " (Copy)"
-            copyAppearanceSettings(from: original, to: &newItem)
-
-            // Offset position
-            if !original.frameString.isEmpty {
-                var rect = NSRectFromString(original.frameString)
-                rect.origin.x += 30
-                rect.origin.y -= 30
-                newItem.frameString = NSStringFromRect(rect)
-            }
-
-            photos.append(newItem)
-
-            if let content = PhotoContent.load(from: dstURL) {
-                createWindow(for: newItem, content: content)
+        var copiedNames: [String: String] = [:]
+        var committed = false
+        defer {
+            if !committed {
+                for name in copiedNames.values {
+                    try? FileManager.default.removeItem(at: storageDir.appendingPathComponent(name))
+                }
             }
         }
 
-        persist()
+        let images: [URL]?
+        if !original.spaceImageFilenames.isEmpty {
+            newItem.spaceImageFilenames = original.spaceImageFilenames
+            newItem.rotationInterval = original.rotationInterval
+            newItem.customRotationSeconds = original.customRotationSeconds
+            newItem.folderSizeMode = original.folderSizeMode
+            newItem.folderImageConfigs = original.folderImageConfigs
+            newItem.folderImageIndex = original.folderImageIndex
+            newItem.mediaFidelity = original.mediaFidelity
+            // A duplicate shares the managed snapshot and source metadata. This does not copy
+            // source bytes and keeps the duplicate eligible for the same relink workflow.
+            newItem.liveFolderSource = original.liveFolderSource
+            newItem.liveFolderEntries = original.liveFolderEntries
+            newItem.photosLibrarySource = original.photosLibrarySource
+            newItem.photosLibraryAssets = original.photosLibraryAssets
+            // Hidden slideshows need not have a live URL cache. The saved managed
+            // filenames, not the original window's lifetime, own their content.
+            images = original.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
+        } else {
+            // Copy the primary file and every related managed artifact.  A movie's poster and a
+            // Live Photo's paired movie are content, not optional cache, so the duplicate must
+            // receive fresh filenames and a remapped model.
+            guard let newFilename = copyManagedFile(named: original.filename) else { return }
+            copiedNames[original.filename] = newFilename
+            for related in [original.media.posterFilename, original.media.pairedVideoFilename].compactMap({ $0 }) where copiedNames[related] == nil {
+                guard let copied = copyManagedFile(named: related) else { return }
+                copiedNames[related] = copied
+            }
+            newItem.filename = newFilename
+            newItem.media = PhotoMedia(
+                kind: original.media.kind,
+                posterFilename: original.media.posterFilename.flatMap { copiedNames[$0] },
+                pairedVideoFilename: original.media.pairedVideoFilename.flatMap { copiedNames[$0] },
+                isMuted: original.media.isMuted
+            )
+            newItem.mediaFidelity = copiedNames.reduce(into: [:]) { result, pair in
+                result[pair.value] = original.mediaFidelity[pair.key] ?? .unknown
+            }
+            images = nil
+        }
+
+        func offsetFrame(_ string: String) -> String {
+            guard !string.isEmpty else { return string }
+            return NSStringFromRect(NSRectFromString(string).offsetBy(dx: 30, dy: -30))
+        }
+        newItem.frameString = offsetFrame(original.frameString)
+        newItem.folderImageConfigs = newItem.folderImageConfigs.mapValues { configuration in
+            var copy = configuration
+            copy.frameString = offsetFrame(copy.frameString)
+            return copy
+        }
+
+        let content: PhotoContent?
+        if let images {
+            content = images[safe: newItem.folderImageIndex].flatMap {
+                loadMediaContent(for: newItem, filename: $0.lastPathComponent, primaryURL: $0)
+            }
+        } else {
+            content = loadMediaContent(for: newItem, primaryURL: storageDir.appendingPathComponent(newItem.filename))
+        }
+        guard let content else {
+            recordMediaImportFailure("The stored image for \(label(for: original)) could not be decoded. No duplicate was added.")
+            return
+        }
+        photos.append(newItem)
+        guard persist() else { photos = previous; return }
+        committed = true
+
+        // Publish runtime resources only after the duplicate is durable. A failed
+        // save leaves the original windows, playback and managed files untouched.
+        if let images { spaceImages[newItem.id] = images }
+        createWindow(for: newItem, content: content)
+        if images != nil { setupRotationTimer(for: newItem) }
+        if newItem.liveFolderSource != nil { installLiveFolderWatcher(for: newItem) }
     }
 
-    func movePhoto(from sourceIndex: Int, to destinationIndex: Int) {
-        guard sourceIndex != destinationIndex,
-              sourceIndex >= 0, sourceIndex < photos.count,
-              destinationIndex >= 0, destinationIndex < photos.count else { return }
-        let item = photos.remove(at: sourceIndex)
-        photos.insert(item, at: destinationIndex)
-        persist()
+    private func copyManagedFile(named filename: String) -> String? {
+        guard !filename.isEmpty else { return nil }
+        let sourceURL = storageDir.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return nil }
+        let ext = (filename as NSString).pathExtension
+        let copyName = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
+        let destinationURL = storageDir.appendingPathComponent(copyName)
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+            return copyName
+        } catch {
+            return nil
+        }
     }
 
     private func copyAppearanceSettings(from src: PhotoItem, to dst: inout PhotoItem) {
@@ -1036,6 +1668,11 @@ class PhotoManager: ObservableObject {
         dst.stackOrder = src.stackOrder
         dst.opacity = src.opacity
         dst.revealOnHover = src.revealOnHover
+        dst.clickAction = src.clickAction
+        dst.playbackOrder = src.playbackOrder
+        dst.playbackSeed = src.playbackSeed
+        dst.playbackStep = src.playbackStep
+        dst.playbackHistory = src.playbackHistory
         dst.cornerRadius = src.cornerRadius
         dst.shadowEnabled = src.shadowEnabled
         dst.shadowBlur = src.shadowBlur
@@ -1045,7 +1682,7 @@ class PhotoManager: ObservableObject {
         dst.vignetteEnabled = src.vignetteEnabled
         dst.isSpaceBound = src.isSpaceBound
 
-        // v2.2 frame styling. Duplicating a photo is almost always "give me
+        // frame styling. Duplicating a photo is almost always "give me
         // another one of these", so a copy that silently lost its mat, shape and
         // tilt would be the wrong answer.
         dst.matWidth = src.matWidth
@@ -1056,6 +1693,8 @@ class PhotoManager: ObservableObject {
         dst.borderGradientColorHex = src.borderGradientColorHex
         dst.tiltDegrees = src.tiltDegrees
         dst.stylePreset = src.stylePreset
+        dst.focalPoint = src.focalPoint
+        dst.reference = src.reference
 
         // displayIdentifier / savedDisplayFrames / isHiddenForDisplay intentionally not copied —
         // the duplicate gets its own window and should pick up its own home display from
@@ -1065,49 +1704,32 @@ class PhotoManager: ObservableObject {
         // describes the current moment, not the photo.
     }
 
-    // MARK: - v1.3 Aesthetic Controls
+    // MARK: - Aesthetic Controls
 
     func setCornerRadius(_ id: UUID, _ value: CGFloat) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].cornerRadius = value
-        (windows[id]?.contentView as? DraggablePhotoView)?.setCornerRadius(value)
-        persist()
+        guard value.isFinite else { return }
+        editAppearance(id) { $0.cornerRadius = max(0, value) }
     }
 
     func setShadow(_ id: UUID, enabled: Bool, blur: CGFloat, opacity: CGFloat) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].shadowEnabled = enabled
-        photos[index].shadowBlur = blur
-        photos[index].shadowOpacity = opacity
-        windows[id]?.applyShadowSettings(enabled: enabled, blur: blur, opacity: opacity)
-        persist()
+        guard blur.isFinite, opacity.isFinite else { return }
+        editAppearance(id) {
+            $0.shadowEnabled = enabled
+            $0.shadowBlur = max(0, blur)
+            $0.shadowOpacity = min(1, max(0, opacity))
+        }
     }
 
     func setBorder(_ id: UUID, width: CGFloat, colorHex: String) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].borderWidth = width
-        photos[index].borderColorHex = colorHex
-        let color = NSColor.fromHex(colorHex) ?? .white
-        (windows[id]?.contentView as? DraggablePhotoView)?.applyBorder(width: width, color: color)
-        persist()
+        guard width.isFinite else { return }
+        editAppearance(id) { $0.borderWidth = max(0, width); $0.borderColorHex = colorHex }
     }
 
     func setVignette(_ id: UUID, enabled: Bool) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].vignetteEnabled = enabled
-        if enabled {
-            (windows[id]?.contentView as? DraggablePhotoView)?.applyVignette()
-        } else {
-            (windows[id]?.contentView as? DraggablePhotoView)?.removeVignette()
-        }
-        persist()
+        editAppearance(id) { $0.vignetteEnabled = enabled }
     }
 
-    // MARK: - v1.4 Smart Canvas
-
-
-
-
+    // MARK: - Smart Canvas
 
     func nextFolderImage(_ id: UUID) {
         guard let index = photos.firstIndex(where: { $0.id == id }),
@@ -1116,20 +1738,33 @@ class PhotoManager: ObservableObject {
 
         let item = photos[index]
 
-        if item.folderSizeMode == "dynamic" {
-            saveFolderImageConfig(for: id)
-        }
+        if replacementConflictsWithArrangement(item) { return }
 
-        // Advance
-        photos[index].folderImageIndex = (photos[index].folderImageIndex + 1) % images.count
-        let imageURL = images[photos[index].folderImageIndex]
+        let selection = SpacePlaybackSelector.nextSelection(
+            filenames: item.spaceImageFilenames,
+            currentIndex: item.folderImageIndex,
+            order: item.playbackOrder,
+            seed: item.playbackSeed,
+            step: item.playbackStep,
+            history: item.playbackHistory
+        )
+        guard let selection else { return }
 
-        if let content = PhotoContent.load(from: imageURL) {
-            let key = imageURL.lastPathComponent
-            let targetFrame = item.folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-            windows[id]?.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
+        if item.folderSizeMode == "dynamic" { saveFolderImageConfig(for: id) }
+        photos[index].folderImageIndex = selection.index
+        photos[index].playbackStep = selection.step
+        photos[index].playbackHistory = selection.history
+        let imageURL = images[selection.index]
+        let currentItem = photos[index]
+
+        guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
+            photos[index] = item
+            recordMediaImportFailure("The next slideshow image could not be decoded. The current image has been kept.")
+            return
         }
-        persist()
+        guard persist() else { photos[index] = item; return }
+        let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
+        windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
     }
 
     func prevFolderImage(_ id: UUID) {
@@ -1138,46 +1773,81 @@ class PhotoManager: ObservableObject {
 
         let item = photos[index]
 
+        if replacementConflictsWithArrangement(item) { return }
+
         if item.folderSizeMode == "dynamic" {
             saveFolderImageConfig(for: id)
         }
 
-        // Go back
+        // Go back. No-repeat has no inverse without retaining a full replay stack, so a manual
+        // previous action starts a fresh bag from the newly displayed image.
         let currentIndex = photos[index].folderImageIndex
-        photos[index].folderImageIndex = currentIndex > 0 ? currentIndex - 1 : images.count - 1
-        let imageURL = images[photos[index].folderImageIndex]
-
-        if let content = PhotoContent.load(from: imageURL) {
-            let key = imageURL.lastPathComponent
-            let targetFrame = item.folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-            windows[id]?.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: true)
+        let previousIndex = SpacePlaybackSelector.previousIndex(
+            filenames: item.spaceImageFilenames,
+            currentIndex: currentIndex,
+            order: item.playbackOrder
+        ) ?? (currentIndex > 0 ? currentIndex - 1 : images.count - 1)
+        photos[index].folderImageIndex = previousIndex
+        photos[index].playbackStep &+= 1
+        if item.playbackOrder == .noRepeat {
+            photos[index].playbackHistory = [item.spaceImageFilenames[previousIndex]]
+        } else {
+            photos[index].playbackHistory = []
         }
-        persist()
+        let imageURL = images[previousIndex]
+        let currentItem = photos[index]
+
+        guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
+            photos[index] = item
+            recordMediaImportFailure("The previous slideshow image could not be decoded. The current image has been kept.")
+            return
+        }
+        guard persist() else { photos[index] = item; return }
+        let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
+        windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
+    }
+
+    func setPlaybackOrder(_ id: UUID, _ order: SpacePlaybackOrder) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index]
+        photos[index].playbackOrder = order
+        photos[index].playbackStep = 0
+
+        if order == .noRepeat,
+           !photos[index].spaceImageFilenames.isEmpty {
+            let filenames = photos[index].spaceImageFilenames
+            let currentIndex = filenames.indices.contains(photos[index].folderImageIndex)
+                ? photos[index].folderImageIndex
+                : filenames.startIndex
+            photos[index].playbackHistory = [filenames[currentIndex]]
+        } else {
+            photos[index].playbackHistory = []
+        }
+        guard persist() else { photos[index] = before; return }
     }
 
     func setRotationInterval(_ id: UUID, _ interval: String) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index].rotationInterval
         photos[index].rotationInterval = interval
-        rotationTimers[id]?.cancel()
-        rotationTimers.removeValue(forKey: id)
+        guard persist() else { photos[index].rotationInterval = before; return }
         setupRotationTimer(for: photos[index])
-        persist()
     }
 
     func setCustomRotationSeconds(_ id: UUID, _ seconds: Int) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index].customRotationSeconds
         photos[index].customRotationSeconds = max(5, seconds)  // minimum 5 seconds
+        guard persist() else { photos[index].customRotationSeconds = before; return }
         // Restart timer if currently on custom
         if photos[index].rotationInterval == "custom" {
-            rotationTimers[id]?.cancel()
-            rotationTimers.removeValue(forKey: id)
             setupRotationTimer(for: photos[index])
         }
-        persist()
     }
 
     func setFolderSizeMode(_ id: UUID, _ mode: String) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index]
         let oldMode = photos[index].folderSizeMode
         photos[index].folderSizeMode = mode
 
@@ -1188,17 +1858,24 @@ class PhotoManager: ObservableObject {
                 photos[index].widgetWidth = window.photoFrame.width
             }
         }
+        guard persist() else { photos[index] = before; return }
+
+        if let view = windows[id]?.contentView as? DraggablePhotoView {
+            view.setFocalPoint(
+                photos[index].focalPoint,
+                cropEnabled: !photos[index].spaceImageFilenames.isEmpty && mode == "fixed"
+            )
+        }
 
         // Trigger an immediate swap so the window resizes or adapts to the new mode
-        if let images = spaceImages[id], !images.isEmpty {
-            let imageURL = images[photos[index].folderImageIndex]
-            if let content = PhotoContent.load(from: imageURL) {
+        if let images = spaceImages[id], !images.isEmpty,
+           let imageURL = images[safe: photos[index].folderImageIndex] {
+            if let content = loadMediaContent(for: photos[index], filename: imageURL.lastPathComponent, primaryURL: imageURL) {
                 let key = imageURL.lastPathComponent
                 let targetFrame = photos[index].folderImageConfigs[key].map { NSRectFromString($0.frameString) }
                 windows[id]?.swapImage(content, targetFrame: targetFrame, mode: mode, animate: true)
             }
         }
-        persist()
     }
 
     func folderImageCount(_ id: UUID) -> Int {
@@ -1207,25 +1884,64 @@ class PhotoManager: ObservableObject {
             ?? 0
     }
 
+    /// Runtime policy owns whether an automatic Space timer should exist. Cancelling the timer
+    /// while a widget is fully occluded or the system is conserving energy avoids waking the app
+    /// every interval; becoming visible again starts a fresh interval without changing the
+    /// current slot or any persisted layout.
+    private func handleRuntimeActivityChanged(_ id: UUID, decision: RuntimeActivityDecision) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
 
+        if decision.allowsRotation,
+           photos[index].isVisible,
+           !photos[index].isHiddenForDisplay,
+           !photos[index].isHiddenForPresence,
+           (!photos[index].spaceImageFilenames.isEmpty) {
+            setupRotationTimer(for: photos[index])
+        } else {
+            rotationTimers[id]?.cancel()
+            rotationTimers.removeValue(forKey: id)
+        }
+    }
 
     func setupRotationTimer(for item: PhotoItem) {
-        let interval: TimeInterval?
+        // Rebuilding a timer is intentionally idempotent: runtime policy can deliver an
+        // activation update at the same time as a normal visibility/settings path.
+        rotationTimers[item.id]?.cancel()
+        rotationTimers.removeValue(forKey: item.id)
+
+        let seconds: Int?
         switch item.rotationInterval {
-        case "30s":    interval = 30
-        case "5m":     interval = 300
-        case "hourly": interval = 3600
-        case "daily":  interval = 86400
-        case "custom": interval = TimeInterval(max(5, item.customRotationSeconds))
-        default:       interval = nil   // "click" doesn't use timers
+        case "30s":    seconds = 30
+        case "5m":     seconds = 300
+        case "hourly": seconds = 3600
+        case "daily":  seconds = 86400
+        case "custom": seconds = max(5, item.customRotationSeconds)
+        default:       seconds = nil   // "click" doesn't use timers
         }
 
-        guard let seconds = interval else { return }
+        guard let seconds else { return }
+        guard item.isVisible,
+              !item.isHiddenForDisplay,
+              !item.isHiddenForPresence,
+              (!item.spaceImageFilenames.isEmpty),
+              let window = windows[item.id],
+              window.runtimeActivityDecision.allowsRotation else { return }
 
+        let itemID = item.id
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + seconds, repeating: seconds)
+        // The floating-point repeating overload traps when seconds overflow its
+        // nanosecond conversion. Integral intervals safely saturate without
+        // changing a large custom value retained in the user's saved layout.
+        let interval = DispatchTimeInterval.seconds(seconds)
+        timer.schedule(deadline: .now() + interval, repeating: interval,
+                       leeway: .milliseconds(Int(min(1, TimeInterval(seconds) * 0.05) * 1000)))
         timer.setEventHandler { [weak self] in
-            self?.nextFolderImage(item.id)
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let window = self.windows[itemID],
+                      window.runtimeActivityDecision.allowsRotation else { return }
+                self.nextFolderImage(itemID)
+            }
         }
         timer.resume()
         rotationTimers[item.id] = timer
@@ -1245,7 +1961,7 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    // MARK: - v1.5 Per-Display Profiles
+    // MARK: - Per-Display Profiles
 
     /// Ensures a saved frame is still reachable. Display geometry can shift between sessions
     /// (different arrangement, different resolution/scale), and a frame computed for a display
@@ -1261,9 +1977,54 @@ class PhotoManager: ObservableObject {
         return clamped
     }
 
+    /// A container and its photos relocate as one scene. Clamping each photo
+    /// separately after a monitor rearrangement destroys its saved arrangement.
+    private func restoreCollageFramesToVisibleScreens(only ids: Set<UUID>? = nil) {
+        for parent in photos.filter({ $0.desktopCollage != nil && ids?.contains($0.id) != false }) {
+            let original = NSRectFromString(parent.frameString)
+            guard original.width > 0, original.height > 0 else { continue }
+            let target = clampToVisibleScreens(original)
+            guard target.origin != original.origin else { continue }
+            for i in photos.indices where photos[i].id == parent.id || photos[i].collageParentID == parent.id {
+                let dx = target.minX - original.minX, dy = target.minY - original.minY
+                let frame = NSRectFromString(photos[i].frameString).offsetBy(dx: dx, dy: dy)
+                photos[i].frameString = NSStringFromRect(frame)
+                if parent.desktopCollage != nil {
+                    for key in Array(photos[i].folderImageConfigs.keys) {
+                        if var config = photos[i].folderImageConfigs[key] {
+                            config.frameString = NSStringFromRect(NSRectFromString(config.frameString).offsetBy(dx: dx, dy: dy))
+                            photos[i].folderImageConfigs[key] = config
+                        }
+                    }
+                }
+                windows[photos[i].id]?.setPhotoFrame(frame)
+            }
+        }
+    }
+
+    /// A monitor may reconnect while Arras is closed, producing no live delta.
+    func reconcileDisplayPresence(connected: Set<String>, only ids: Set<UUID>? = nil) {
+        for index in photos.indices where ids?.contains(photos[index].id) != false {
+            guard let display = photos[index].displayIdentifier else { continue }
+            let wasHidden = photos[index].isHiddenForDisplay
+            photos[index].isHiddenForDisplay = !connected.contains(display)
+            if wasHidden && !photos[index].isHiddenForDisplay,
+               let frame = photos[index].savedDisplayFrames[display] {
+                photos[index].frameString = frame
+            }
+        }
+    }
+
     private func handleScreenParametersChanged() {
         let diff = DisplayManager.shared.diffScreens()
-        guard !diff.connected.isEmpty || !diff.disconnected.isEmpty else { return }
+        handleScreenChanges(connected: diff.connected, disconnected: diff.disconnected)
+    }
+
+    func handleScreenChanges(connected: Set<String>, disconnected: Set<String>) {
+        let diff = (connected: connected, disconnected: disconnected)
+        // Display profiles must capture durable geometry, never an unfinished
+        // resize preview from a window that is about to disappear.
+        cancelCollageInteractions(endAppearancePreviews: true)
 
         // Hide photos whose home display just vanished, remembering exactly where they were.
         if !diff.disconnected.isEmpty {
@@ -1284,47 +2045,50 @@ class PhotoManager: ObservableObject {
             }
         }
 
-        // Restore photos whose home display just reappeared.
+        // Restore the model before rebuilding windows, so a reconnected group
+        // can be translated together onto the display's new coordinate origin.
         if !diff.connected.isEmpty {
             for index in photos.indices {
                 guard photos[index].isVisible, photos[index].isHiddenForDisplay,
-                      let displayId = photos[index].displayIdentifier,
-                      diff.connected.contains(displayId) else { continue }
-
+                      let displayId = photos[index].displayIdentifier, diff.connected.contains(displayId) else { continue }
                 photos[index].isHiddenForDisplay = false
-                if let savedFrame = photos[index].savedDisplayFrames[displayId] {
-                    let rect = clampToVisibleScreens(NSRectFromString(savedFrame))
-                    photos[index].frameString = NSStringFromRect(rect)
-                }
-
-                let item = photos[index]
-                guard let content = loadDisplayContent(for: item) else {
-                    recordMediaImportFailure("The stored image for \(label(for: item)) could not be decoded.")
-                    continue
-                }
-                createWindow(for: item, content: content)
-                if !item.spaceImageFilenames.isEmpty {
-                    setupRotationTimer(for: item)
-                }
+                if let savedFrame = photos[index].savedDisplayFrames[displayId] { photos[index].frameString = savedFrame }
             }
         }
+        restoreCollageFramesToVisibleScreens()
+        for item in photos where item.isVisible && !item.isHiddenForDisplay && !item.isHiddenForPresence {
+            if windows[item.id] == nil {
+                guard let content = loadDisplayContent(for: item) else { continue }
+                createWindow(for: item, content: content)
+                if !item.spaceImageFilenames.isEmpty { setupRotationTimer(for: item) }
+            } else if item.collageParentID == nil && item.desktopCollage == nil, let window = windows[item.id] {
+                let frame = clampToVisibleScreens(window.photoFrame)
+                if frame != window.photoFrame { window.setPhotoFrame(frame) }
+            }
+        }
+        saveAllPositions()
 
+        syncCollages()
         persist()
     }
 
-    // MARK: - v1.5 Space Binding
+    // MARK: - Space Binding
 
     /// Space binding is best-effort: see the comment on `DesktopPhotoWindow.setSpaceBound` —
     /// there's no public API to target a specific Space by identity, so this pins the photo to
     /// whichever Space it's on right now rather than a persistent Space #N.
     func setSpaceBound(_ id: UUID, _ bound: Bool) {
+        if let parent = photos.first(where: { $0.id == id })?.collageParentID { setSpaceBound(parent, bound); return }
+        if !collageMoveSnapshots.isEmpty { cancelCollageInteractions() }
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        let before = photos[index].isSpaceBound
         photos[index].isSpaceBound = bound
+        guard persist() else { photos[index].isSpaceBound = before; return }
         windows[id]?.setSpaceBound(bound)
-        persist()
+        syncCollages()
     }
 
-    // MARK: - v1.6 Presence & Privacy
+    // MARK: - Presence & Privacy
 
     /// Copies PresenceMonitor's current values into the published mirrors, with no other
     /// side effects. Used once at construction, before `loadSaved()` -- unlike
@@ -1344,6 +2108,7 @@ class PhotoManager: ObservableObject {
     /// which windows should currently exist.
     private func syncPresenceState() {
         mirrorPresenceState()
+        runtimeActivity.setPresenceSuppressed(presence.shouldSuppressForPresence)
         applyScreenCaptureExclusion()
         reevaluatePresence()
     }
@@ -1353,6 +2118,7 @@ class PhotoManager: ObservableObject {
         for window in windows.values {
             window.sharingType = type
         }
+        for window in collageLabelWindows.values { window.sharingType = type }
     }
 
     /// Whether `item` should currently be hidden for the global presence heuristics (fullscreen
@@ -1390,15 +2156,16 @@ class PhotoManager: ObservableObject {
                 }
             }
         }
+        syncCollages()
         persist()
     }
 
-    /// Reliable: sets `NSWindow.sharingType = .none` on every photo window, which the
-    /// window server itself honors for any screen recording or video-conferencing share.
-    /// See the type-level comment on `PresenceMonitor` for exactly what this does and
-    /// does not cover.
+    /// Retains the legacy window-sharing request for compatible capture tools.
+    /// It does not guarantee exclusion from recording or sharing; see PresenceMonitor.
     func setExcludeFromScreenCapture(_ enabled: Bool) {
         presence.setExcludeFromScreenCapture(enabled)
+        mirrorPresenceState()
+        applyScreenCaptureExclusion()
     }
 
     /// Best-effort: auto-hides every photo while a known conferencing/recording app
@@ -1436,23 +2203,32 @@ class PhotoManager: ObservableObject {
         } else {
             sourceName = item.filename
         }
-        let cacheKey = "\(sourceName)@\(Int(size))" as NSString
+        let referenceKey = item.reference.renderKey
+        let cacheKey = "\(sourceName)@\(Int(size))@\(referenceKey)" as NSString
         if let cached = thumbnailCache.object(forKey: cacheKey) { return cached }
 
+        // UI thumbnails need one small still, never a decoded animation or a player.
+        let media = item.photosLibraryAssets.first(where: { $0.managedFilename == sourceName })?.media
+            ?? (item.filename == sourceName ? item.media : .still)
+        let primaryURL = storageDir.appendingPathComponent(sourceName)
+        let previewURL = media.posterFilename.map { storageDir.appendingPathComponent($0) } ?? primaryURL
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
         let image: NSImage?
-        if !item.spaceImageFilenames.isEmpty {
-            let images = spaceImages[item.id] ?? item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-            if let imageURL = images[safe: item.folderImageIndex] {
-                image = NSImage(contentsOf: imageURL)
-            } else {
-                image = images.first.flatMap { NSImage(contentsOf: $0) }
-            }
+        if let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+           let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceThumbnailMaxPixelSize: max(1, Int(size * scale)),
+               kCGImageSourceShouldCacheImmediately: true
+           ] as CFDictionary) {
+            image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        } else if VideoMediaSupport.isSupportedVideoURL(primaryURL) {
+            image = VideoMediaSupport.posterImage(for: primaryURL)
         } else {
-            let url = storageDir.appendingPathComponent(item.filename)
-            image = NSImage(contentsOf: url)
+            image = nil
         }
 
-        guard let sourceImage = image, sourceImage.size.width > 0, sourceImage.size.height > 0 else {
+        guard let image, let sourceImage = PhotoReferenceRenderer.image(image, settings: item.reference), sourceImage.size.width > 0, sourceImage.size.height > 0 else {
             return nil
         }
 
@@ -1464,7 +2240,6 @@ class PhotoManager: ObservableObject {
         // silently came out blank while the same image drew correctly in the SwiftUI
         // settings list. Baking a bitmap also means the scale/crop maths runs once
         // instead of on every redraw.
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
         let pixels = Int((size * scale).rounded())
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
@@ -1499,20 +2274,16 @@ class PhotoManager: ObservableObject {
 
         let thumb = NSImage(size: NSSize(width: size, height: size))
         thumb.addRepresentation(rep)
-        thumbnailCache.setObject(thumb, forKey: cacheKey)
+        thumbnailCache.setObject(thumb, forKey: cacheKey, cost: rep.bytesPerRow * rep.pixelsHigh)
         return thumb
     }
 
     /// Drops cached thumbnails for a photo. Called wherever the bytes behind a filename can
     /// change or go away.
     func invalidateThumbnails(for item: PhotoItem) {
-        var names = item.spaceImageFilenames
-        names.append(item.filename)
-        for name in names {
-            for size in [16, 48] {
-                thumbnailCache.removeObject(forKey: "\(name)@\(size)" as NSString)
-            }
-        }
+        // A filename can have thumbnails for multiple saved edits and arbitrary sizes.
+        // Invalidating the bounded cache also clears those snapshot variants.
+        thumbnailCache.removeAllObjects()
     }
 
     /// Label for a photo.

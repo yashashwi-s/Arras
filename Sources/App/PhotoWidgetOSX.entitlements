@@ -9,14 +9,16 @@
 	  bundle in /Applications and spawn a helper that outlives the process to do
 	  the swap; the sandbox forbids both, so self-updating and the sandbox are
 	  mutually exclusive. Notarization does not require sandboxing, so this is a
-	  legitimate Developer ID configuration — it only rules out the App Store,
-	  which is what the separate Tableau-MAS target (still sandboxed, updater
-	  compiled out) exists for.
+	  legitimate Developer ID configuration — it only rules out the App Store.
 
 	  Consequence: the app's Application Support directory moves out of
 	  ~/Library/Containers. StorageMigration.swift carries existing data across.
 	-->
 	<key>com.apple.security.automation.apple-events</key>
 	<false/>
+	<!-- PhotoKit album sync requires this resource entitlement with Hardened Runtime,
+	     in addition to NSPhotoLibraryUsageDescription and the user's TCC approval. -->
+	<key>com.apple.security.personal-information.photos-library</key>
+	<true/>
 </dict>
 </plist>

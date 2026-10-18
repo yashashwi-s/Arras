@@ -51,6 +51,7 @@ jobs:
       - name: Verify Intel architecture
         run: |
           APP_PATH="build/Intel/Arras.app"
+          python3 scripts/validate_app_bundle.py "$APP_PATH"
           test -d "$APP_PATH"
           test "$(lipo -archs "$APP_PATH/Contents/MacOS/Arras")" = "x86_64"
 

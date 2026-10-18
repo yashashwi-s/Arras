@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 import QuartzCore
 
@@ -149,13 +150,49 @@ func effectivePhotoAlpha(
 /// desktop ornament can be interactive without being intrusive.
 class DesktopPhotoWindow: NSPanel {
     var photoId: UUID?
+    var onVisualGeometryChanged: (() -> Void)?
+    var onCollageDragBegan: ((Bool) -> Void)?
+    var onCollageDragProposed: ((CGRect, Bool) -> CGRect?)?
+    var onCollageDragEnded: (() -> Bool)?
+    var onCollageDragCancelled: (() -> Void)?
     var onLockToggle: (() -> Void)?
     var onRemove: (() -> Void)?
     var onResize: ((CGFloat) -> Void)?
     var onOpacityChanged: ((CGFloat) -> Void)?
-    var onClickAdvance: (() -> Void)?
+    var onHoverChanged: ((Bool) -> Void)?
+    var onClickAction: (() -> Void)?
     var onBringToFront: (() -> Void)?
     var onSendToBack: (() -> Void)?
+    var arrangementMenuItems: (() -> [NSMenuItem])?
+    var onRuntimeActivityChanged: ((RuntimeActivityDecision) -> Void)?
+
+    private var isCoveredByApp = false
+    private var hasPlaylistContent = false
+    var hasDynamicContent: Bool {
+        guard let view = contentView as? DraggablePhotoView else { return false }
+        return hasPlaylistContent
+            || view.photoLayer.animatedFrames != nil || view.photoLayer.videoPlaybackStatus != .notVideo
+    }
+
+    func setCoveredByApp(_ covered: Bool) {
+        guard covered != isCoveredByApp else { return }
+        isCoveredByApp = covered
+        refreshRuntimeActivity()
+    }
+
+    private var runtimeCenterListener: UUID?
+    private var occlusionObserver: NSObjectProtocol?
+    private var isRuntimeActivityMonitoring = false
+    private var didPublishRuntimeActivity = false
+    private(set) var runtimeActivityDecision = RuntimeActivityDecision.active
+    var onWindowInteraction: (() -> Void)?
+    var isCollageMember: (() -> Bool)?
+    /// Read the screen pointer independently of a window that moves during a gesture.
+    var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
+    var onBackgroundEventTarget: ((CGPoint) -> DesktopPhotoWindow?)?
+    private weak var backgroundGestureTarget: DesktopPhotoWindow?
+    private var backgroundGestureActive = false
+    private weak var backgroundHoverTarget: DesktopPhotoWindow?
 
     /// Padding between the window frame and the photo rect, on every side.
     private(set) var canvasInset: CGFloat = 0
@@ -164,6 +201,7 @@ class DesktopPhotoWindow: NSPanel {
     private var revealOnHover = false
     private var pointerIsInside = false
     private var widgetDepth: WidgetDepth = .onDesktop
+    private var settingsWindowIsActive = false
 
     init() {
         super.init(
@@ -176,11 +214,20 @@ class DesktopPhotoWindow: NSPanel {
         level = WidgetDepth.onDesktop.windowLevel
         isOpaque = false
         backgroundColor = .clear
+        // Desktop scenes own their transitions. Do not independently zoom each
+        // borderless photo or backdrop when AppKit orders its panel in or out.
+        animationBehavior = .none
         // Shadows are two custom CALayers on the container now (contact + ambient), not the
         // system window shadow -- see applyShadowSettings.
         hasShadow = false
+        // Our handlers own movement and snapping. Server-side dragging can
+        // move a panel without updating photoFrame, racing the collage gesture.
+        isMovable = false
         ignoresMouseEvents = false
-        collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        // Explicitly retain AppKit's transient behavior after setting our Space flags. Transient
+        // windows hide in Mission Control, preventing desktop widgets from flashing while a
+        // fullscreen Space is being spread into the overview.
+        collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications, .transient, .ignoresCycle]
         hidesOnDeactivate = false
 
         // Without this the window receives no mouseMoved events at all, even with a tracking
@@ -195,6 +242,171 @@ class DesktopPhotoWindow: NSPanel {
     /// whatever the user was actually working in. Mouse events do not require it.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    // MARK: - Runtime activity
+
+    /// Starts the shared process-state observer and this window's occlusion observer after the
+    /// window has been ordered in. AppKit's occlusion state is meaningful only for an onscreen
+    /// window, so registering before `orderFront` would make the initial state unreliable.
+    func startRuntimeActivityMonitoring() {
+        guard runtimeCenterListener == nil else { return }
+        isRuntimeActivityMonitoring = true
+
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: self,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshRuntimeActivity() }
+        }
+        runtimeCenterListener = RuntimeActivityCenter.shared.addListener { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshRuntimeActivity() }
+        }
+        WindowCoverageMonitor.shared.add(self)
+        refreshRuntimeActivity()
+    }
+
+    func stopRuntimeActivityMonitoring() {
+        isRuntimeActivityMonitoring = false
+        WindowCoverageMonitor.shared.remove(self)
+        isCoveredByApp = false
+        didPublishRuntimeActivity = false
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+            self.occlusionObserver = nil
+        }
+        if let runtimeCenterListener {
+            RuntimeActivityCenter.shared.removeListener(runtimeCenterListener)
+            self.runtimeCenterListener = nil
+        }
+    }
+
+    var mediaPlaybackStatus: VideoPlaybackStatus {
+        (contentView as? DraggablePhotoView)?.photoLayer.videoPlaybackStatus ?? .notVideo
+    }
+
+    private func refreshRuntimeActivity() {
+        guard isRuntimeActivityMonitoring else { return }
+        var input = RuntimeActivityInput()
+        input.isOccluded = RuntimeActivityPolicy.isFullyOccluded(occlusionState) || isCoveredByApp
+        input.environment = RuntimeActivityCenter.shared.environment
+
+        let decision = RuntimeActivityPolicy.decision(for: input)
+        let didChange = decision != runtimeActivityDecision
+        runtimeActivityDecision = decision
+
+        if let container = contentView as? DraggablePhotoView {
+            container.photoLayer.setPlaybackEnabled(decision.allowsExpensiveAnimation)
+            if !decision.allowsExpensiveAnimation {
+                // A Space swap may have started its crossfade just before WindowServer reported
+                // occlusion. Dropping that one-shot transition is safe because the next swap
+                // will install a fresh transition when motion is allowed again.
+                container.imageLayer.removeAnimation(forKey: kCATransition)
+            }
+        }
+        if didChange || !didPublishRuntimeActivity {
+            didPublishRuntimeActivity = true
+            onRuntimeActivityChanged?(decision)
+        }
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        defer {
+            if [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp].contains(event.type) { onWindowInteraction?() }
+        }
+        guard [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .mouseMoved].contains(event.type) else {
+            super.sendEvent(event)
+            return
+        }
+        if event.type == .leftMouseDown { cancelBackgroundGesture() }
+        let captured = backgroundGestureActive && [.leftMouseDragged, .leftMouseUp].contains(event.type)
+        let screenPoint = convertPoint(toScreen: event.locationInWindow)
+        var target: DesktopPhotoWindow?
+        if [.leftMouseDragged, .leftMouseUp].contains(event.type) {
+            target = backgroundGestureTarget
+        } else if [.leftMouseDown, .rightMouseDown, .mouseMoved].contains(event.type),
+                  let photo = contentView as? DraggablePhotoView,
+                  !photo.containsPhotoInteractionPoint(photo.convert(event.locationInWindow, from: nil)) {
+            target = onBackgroundEventTarget?(screenPoint)
+            if event.type == .leftMouseDown { backgroundGestureTarget = target; backgroundGestureActive = target != nil }
+        }
+        if event.type == .leftMouseUp { backgroundGestureTarget = nil; backgroundGestureActive = false }
+        if event.type == .mouseMoved, backgroundHoverTarget !== target {
+            clearBackgroundHover(with: event)
+            backgroundHoverTarget = target
+        }
+        if let target, target !== self, target.isVisible,
+           let forwarded = NSEvent.mouseEvent(with: event.type, location: target.convertPoint(fromScreen: screenPoint),
+                                             modifierFlags: event.modifierFlags, timestamp: event.timestamp,
+                                             windowNumber: target.windowNumber, context: nil,
+                                             eventNumber: event.eventNumber, clickCount: event.type == .mouseMoved ? 0 : event.clickCount,
+                                             pressure: event.type == .mouseMoved ? 0 : event.pressure) {
+            // Mouse movement belongs to the original window's tracking area.
+            // AppKit may discard a synthesized move sent to another panel, so
+            // resolve its hover feedback directly, as cursorUpdate already does.
+            if event.type == .mouseMoved {
+                _ = routeBackgroundPointer(with: event)
+                return
+            }
+            // Declining a view hit inside a photo's shadow window does not route
+            // the event to another window. Preserve one target for the gesture.
+            target.sendEvent(forwarded)
+            return
+        }
+        if captured { return }
+        super.sendEvent(event)
+    }
+
+    @discardableResult
+    func cancelBackgroundGesture() -> Bool {
+        let active = backgroundGestureActive
+        let target = backgroundGestureTarget
+        backgroundGestureTarget = nil
+        backgroundGestureActive = false
+        if active { target?.contentView?.cancelOperation(nil) }
+        return active
+    }
+
+    func clearBackgroundHover(with event: NSEvent) {
+        let target = backgroundHoverTarget
+        if event.type == .mouseExited, let target, let view = target.contentView {
+            let screenPoint = convertPoint(toScreen: event.locationInWindow)
+            let point = view.convert(target.convertPoint(fromScreen: screenPoint), from: nil)
+            // A delayed exit from this shadow can arrive after the pointer has
+            // entered its destination. Preserve that destination's hover cues.
+            if let surface = view as? CollageSurfaceView, surface.containsBackgroundPoint(point) { return }
+            if let photo = view as? DraggablePhotoView, photo.containsPhotoInteractionPoint(point) { return }
+        }
+        backgroundHoverTarget = nil
+        target?.contentView?.mouseExited(with: event)
+    }
+
+    /// Cursor-update events belong to tracking areas, not mouseEvent creation.
+    /// Resolve their destination just like gap input, then update that view
+    /// directly so the foreground shadow cannot reset the background's cursor.
+    var canClaimPointer: Bool {
+        guard isVisible, !ignoresMouseEvents else { return false }
+        // Settings can cover widgets while active-always tracking still delivers events.
+        return !settingsWindowIsActive || NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0) == windowNumber
+    }
+
+    func routeBackgroundPointer(with event: NSEvent) -> Bool {
+        guard canClaimPointer else { return false }
+        guard let photo = contentView as? DraggablePhotoView else { return false }
+        let local = photo.convert(event.locationInWindow, from: nil)
+        let target = photo.containsPhotoInteractionPoint(local) ? nil : onBackgroundEventTarget?(convertPoint(toScreen: event.locationInWindow))
+        if backgroundHoverTarget !== target {
+            clearBackgroundHover(with: event)
+            backgroundHoverTarget = target
+        }
+        guard let target, target !== self, target.isVisible else { return false }
+        let screenPoint = convertPoint(toScreen: event.locationInWindow)
+        let point = target.contentView?.convert(target.convertPoint(fromScreen: screenPoint), from: nil) ?? .zero
+        if let surface = target.contentView as? CollageSurfaceView { surface.updatePointer(at: point) }
+        else if let photo = target.contentView as? DraggablePhotoView { photo.updatePointer(at: point) }
+        else { return false }
+        return true
+    }
 
     // MARK: - Photo rect vs window frame
 
@@ -214,8 +426,18 @@ class DesktopPhotoWindow: NSPanel {
         return photoFrame.insetBy(dx: -mat, dy: -mat)
     }
 
+    func setCollageCanvasInset(_ inset: CGFloat) { canvasInset = inset }
+
     func windowFrame(forPhoto rect: NSRect) -> NSRect {
         rect.insetBy(dx: -canvasInset, dy: -canvasInset)
+    }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        // A collage spans several borderless panels. AppKit's titled-window
+        // screen-top constraint moves each floating panel by a different amount,
+        // separating photos from their backdrop and from their saved geometry.
+        // Desktop and floating widgets must use the same screen-coordinate scene.
+        frameRect
     }
 
     /// Positions and sizes the *photo*, growing the window around it.
@@ -238,17 +460,33 @@ class DesktopPhotoWindow: NSPanel {
     /// Moves the photo without touching its size — the drag path, where re-deriving the size
     /// from the window frame on every event is exactly what accumulates rounding error.
     func setPhotoOrigin(_ origin: NSPoint) {
+        var moved = photoFrame
+        moved.origin = origin
+        setPhotoOrigin(origin, nativeOrigin: windowFrame(forPhoto: moved).origin)
+    }
+
+    /// A transitioning collage can retain a larger host than its logical bounds.
+    func setPhotoOrigin(_ origin: NSPoint, nativeOrigin: NSPoint) {
         photoFrame.origin = origin
-        setFrameOrigin(windowFrame(forPhoto: photoFrame).origin)
+        if frame.origin != nativeOrigin { setFrameOrigin(nativeOrigin) }
+    }
+
+    /// AppKit translates attached panels with their parent. Update scene geometry
+    /// without issuing the same native placement a second time.
+    func setPhotoOriginFollowingParent(_ origin: NSPoint) {
+        photoFrame.origin = origin
     }
 
     /// Re-derives the padding after an appearance change, holding the photo rect fixed so the
     /// photo does not appear to move when a shadow, mat or tilt is adjusted.
     func refreshCanvasInset() {
         setPhotoFrame(photoFrame)
+        onVisualGeometryChanged?()
     }
 
     func showPhoto(_ content: PhotoContent, baseWidth: CGFloat = 300, locked: Bool = false, settings: PhotoItem? = nil) {
+        let content = PhotoReferenceRenderer.content(content, settings: settings?.reference ?? PhotoReferenceSettings())
+        hasPlaylistContent = !(settings?.spaceImageFilenames.isEmpty ?? true)
         let imageSize = content.size
         guard imageSize.width > 0, imageSize.height > 0 else { return }
 
@@ -282,7 +520,10 @@ class DesktopPhotoWindow: NSPanel {
         container.onHoverChanged = { [weak self] hovering in self?.setPointerInside(hovering) }
         container.onBringToFront = { [weak self] in self?.onBringToFront?() }
         container.onSendToBack = { [weak self] in self?.onSendToBack?() }
+        container.arrangementMenuItems = { [weak self] in self?.arrangementMenuItems?() ?? [] }
+        container.onClickAction = { [weak self] in self?.onClickAction?() }
 
+        pointerIsInside = false
         contentView = container
         setContentSize(canvasSize)
         photoFrame = frame.insetBy(dx: canvasInset, dy: canvasInset)
@@ -306,9 +547,11 @@ class DesktopPhotoWindow: NSPanel {
         // orderFront, never makeKeyAndOrderFront: showing a widget must not pull the app to
         // the front. Every launch used to activate Arras once per visible widget.
         orderFront(nil)
+        if isRuntimeActivityMonitoring { WindowCoverageMonitor.shared.add(self) }
     }
 
     func hidePhoto() {
+        cancelBackgroundGesture()
         // Strip any in-flight CATransition animations to prevent stale callbacks
         if let container = contentView as? DraggablePhotoView {
             container.layer?.removeAllAnimations()
@@ -319,34 +562,47 @@ class DesktopPhotoWindow: NSPanel {
             // so a stray delayed "start playback" block (see swapImage)
             // can't resurrect it on a view that's going away.
             container.photoLayer.stopAnimating()
+            container.photoLayer.releaseVideoResources()
         }
 
-        // A closed widget window stays in NSApp.windows for the life of the process
-        // (isReleasedWhenClosed is false on purpose, to prevent a use-after-free on re-show).
-        // Clearing the id stops any lookup that scans NSApp.windows from resolving to this
-        // corpse instead of the replacement window a later show() creates.
+        stopRuntimeActivityMonitoring()
+
+        // AppKit or another caller can retain a closed panel; isReleasedWhenClosed
+        // is false to keep caller-owned reuse safe. Clear its identity so a stale
+        // reference cannot be mistaken for the replacement window a later show creates.
         photoId = nil
         close()
+        // AppKit can retain a closed panel. Release its decoded media/layer
+        // tree now; showPhoto builds a fresh view if this window is reused.
+        contentView = nil
     }
 
     func setLocked(_ locked: Bool) {
         (contentView as? DraggablePhotoView)?.isLocked = locked
     }
 
-    func resizeTo(width: CGFloat) {
+    func frameForResizing(toWidth width: CGFloat) -> NSRect? {
+        guard width.isFinite, width > 0 else { return nil }
         guard let container = contentView as? DraggablePhotoView,
-              let image = container.photoImage else { return }
+              let image = container.photoImage else { return nil }
         // photoImage is always a representative still (even for animated
         // content -- see PhotoImageLayer.image), so aspect-ratio math
         // here needs no animated-specific branch.
-        let ar = image.size.width / image.size.height
+        let ar = container.aspectRatio > 0 ? container.aspectRatio : image.size.width / image.size.height
+        let height = width / ar
+        guard ar.isFinite, ar > 0, height.isFinite, height > 0 else { return nil }
         let photo = photoFrame
-        let newPhoto = NSRect(x: photo.origin.x, y: photo.origin.y, width: width, height: width / ar)
+        return NSRect(x: photo.origin.x, y: photo.origin.y, width: width, height: height)
+    }
+
+    func resizeTo(width: CGFloat) {
+        guard let container = contentView as? DraggablePhotoView,
+              let newPhoto = frameForResizing(toWidth: width) else { return }
         canvasInset = container.requiredCanvasInset(photoSize: newPhoto.size)
         container.canvasInset = canvasInset
         photoFrame = newPhoto
         let newFrame = windowFrame(forPhoto: newPhoto)
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if !runtimeActivityDecision.allowsExpensiveAnimation {
             setFrame(newFrame, display: true)
         } else {
             NSAnimationContext.runAnimationGroup { ctx in
@@ -356,13 +612,18 @@ class DesktopPhotoWindow: NSPanel {
             }
         }
         container.updateLayout(newFrame.size)
+        // PhotoManager commits this programmatic resize and its enclosing
+        // collage together before reaching the native window.
     }
 
     // MARK: - Depth
 
     func setDepth(_ depth: WidgetDepth) {
         widgetDepth = depth
-        level = depth.windowLevel
+        let targetLevel = depth.windowLevel
+        // Reassigning a panel's level can reorder it, even when its depth did
+        // not change. In particular, collage sync must not raise the backdrop.
+        if level != targetLevel { level = targetLevel }
         // A widget behind Finder's desktop window can never be clicked, so there is no reason
         // to keep hit-testing it — and letting go of the events means the desktop underneath
         // behaves exactly as it would with no widget there.
@@ -374,6 +635,11 @@ class DesktopPhotoWindow: NSPanel {
     func setPhotoOpacity(_ value: CGFloat) {
         configuredOpacity = max(0.1, min(1.0, value))
         updateEffectiveAlpha(animated: false)
+    }
+
+    /// Track Settings focus for pointer ownership without changing widget depth.
+    func setSettingsWindowActive(_ active: Bool) {
+        settingsWindowIsActive = active
     }
 
     func setRevealOnHover(_ enabled: Bool, animated: Bool = true) {
@@ -408,7 +674,7 @@ class DesktopPhotoWindow: NSPanel {
         }
     }
 
-    // MARK: - v1.3 / v2.1 Shadow
+    // MARK: - Shadow
 
     /// The system window shadow (`hasShadow`) is a single, fixed-look shadow that AppKit
     /// draws outside the window's own frame -- convenient in that it's never clipped, but it
@@ -425,29 +691,34 @@ class DesktopPhotoWindow: NSPanel {
 
     private static let crossfadeDuration: TimeInterval = 0.35
 
-    func swapImage(_ content: PhotoContent, targetFrame: NSRect? = nil, mode: String = "dynamic", animate: Bool = true) {
+    static func frameForSwapping(contentSize: NSSize, photoFrame: NSRect, targetFrame: NSRect? = nil, mode: String = "dynamic") -> NSRect? {
+        func valid(_ frame: NSRect) -> Bool {
+            frame.origin.x.isFinite && frame.origin.y.isFinite && frame.width.isFinite && frame.height.isFinite
+                && frame.width > 0 && frame.height > 0
+        }
+        guard contentSize.width.isFinite, contentSize.height.isFinite,
+              contentSize.width > 0, contentSize.height > 0 else { return nil }
+        if mode == "fixed" { return valid(photoFrame) ? photoFrame : nil }
+        if let targetFrame, valid(targetFrame) { return targetFrame }
+        guard valid(photoFrame) else { return nil }
+        let height = photoFrame.width * contentSize.height / contentSize.width
+        guard height.isFinite, height > 0 else { return nil }
+        return NSRect(x: photoFrame.minX, y: photoFrame.maxY - height, width: photoFrame.width, height: height)
+    }
+
+    func swapImage(_ content: PhotoContent, targetFrame: NSRect? = nil, mode: String = "dynamic", animate: Bool = true,
+                   notifyGeometryChange: Bool = true) {
         guard let container = contentView as? DraggablePhotoView else { return }
-        let shouldAnimate = animate && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let content = PhotoReferenceRenderer.content(content, settings: container.referenceSettings)
+        let shouldAnimate = animate && runtimeActivityDecision.allowsExpensiveAnimation
         let newSize = content.size
         let newAR = newSize.width / newSize.height
 
-        if mode == "dynamic" {
-            container.aspectRatio = newAR
-        }
-
         // Determine the target *photo* rect. Callers persist and pass photo rects, never
         // window frames — the padding is re-derived here.
-        let photo = photoFrame
-        let newPhoto: NSRect
-        if mode == "fixed" {
-            newPhoto = photo // don't change size
-        } else if let target = targetFrame, target.width > 0 {
-            newPhoto = target
-        } else {
-            // Keep current width, adjust height for new aspect ratio. Pin top-left.
-            let newH = photo.width / newAR
-            newPhoto = NSRect(x: photo.origin.x, y: photo.maxY - newH, width: photo.width, height: newH)
-        }
+        guard let newPhoto = Self.frameForSwapping(contentSize: newSize, photoFrame: photoFrame,
+                                                   targetFrame: targetFrame, mode: mode) else { return }
+        if mode == "dynamic" { container.aspectRatio = newAR }
 
         canvasInset = container.requiredCanvasInset(photoSize: newPhoto.size)
         container.canvasInset = canvasInset
@@ -474,6 +745,7 @@ class DesktopPhotoWindow: NSPanel {
         // end state. Landing on frame 0 first keeps the crossfade correct
         // and simple; playback then picks up smoothly right after.
         container.photoLayer.apply(content, animationStartDelay: shouldAnimate ? Self.crossfadeDuration : 0)
+        if isRuntimeActivityMonitoring { WindowCoverageMonitor.shared.add(self) }
 
         if shouldAnimate {
             NSAnimationContext.runAnimationGroup { ctx in
@@ -487,9 +759,10 @@ class DesktopPhotoWindow: NSPanel {
             setFrame(newFrame, display: true)
             container.updateLayout(newFrame.size)
         }
+        if notifyGeometryChange { onVisualGeometryChanged?() }
     }
 
-    // MARK: - v1.5 Space Binding
+    // MARK: - Space Binding
 
     /// AppKit has no public API to enumerate or target a specific Space by identity (that's
     /// private CGS/SkyLight territory), so "bind to a Space" here means "stay on whichever
@@ -499,7 +772,10 @@ class DesktopPhotoWindow: NSPanel {
     /// immediately when the binding is turned on from whatever Space the user is currently on,
     /// rather than requiring a manual switch away and back.
     func setSpaceBound(_ bound: Bool) {
-        collectionBehavior = bound ? [.moveToActiveSpace, .ignoresCycle] : [.canJoinAllSpaces, .ignoresCycle]
+        let behavior: NSWindow.CollectionBehavior = bound
+            ? [.moveToActiveSpace, .canJoinAllApplications, .transient, .ignoresCycle]
+            : [.canJoinAllSpaces, .canJoinAllApplications, .transient, .ignoresCycle]
+        if collectionBehavior != behavior { collectionBehavior = behavior }
     }
 }
 
@@ -523,6 +799,7 @@ private enum DragMode {
 /// inside a layer we rotate ourselves.
 final class PhotoImageLayer {
     private static let gifAnimationKey = "gifPlayback"
+    private static let videoEndNotification = AVPlayerItem.didPlayToEndTimeNotification
 
     let layer = CALayer()
 
@@ -532,8 +809,15 @@ final class PhotoImageLayer {
     /// playback is currently animated.
     private(set) var image: NSImage?
 
-    /// Non-nil while a GIF-style animation is actively driving `layer.contents`.
+    /// The decoded frames for the current GIF-style content, retained while playback is paused
+    /// as well so a visibility or energy transition can resume without another decode.
     private(set) var animatedFrames: AnimatedImageFrames?
+
+    /// False while runtime policy says this widget should yield. Keeping the decoded frames
+    /// lets playback resume immediately without decoding the source again; removing the CA
+    /// animation is enough to stop render-server frame advancement while the widget is hidden.
+    private(set) var isPlaybackEnabled = true
+    private(set) var videoPlaybackStatus: VideoPlaybackStatus = .notVideo
 
     /// Bumped on every `apply(_:)` call. A deferred playback-start closure
     /// captures the generation it was scheduled under and checks it before
@@ -542,9 +826,50 @@ final class PhotoImageLayer {
     /// delayed animation clobber B's content after the fact.
     private var generation = 0
 
+    /// Fixed Spaces opt into a deliberate fill crop; ordinary widgets leave this false so
+    /// their true-ratio aspect-fit behaviour is unchanged. A focal point changes only the
+    /// source rectangle inside that crop.
+    private(set) var isCropEnabled = false
+    private var focalPoint: NormalizedFocalPoint?
+    private let videoLayer = AVPlayerLayer()
+    private var videoPlayer: AVPlayer?
+    private var videoContent: VideoPlaybackContent?
+    private var videoEndObserver: NSObjectProtocol?
+
     init() {
         layer.contentsGravity = .resizeAspectFill
         layer.masksToBounds = true
+        videoLayer.videoGravity = .resizeAspect
+        videoLayer.isHidden = true
+        layer.addSublayer(videoLayer)
+    }
+
+    deinit {
+        releaseVideoResources()
+    }
+
+    func setCropFocalPoint(_ point: NormalizedFocalPoint?, cropEnabled: Bool) {
+        focalPoint = point
+        isCropEnabled = cropEnabled
+        layer.contentsGravity = cropEnabled ? .resizeAspectFill : .resizeAspect
+        updateContentsRect()
+    }
+
+    /// Recomputes the normalized source rectangle after the target layer changes size. A nil
+    /// focal point intentionally means the historical centred crop, not "show the whole image"
+    /// when a fixed Space or collage slot must fill its bounds.
+    func updateContentsRect() {
+        guard isCropEnabled, let image else {
+            layer.contentsRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+            updateVideoLayout()
+            return
+        }
+        layer.contentsRect = PhotoCropGeometry.contentsRect(
+            sourceSize: image.size,
+            targetSize: layer.bounds.size,
+            focalPoint: focalPoint
+        )
+        updateVideoLayout()
     }
 
     /// Displays `content`, stopping any in-progress animation first.
@@ -559,23 +884,33 @@ final class PhotoImageLayer {
             setStill(stillImage)
         case .animated(let frames, let representative):
             setAnimated(frames, representativeImage: representative, startDelay: animationStartDelay)
+        case .video(let video):
+            setVideo(video, representativeImage: video.editedPoster ?? video.poster)
+        case .livePhoto(let still, let video):
+            setVideo(video, representativeImage: still)
         }
     }
 
     private func setStill(_ newImage: NSImage?) {
         stopAnimating()
+        releaseVideoResources()
         image = newImage
         layer.contents = newImage
+        updateContentsRect()
     }
 
     private func setAnimated(_ frames: AnimatedImageFrames, representativeImage: NSImage, startDelay: TimeInterval) {
         stopAnimating()
+        releaseVideoResources()
         image = representativeImage
         // Show frame 0 right away so there's always something on screen,
         // even before (or if) the keyframe animation below installs.
         layer.contents = frames.images.first
+        updateContentsRect()
         guard frames.images.count > 1 else { return }
         animatedFrames = frames
+
+        guard isPlaybackEnabled else { return }
 
         generation += 1
         let expectedGeneration = generation
@@ -583,7 +918,10 @@ final class PhotoImageLayer {
             // Bail if a newer `apply(_:)` call superseded us while this was
             // pending -- see the stale-callback discipline documented on
             // hidePhoto().
-            guard let self, self.generation == expectedGeneration else { return }
+            guard let self,
+                  self.generation == expectedGeneration,
+                  self.isPlaybackEnabled,
+                  self.animatedFrames != nil else { return }
             self.layer.add(frames.makeContentsAnimation(), forKey: Self.gifAnimationKey)
         }
         if startDelay > 0 {
@@ -593,13 +931,144 @@ final class PhotoImageLayer {
         }
     }
 
+    private func setVideo(_ content: VideoPlaybackContent, representativeImage: NSImage) {
+        stopAnimating()
+        releaseVideoResources()
+        image = representativeImage
+        layer.contents = representativeImage
+        videoContent = content
+        let player = AVPlayer(url: content.url)
+        if content.referenceSettings.hasImageEdits, let item = player.currentItem {
+            let settings = content.referenceSettings
+            Task { @MainActor [weak self, weak player, weak item] in
+                guard let item else { return }
+                do {
+                    let composition = try await PhotoReferenceRenderer.videoComposition(for: item.asset, settings: settings)
+                    guard let self, let player, self.videoPlayer === player else { return }
+                    item.videoComposition = composition
+                    if self.isPlaybackEnabled { self.startVideoPlayback(player) }
+                } catch {
+                    // Keep the edited poster visible if the composition cannot be built.
+                }
+            }
+        }
+        player.isMuted = true
+        player.volume = 0
+        videoPlayer = player
+        videoLayer.player = player
+        videoLayer.isHidden = true
+        videoPlaybackStatus = .paused
+        videoEndObserver = NotificationCenter.default.addObserver(
+            forName: Self.videoEndNotification,
+            object: player.currentItem,
+            queue: .main
+        ) { [weak self, weak player] _ in
+            guard let self, let player, self.isPlaybackEnabled, self.videoPlayer === player else { return }
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+                guard let self, let player, self.isPlaybackEnabled, self.videoPlayer === player else { return }
+                self.startVideoPlayback(player)
+            }
+        }
+        updateContentsRect()
+        if isPlaybackEnabled && !content.referenceSettings.hasImageEdits {
+            startVideoPlayback(player)
+        }
+    }
+
+    private func startVideoPlayback(_ player: AVPlayer) {
+        guard videoPlayer === player, isPlaybackEnabled else { return }
+        guard videoContent?.referenceSettings.hasImageEdits != true || player.currentItem?.videoComposition != nil else { return }
+        videoLayer.isHidden = false
+        videoPlaybackStatus = .playing
+        player.isMuted = true
+        player.volume = 0
+        player.play()
+    }
+
+    private func pauseVideoPlayback() {
+        videoPlayer?.pause()
+        guard videoPlayer != nil else { return }
+        videoLayer.isHidden = true
+        videoPlaybackStatus = .paused
+    }
+
+    /// Releases AVPlayer/AVPlayerLayer resources when a widget is torn down.  A hidden widget is
+    /// rebuilt from its managed bytes on show, so retaining a decoder across hide/show is not
+    /// worth the memory and file-descriptor cost.
+    func releaseVideoResources() {
+        if let videoEndObserver {
+            NotificationCenter.default.removeObserver(videoEndObserver)
+        }
+        videoEndObserver = nil
+        videoPlayer?.pause()
+        videoLayer.player = nil
+        videoPlayer = nil
+        videoContent = nil
+        videoLayer.isHidden = true
+        videoPlaybackStatus = .notVideo
+    }
+
+    private func updateVideoLayout() {
+        guard let videoContent, layer.bounds.width > 0, layer.bounds.height > 0 else { return }
+        let bounds = layer.bounds
+        guard isCropEnabled else {
+            videoLayer.frame = bounds
+            videoLayer.videoGravity = .resizeAspect
+            return
+        }
+
+        let sourceSize = image?.size ?? videoContent.size
+        let sourceAspect = sourceSize.width / max(sourceSize.height, 1)
+        let targetAspect = bounds.width / max(bounds.height, 1)
+        let focus = focalPoint ?? .center
+        if sourceAspect > targetAspect {
+            let fullWidth = bounds.height * sourceAspect
+            videoLayer.frame = CGRect(
+                x: bounds.minX - (fullWidth - bounds.width) * focus.x,
+                y: bounds.minY,
+                width: fullWidth,
+                height: bounds.height
+            )
+        } else {
+            let fullHeight = bounds.width / max(sourceAspect, 0.001)
+            videoLayer.frame = CGRect(
+                x: bounds.minX,
+                y: bounds.minY - (fullHeight - bounds.height) * focus.y,
+                width: bounds.width,
+                height: fullHeight
+            )
+        }
+        // The expanded layer already has the source aspect ratio; aspect-fit within it avoids
+        // introducing a second crop while the parent mask clips the focused rectangle.
+        videoLayer.videoGravity = .resizeAspect
+    }
+
     /// Stops GIF playback and drops the tracked frame data. Cheap and safe
     /// to call even when nothing is animating.
     func stopAnimating() {
         generation += 1
-        guard animatedFrames != nil else { return }
         layer.removeAnimation(forKey: Self.gifAnimationKey)
         animatedFrames = nil
+    }
+
+    /// Enables or disables render-server frame advancement without touching the representative
+    /// still in `layer.contents`. This is intentionally separate from `stopAnimating()`: hidden
+    /// or thermally constrained widgets retain their decoded frames so wake/visibility changes
+    /// do not perform another image decode on the main thread.
+    func setPlaybackEnabled(_ enabled: Bool) {
+        guard enabled != isPlaybackEnabled else { return }
+        isPlaybackEnabled = enabled
+        generation += 1
+        layer.removeAnimation(forKey: Self.gifAnimationKey)
+
+        if enabled, let frames = animatedFrames {
+            guard frames.images.count > 1 else { return }
+            layer.add(frames.makeContentsAnimation(), forKey: Self.gifAnimationKey)
+        } else if enabled, let player = videoPlayer {
+            startVideoPlayback(player)
+        } else {
+            pauseVideoPlayback()
+        }
     }
 }
 
@@ -607,6 +1076,7 @@ final class PhotoImageLayer {
 
 class DraggablePhotoView: NSView {
     let photoLayer = PhotoImageLayer()
+    var referenceSettings = PhotoReferenceSettings()
 
     /// Everything the user sees, parented under one layer we own outright.
     ///
@@ -623,18 +1093,21 @@ class DraggablePhotoView: NSView {
     var isLocked = false {
         didSet { if isLocked != oldValue { updateHandles() } }
     }
+    var isLockedByCollage = false
+    var lockActionTitle: String { isLockedByCollage ? "Unlock Collage" : (isLocked ? "Unlock Position" : "Lock Position") }
 
     var onLockToggle: (() -> Void)?
     var onRemove: (() -> Void)?
     var onResizeFinished: ((CGFloat) -> Void)?
     var onOpacityChanged: ((CGFloat) -> Void)?
     var onHoverChanged: ((Bool) -> Void)?
-    var onClickAdvance: (() -> Void)?
+    var onClickAction: (() -> Void)?
     var onBringToFront: (() -> Void)?
     var onSendToBack: (() -> Void)?
+    var arrangementMenuItems: (() -> [NSMenuItem])?
     private var lastAdvanceTime: TimeInterval = 0
 
-    private var dragMode: DragMode = .none
+    private var dragMode: DragMode = .none { didSet { if dragMode != oldValue { updateHandles() } } }
     private var initialMouse: NSPoint = .zero
     private var anchorPoint: NSPoint = .zero   // the fixed corner (screen coords)
     // The drag's true origin, accumulated straight from mouse deltas. Never read the window's
@@ -642,6 +1115,8 @@ class DraggablePhotoView: NSView {
     // the true drag position diverge on purpose, and re-deriving one from the other is what
     // causes the widget to lag behind or run away from the cursor. See SnapEngine.
     private var unsnappedOrigin: NSPoint = .zero
+    private var dragPickupOrigin: NSPoint = .zero
+    private var collageOwnsPlacement = false
     var aspectRatio: CGFloat = 1.0
     var baseCornerRadius: CGFloat = 16
 
@@ -652,11 +1127,11 @@ class DraggablePhotoView: NSView {
     private let minSize: CGFloat = 80
     private var isHovering = false
 
-    // v1.3 — Aesthetic layers
+    // Aesthetic layers
     private var borderLayer: CAShapeLayer?
     private var vignetteLayer: CALayer?
 
-    // v2.1 — Borders, frames & depth
+    // Borders, frames & depth
     private var matLayer: CAShapeLayer?
     private var borderGradientLayer: CAGradientLayer?
     private var contactShadowLayer: CAShapeLayer?
@@ -705,10 +1180,15 @@ class DraggablePhotoView: NSView {
         shapeMask = PhotoShapeMask(rawValue: settings?.shapeMask ?? "roundedRect") ?? .roundedRect
         tiltDegrees = CGFloat(settings?.tiltDegrees ?? 0)
         vignetteEnabledFlag = settings?.vignetteEnabled ?? false
+        referenceSettings = settings?.reference ?? PhotoReferenceSettings()
 
         layer?.addSublayer(contentLayer)
         contentLayer.addSublayer(photoLayer.layer)
         photoLayer.apply(content)
+        let cropEnabled = settings.map {
+            !$0.spaceImageFilenames.isEmpty && $0.folderSizeMode == "fixed"
+        } ?? false
+        photoLayer.setCropFocalPoint(settings?.focalPoint, cropEnabled: cropEnabled)
 
         relayout()
 
@@ -723,6 +1203,11 @@ class DraggablePhotoView: NSView {
 
     func updateLayout(_ size: NSSize) {
         frame = NSRect(origin: .zero, size: size)
+        relayout()
+    }
+
+    func setFocalPoint(_ point: NormalizedFocalPoint?, cropEnabled: Bool) {
+        photoLayer.setCropFocalPoint(point, cropEnabled: cropEnabled)
         relayout()
     }
 
@@ -805,6 +1290,7 @@ class DraggablePhotoView: NSView {
             maskLayer.fillColor = NSColor.black.cgColor
             img.mask = maskLayer
         }
+        photoLayer.updateContentsRect()
         // No reordering here on purpose: the image layer is the one layer that persists across
         // relayouts (it owns any running GIF animation), so everything else is positioned
         // relative to it — shadows and mat below, vignette and border above.
@@ -873,47 +1359,30 @@ class DraggablePhotoView: NSView {
         matLayer = mat
     }
 
-    /// Darkens the photo's edges and corners.
-    ///
-    /// Not a CAGradientLayer any more: a `.radial` gradient paints nothing beyond the ellipse
-    /// its endpoint describes, so the previous version drew a dark ring *inside* the photo and
-    /// left all four corners untouched — the inverse of a vignette. A shape layer with an even-odd
-    /// path (photo rect minus an inset rounded rect) shaded by a soft shadow gets the corners.
+    /// A continuous, low-opacity vignette. The farthest corner lies inside the gradient's
+    /// ellipse, avoiding an opaque ring or an unshaded strip around the photo.
     private func applyVignetteLayer(inner: NSRect, cornerRadius: CGFloat) {
         vignetteLayer?.removeFromSuperlayer()
         guard vignetteEnabledFlag, inner.width > 0, inner.height > 0 else {
             vignetteLayer = nil
             return
         }
-
         let local = CGRect(origin: .zero, size: inner.size)
-        let feather = min(local.width, local.height) * 0.28
-
-        let ring = CAShapeLayer()
-        ring.frame = inner
-        let path = CGMutablePath()
-        path.addPath(shapeMask.path(in: local, cornerRadius: cornerRadius))
-        path.addPath(shapeMask.path(in: local.insetBy(dx: feather, dy: feather), cornerRadius: cornerRadius))
-        ring.path = path
-        ring.fillRule = .evenOdd
-        ring.fillColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        // Blurring the ring inward is what makes it read as a fade rather than a dark frame.
-        ring.shadowColor = NSColor.black.cgColor
-        ring.shadowOpacity = 0.5
-        ring.shadowRadius = feather * 0.6
-        ring.shadowOffset = .zero
-        ring.shadowPath = path
-
-        // Clip to the photo's silhouette so the blur can't bleed onto the mat.
+        let fade = CAGradientLayer()
+        fade.frame = inner
+        fade.type = .radial
+        fade.startPoint = CGPoint(x: 0.5, y: 0.5)
+        fade.endPoint = CGPoint(x: 1.21, y: 1.21)
+        fade.colors = [NSColor.black.withAlphaComponent(0).cgColor,
+                       NSColor.black.withAlphaComponent(0.025).cgColor,
+                       NSColor.black.withAlphaComponent(0.14).cgColor]
+        fade.locations = [0, 0.45, 1]
         let clip = CAShapeLayer()
-        clip.frame = CGRect(origin: .zero, size: inner.size)
+        clip.frame = local
         clip.path = shapeMask.path(in: local, cornerRadius: cornerRadius)
-        clip.fillColor = NSColor.black.cgColor
-        ring.mask = clip
-
-        // Appended, so it stacks above the image; the border is appended after it.
-        contentLayer.addSublayer(ring)
-        vignetteLayer = ring
+        fade.mask = clip
+        contentLayer.addSublayer(fade)
+        vignetteLayer = fade
     }
 
     /// Solid, dashed or dotted; flat colour or a linear gradient sweep. The gradient case
@@ -970,23 +1439,21 @@ class DraggablePhotoView: NSView {
 
     // MARK: - Resize handles
 
-    /// Four corner grips, shown only while the pointer is over an unlocked widget.
-    ///
-    /// A cursor change alone was the entire affordance before, and it never fired — the window
-    /// was not accepting mouseMoved events at all. Even once it does, a cursor is a poor signal
-    /// for a borderless object with no chrome: there is nothing on screen to tell you the
-    /// corners are draggable until you happen to hover one.
+    /// Show unlocked photo grips only while hovered or interacting.
     private func applyHandleLayers(outer: NSRect) {
         handleLayers.forEach { $0.removeFromSuperlayer() }
         handleLayers = []
-        guard isHovering, !isLocked else { return }
+        guard !isLocked, isHovering || dragMode != .none else { return }
 
         let size: CGFloat = 10
+        // Shadow-free photos can have no window padding. Keep the full marker
+        // inside the photo instead of clipping three quarters off at the corner.
+        let inset: CGFloat = 7
         let corners = [
-            CGPoint(x: outer.minX, y: outer.minY),
-            CGPoint(x: outer.maxX, y: outer.minY),
-            CGPoint(x: outer.minX, y: outer.maxY),
-            CGPoint(x: outer.maxX, y: outer.maxY)
+            CGPoint(x: outer.minX + inset, y: outer.minY + inset),
+            CGPoint(x: outer.maxX - inset, y: outer.minY + inset),
+            CGPoint(x: outer.minX + inset, y: outer.maxY - inset),
+            CGPoint(x: outer.maxX - inset, y: outer.maxY - inset)
         ]
         for corner in corners {
             let dot = CALayer()
@@ -1015,6 +1482,16 @@ class DraggablePhotoView: NSView {
 
     func setCornerRadius(_ radius: CGFloat) {
         baseCornerRadius = radius
+        relayout()
+    }
+
+    /// Group scaling updates geometry in place, keeping animated content and
+    /// window identity intact. One layout avoids four intermediate styles.
+    func applyScaledAppearance(_ item: PhotoItem) {
+        baseCornerRadius = item.cornerRadius
+        currentBorderWidth = item.borderWidth
+        matWidth = item.matWidth
+        shadowBlurBase = item.shadowBlur
         relayout()
     }
 
@@ -1109,65 +1586,95 @@ class DraggablePhotoView: NSView {
         return .move
     }
 
+    func containsPhotoInteractionPoint(_ point: NSPoint) -> Bool {
+        let local = pointInContent(point)
+        let rect = CGRect(origin: .zero, size: visualRect.size)
+        let radius = min(baseCornerRadius, min(rect.width, rect.height) * 0.5)
+        if shapeMask.path(in: rect, cornerRadius: radius).contains(local) { return true }
+        // Keep the small corner grips usable without claiming the invisible
+        // sixteen-point side strips that fill the gaps between grouped photos.
+        guard !isLocked, rect.insetBy(dx: -5, dy: -5).contains(local) else { return false }
+        switch modeAt(point) {
+        case .resizeTopLeft, .resizeTopRight, .resizeBottomLeft, .resizeBottomRight: return true
+        default: return false
+        }
+    }
+
     // MARK: - Cursor
 
     private func applyCursor(at localPoint: NSPoint) {
+        // Active-always tracking can deliver a late cursor update after Settings covers a
+        // widget. Only the window actually under the pointer may claim the drag cursor.
+        guard let window = window as? DesktopPhotoWindow, window.canClaimPointer else { return }
         if isLocked { NSCursor.arrow.set(); return }
         switch modeAt(localPoint) {
         case .resizeTopLeft, .resizeBottomRight, .resizeTopRight, .resizeBottomLeft:
-            NSCursor.crosshair.set()
+            setResizeCursor(modeAt(localPoint))
         case .move:
-            NSCursor.openHand.set()
+            NSCursor.arrow.set()
         case .none:
             NSCursor.arrow.set()
         }
     }
 
     override func mouseMoved(with event: NSEvent) {
-        applyCursor(at: convert(event.locationInWindow, from: nil))
+        updatePointer(at: convert(event.locationInWindow, from: nil))
     }
 
     /// Belt and braces alongside mouseMoved: AppKit re-asserts the cursor from cursor rects
     /// after various events, and cursorUpdate is the hook it offers for saying otherwise.
     override func cursorUpdate(with event: NSEvent) {
+        if (window as? DesktopPhotoWindow)?.routeBackgroundPointer(with: event) == true { return }
         applyCursor(at: convert(event.locationInWindow, from: nil))
     }
 
+    func updatePointer(at point: CGPoint) {
+        let inside = containsPhotoInteractionPoint(point)
+        if isHovering != inside { isHovering = inside; updateHandles() }
+        applyCursor(at: point)
+    }
+
     override func mouseEntered(with event: NSEvent) {
+        applyCursor(at: convert(event.locationInWindow, from: nil))
         isHovering = true
         onHoverChanged?(true)
         updateHandles()
     }
 
     override func mouseExited(with event: NSEvent) {
+        (window as? DesktopPhotoWindow)?.clearBackgroundHover(with: event)
         isHovering = false
         onHoverChanged?(false)
         updateHandles()
-        NSCursor.arrow.set()
     }
 
     // MARK: - Mouse events
 
     override func mouseDown(with event: NSEvent) {
+        // Lock Position disables moving/resizing, not the widget's configured action.
         if event.clickCount == 2 {
             let now = Date().timeIntervalSince1970
             if now - lastAdvanceTime > 0.3 {
                 lastAdvanceTime = now
-                onClickAdvance?()
+                onClickAction?()
             }
             return
         }
 
-        if isLocked { return }
-
+        guard !isLocked else { return }
         guard let win = window as? DesktopPhotoWindow else { return }
         let p = convert(event.locationInWindow, from: nil)
         dragMode = modeAt(p)
-        initialMouse = NSEvent.mouseLocation
+        applyGestureCursor()
+        traceCollagePointer("down mode=\(dragMode)", event: event)
+        initialMouse = win.pointerLocation()
         unsnappedOrigin = win.photoFrame.origin
+        dragPickupOrigin = win.photoFrame.origin
+        collageOwnsPlacement = false
+        if dragMode != .none { win.onCollageDragBegan?(dragMode != .move) }
 
-        // Window positions do not change while a widget is being dragged, so the alignment
-        // targets are gathered once here rather than re-queried on every mouseDragged.
+        // Ordinary targets are gathered once; changing collage backgrounds are
+        // excluded and their placement/gap guides are handled separately.
         SnapEngine.shared.beginDrag(for: win)
 
         let f = win.photoFrame
@@ -1181,11 +1688,34 @@ class DraggablePhotoView: NSView {
         }
     }
 
+    private func applyGestureCursor() {
+        switch dragMode {
+        case .move: NSCursor.arrow.set()
+        case .none: break
+        default: setResizeCursor(dragMode)
+        }
+    }
+
+    private func setResizeCursor(_ mode: DragMode) {
+        if #available(macOS 15.0, *) {
+            let position: NSCursor.FrameResizePosition
+            switch mode {
+            case .resizeTopLeft: position = .topLeft
+            case .resizeTopRight: position = .topRight
+            case .resizeBottomLeft: position = .bottomLeft
+            default: position = .bottomRight
+            }
+            NSCursor.frameResize(position: position, directions: .all).set()
+        } else { NSCursor.crosshair.set() }
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if isLocked { return }
         guard let win = window as? DesktopPhotoWindow else { return }
 
-        let mouse = NSEvent.mouseLocation
+        applyGestureCursor()
+        let mouse = win.pointerLocation()
+        traceCollagePointer("drag mode=\(dragMode)", event: event)
 
         switch dragMode {
         case .move:
@@ -1197,44 +1727,71 @@ class DraggablePhotoView: NSView {
             unsnappedOrigin.y += dy
             initialMouse = mouse
 
-            let (snapped, guides) = SnapEngine.shared.snappedOrigin(
-                for: win,
-                proposedOrigin: unsnappedOrigin,
-                size: win.photoFrame.size,
-                matInset: matWidth,
-                modifiers: event.modifierFlags,
-                dragStart: NSPoint(x: unsnappedOrigin.x - dx, y: unsnappedOrigin.y - dy)
-            )
-            win.setPhotoOrigin(snapped)
-
-            if let screen = win.screen ?? NSScreen.main {
-                SnapGuideOverlay.shared.show(guides, on: screen, above: win)
+            var collageOrigin = unsnappedOrigin
+            if event.modifierFlags.contains(.shift) {
+                if abs(collageOrigin.x - dragPickupOrigin.x) >= abs(collageOrigin.y - dragPickupOrigin.y) { collageOrigin.y = dragPickupOrigin.y }
+                else { collageOrigin.x = dragPickupOrigin.x }
+            }
+            let bypass = event.modifierFlags.contains(.option) || event.modifierFlags.contains(.command) || !SnapEngine.shared.isEnabled
+            let collageFrame = win.onCollageDragProposed?(CGRect(origin: collageOrigin, size: win.photoFrame.size), bypass)
+            if let collageFrame {
+                SnapEngine.shared.clearLocks()
+                collageOwnsPlacement = true
+                win.setPhotoOrigin(collageFrame.origin)
+            } else if collageOwnsPlacement {
+                // Leave at the raw pointer position, without inheriting magnetic
+                // locks that were calculated invisibly underneath collage snapping.
+                SnapEngine.shared.clearLocks()
+                collageOwnsPlacement = false
+                win.setPhotoOrigin(collageOrigin)
+                SnapGuideOverlay.shared.hide()
+            } else {
+                let (snapped, guides) = SnapEngine.shared.snappedOrigin(
+                    for: win, proposedOrigin: unsnappedOrigin, size: win.photoFrame.size,
+                    matInset: matWidth, modifiers: event.modifierFlags, dragStart: dragPickupOrigin
+                )
+                win.setPhotoOrigin(snapped)
+                if let screen = win.screen ?? NSScreen.main { SnapGuideOverlay.shared.show(guides, on: screen, above: win) }
             }
 
         case .resizeBottomRight:
             let newW = max(minSize, mouse.x - anchorPoint.x)
-            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win)
+            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win, modifiers: event.modifierFlags)
 
         case .resizeBottomLeft:
             let newW = max(minSize, anchorPoint.x - mouse.x)
-            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win)
+            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y - newW / aspectRatio, width: newW, height: newW / aspectRatio), to: win, modifiers: event.modifierFlags)
 
         case .resizeTopRight:
             let newW = max(minSize, mouse.x - anchorPoint.x)
-            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win)
+            applyPhotoFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win, modifiers: event.modifierFlags)
 
         case .resizeTopLeft:
             let newW = max(minSize, anchorPoint.x - mouse.x)
-            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win)
+            applyPhotoFrame(NSRect(x: anchorPoint.x - newW, y: anchorPoint.y, width: newW, height: newW / aspectRatio), to: win, modifiers: event.modifierFlags)
 
         case .none:
             break
         }
     }
 
-    private func applyPhotoFrame(_ rect: NSRect, to win: DesktopPhotoWindow) {
+    private func applyPhotoFrame(_ rect: NSRect, to win: DesktopPhotoWindow, modifiers: NSEvent.ModifierFlags) {
+        let corner: CollageResizeCorner
+        switch dragMode {
+        case .resizeTopLeft: corner = .topLeft
+        case .resizeTopRight: corner = .topRight
+        case .resizeBottomLeft: corner = .bottomLeft
+        default: corner = .bottomRight
+        }
         canvasInset = requiredCanvasInset(photoSize: rect.size)
-        win.setPhotoFrame(rect)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            win.setPhotoFrame(rect)
+            _ = win.onCollageDragProposed?(rect, modifiers.contains(.option))
+        }
+        let guides = SnapEngine.shared.resizeGuides(for: win.visualFrame, corner: corner, modifiers: modifiers)
+        if let screen = win.screen ?? NSScreen.main { SnapGuideOverlay.shared.show(guides, on: screen, above: win) }
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -1244,14 +1801,40 @@ class DraggablePhotoView: NSView {
         if isLocked { return }
         guard let win = window as? DesktopPhotoWindow else { return }
 
-        // Save position
-        NotificationCenter.default.post(name: .desktopPhotoMoved, object: win)
+        guard dragMode != .none else { return }
+        traceCollagePointer("up mode=\(dragMode)", event: event)
+        let collageHandled = win.onCollageDragEnded?() ?? false
+        if !collageHandled { NotificationCenter.default.post(name: .desktopPhotoMoved, object: win) }
 
         // If we were resizing, report the new width
-        if dragMode != .move && dragMode != .none {
+        if !collageHandled && dragMode != .move && dragMode != .none {
             onResizeFinished?(win.photoFrame.width)
         }
         dragMode = .none
+        collageOwnsPlacement = false
+        applyCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    private func traceCollagePointer(_ stage: String, event: NSEvent) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["ARRAS_COLLAGE_POINTER_TRACE"] == "1",
+              let root = ProcessInfo.processInfo.environment["ARRAS_UI_TEST_STORAGE_DIR"],
+              let window = window as? DesktopPhotoWindow else { return }
+        let path = URL(fileURLWithPath: root).appendingPathComponent("pointer-trace.txt")
+        let message = "\(stage) id=\(window.photoId?.uuidString ?? "nil") event=\(event.locationInWindow) screen=\(window.convertPoint(toScreen: event.locationInWindow)) global=\(NSEvent.mouseLocation) frame=\(window.photoFrame)\n"
+        if !FileManager.default.fileExists(atPath: path.path) { FileManager.default.createFile(atPath: path.path, contents: nil) }
+        if let handle = try? FileHandle(forWritingTo: path) { defer { try? handle.close() }; try? handle.seekToEnd(); try? handle.write(contentsOf: Data(message.utf8)) }
+        #endif
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if (window as? DesktopPhotoWindow)?.cancelBackgroundGesture() == true { return }
+        guard dragMode != .none, let win = window as? DesktopPhotoWindow else { return }
+        dragMode = .none
+        collageOwnsPlacement = false
+        win.onCollageDragCancelled?()
+        SnapGuideOverlay.shared.hide()
+        SnapEngine.shared.endDrag()
     }
 
     // MARK: - Scroll wheel → opacity
@@ -1261,7 +1844,8 @@ class DraggablePhotoView: NSView {
         let delta = event.deltaY * 0.02
         guard let photoWindow = window as? DesktopPhotoWindow else { return }
         let newAlpha = max(0.1, min(1.0, photoWindow.configuredOpacity + delta))
-        photoWindow.setPhotoOpacity(newAlpha)
+        // The manager saves the requested value before changing live alpha,
+        // just as it does for the Settings slider. A failed save leaves it alone.
         onOpacityChanged?(newAlpha)
     }
 
@@ -1269,9 +1853,13 @@ class DraggablePhotoView: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
+        menu.autoenablesItems = false
+        let historyItems = arrangementMenuItems?() ?? []
+        for item in historyItems { menu.addItem(item) }
+        if !historyItems.isEmpty { menu.addItem(.separator()) }
 
         let lockItem = NSMenuItem(
-            title: isLocked ? "Unlock Position" : "Lock Position",
+            title: lockActionTitle,
             action: #selector(handleLockToggle),
             keyEquivalent: ""
         )
@@ -1281,11 +1869,12 @@ class DraggablePhotoView: NSView {
         menu.addItem(.separator())
 
         // Overlapping photos had no way to be reordered at all short of hiding one.
-        let frontItem = NSMenuItem(title: "Bring to Front", action: #selector(handleBringToFront), keyEquivalent: "")
+        let grouped = (window as? DesktopPhotoWindow)?.isCollageMember?() ?? false
+        let frontItem = NSMenuItem(title: grouped ? "Bring Collage to Front" : "Bring to Front", action: #selector(handleBringToFront), keyEquivalent: "")
         frontItem.target = self
         menu.addItem(frontItem)
 
-        let backItem = NSMenuItem(title: "Send to Back", action: #selector(handleSendToBack), keyEquivalent: "")
+        let backItem = NSMenuItem(title: grouped ? "Send Collage to Back" : "Send to Back", action: #selector(handleSendToBack), keyEquivalent: "")
         backItem.target = self
         menu.addItem(backItem)
 
@@ -1341,6 +1930,7 @@ class DraggablePhotoView: NSView {
     // MARK: - Standard overrides
 
     override var acceptsFirstResponder: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     /// Only the photo itself is clickable. The window is deliberately larger than the photo

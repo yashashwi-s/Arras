@@ -1,13 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Everything that shapes how a photo is drawn, in a sheet rather than in the 380pt photo list.
-///
-/// These eleven controls used to sit in the expanded row, which meant a column barely wide
-/// enough for a slider had to hold segmented pickers, inline colour wells and mini switches as
-/// well — and six of them appeared and disappeared conditionally, so every change made the
-/// rows below jump. A sheet has the width to lay them out on one grid, and the four that only
-/// matter once you are already fussing sit behind a disclosure.
+/// Photo-first styling: compare complete looks, then fine-tune individual controls.
 struct FrameInspector: View {
     let item: PhotoItem
     @ObservedObject var manager: PhotoManager
@@ -15,6 +9,7 @@ struct FrameInspector: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showingAdvanced = false
+    @State private var showingAdjustments = false
     @State private var showingResetConfirmation = false
 
     /// Re-read from the manager rather than captured, so the sheet reflects edits made through
@@ -26,7 +21,7 @@ struct FrameInspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Frame")
+                Text("Appearance")
                     .font(.system(size: 13, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text(manager.label(for: live))
@@ -36,7 +31,7 @@ struct FrameInspector: View {
                 Spacer()
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Frame inspector for \(manager.label(for: live))")
+            .accessibilityLabel("Appearance for \(manager.label(for: live))")
             .accessibilityAddTraits(.isHeader)
             .padding(.horizontal, 20)
             .padding(.top, 18)
@@ -44,11 +39,29 @@ struct FrameInspector: View {
 
             Divider()
 
+            appearancePreview(live, size: NSSize(width: 500, height: 164))
+                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                .background(Color(nsColor: .underPageBackgroundColor))
+                .accessibilityLabel("Live appearance preview")
+            Text("Changes appear on your desktop as you edit.")
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 20).padding(.vertical, 8)
+            Picker("Appearance controls", selection: $showingAdjustments) {
+                Text("Looks").tag(false)
+                Text("Adjust").tag(true)
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    basics
-                    Divider().padding(.vertical, 2)
-                    advanced
+                    if showingAdjustments {
+                        basics
+                        Divider().padding(.vertical, 2)
+                        advanced
+                    } else {
+                        presetChoices
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -64,59 +77,91 @@ struct FrameInspector: View {
                     .controlSize(.regular)
                     .accessibilityIdentifier("frame-reset")
                     .accessibilityLabel("Reset frame settings")
-                    .accessibilityHint("Opens a confirmation before returning every frame setting to the Minimal preset")
+                    .accessibilityHint("Opens a confirmation before returning every frame setting to the Plain preset")
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                     .controlSize(.regular)
                     .accessibilityIdentifier("frame-done")
                     .accessibilityLabel("Done")
-                    .accessibilityHint("Closes the Frame inspector")
+                    .accessibilityHint("Closes Appearance")
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 500, height: 470)
+        .frame(width: 560, height: 670)
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("frame-inspector")
-        .confirmationDialog(
-            "Reset frame settings?",
-            isPresented: $showingResetConfirmation,
-            titleVisibility: .visible
+        .alert(
+            "Reset Appearance?",
+            isPresented: $showingResetConfirmation
         ) {
-            Button("Reset Frame", role: .destructive) {
+            Button("Reset Appearance", role: .destructive) {
                 manager.applyPreset(live.id, .minimal)
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("All shape, shadow, mat, border, fade and tilt changes will return to the Minimal preset.")
+            Text("All shape, shadow, mat, border, fade and tilt changes will return to the Plain preset.")
         }
         .onExitCommand { dismiss() }
+    }
+
+    @ViewBuilder
+    private func appearancePreview(_ photo: PhotoItem, size: NSSize) -> some View {
+        if let thumbnail = manager.thumbnail(for: photo, size: 600),
+           let rendered = PhotoAppearancePreview.image(photo: photo, thumbnail: thumbnail, size: size) {
+            Image(nsImage: rendered).resizable().frame(width: size.width, height: size.height)
+        } else {
+            Image(systemName: "photo").frame(width: size.width, height: size.height).foregroundStyle(.secondary)
+        }
+    }
+
+    private func presetPreview(_ preset: StylePreset) -> some View {
+        appearancePreview(preset.applying(to: live), size: NSSize(width: 140, height: 82))
+            .frame(maxWidth: .infinity)
+            .background(Color(nsColor: .underPageBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+            .accessibilityHidden(true)
     }
 
     // MARK: - Basics
 
     @ViewBuilder
-    private var basics: some View {
-        SettingRow("Preset") {
-            Picker("", selection: Binding(
-                get: { live.stylePreset.flatMap(StylePreset.init(rawValue:)) },
-                set: { if let preset = $0 { manager.applyPreset(live.id, preset) } }
-            )) {
-                Text("Custom").tag(StylePreset?.none)
-                ForEach(StylePreset.allCases, id: \.self) { Text($0.displayName).tag(StylePreset?.some($0)) }
+    private var presetChoices: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Choose a look").font(.subheadline.bold())
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(StylePreset.allCases, id: \.self) { preset in
+                    Button { manager.applyPreset(live.id, preset) } label: {
+                        VStack(spacing: 6) {
+                            presetPreview(preset)
+                            Text(preset.displayName).font(.caption)
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(8).frame(maxWidth: .infinity)
+                        .background(live.stylePreset == preset.rawValue ? Color.accentColor.opacity(0.1) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(live.stylePreset == preset.rawValue ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(preset.displayName)
+                    .accessibilityValue(live.stylePreset == preset.rawValue ? "Selected" : "Not selected")
+                    .help(preset.detail)
+                }
             }
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("Style preset")
-            .accessibilityHint("Applies a matching set of frame, mat, border and shadow settings")
+            Text(live.stylePreset.flatMap(StylePreset.init(rawValue:))?.detail ?? "Custom look · open Adjust to fine-tune it.")
+                .font(.caption).foregroundStyle(.secondary)
         }
 
+    }
+
+    @ViewBuilder
+    private var basics: some View {
         SettingRow("Shape") {
             Picker("", selection: Binding(
                 get: { PhotoShapeMask(rawValue: live.shapeMask) ?? .roundedRect },
-                set: { manager.setShapeMask(live.id, $0); manager.clearStylePreset(live.id) }
+                set: { manager.setShapeMask(live.id, $0) }
             )) {
                 ForEach(PhotoShapeMask.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
@@ -130,7 +175,7 @@ struct FrameInspector: View {
         SettingRow("Corners", value: "\(Int(live.cornerRadius)) px") {
             Slider(value: Binding(
                 get: { live.cornerRadius },
-                set: { manager.setCornerRadius(live.id, $0); manager.clearStylePreset(live.id) }
+                set: { manager.setCornerRadius(live.id, $0) }
             ), in: 0...50, step: 1)
             .controlSize(.small)
             .accessibilityLabel("Corner radius")
@@ -143,7 +188,6 @@ struct FrameInspector: View {
                     get: { live.shadowEnabled },
                     set: {
                         manager.setShadow(live.id, enabled: $0, blur: live.shadowBlur, opacity: live.shadowOpacity)
-                        manager.clearStylePreset(live.id)
                     }
                 ))
                 .toggleStyle(.switch)
@@ -156,7 +200,6 @@ struct FrameInspector: View {
                     get: { live.shadowBlur },
                     set: {
                         manager.setShadow(live.id, enabled: true, blur: $0, opacity: live.shadowOpacity)
-                        manager.clearStylePreset(live.id)
                     }
                 ), in: 0...30, step: 1)
                 .controlSize(.small)
@@ -169,7 +212,7 @@ struct FrameInspector: View {
         SettingRow("Mat", value: live.matWidth > 0 ? "\(Int(live.matWidth)) px" : "Off") {
             Slider(value: Binding(
                 get: { live.matWidth },
-                set: { manager.setMat(live.id, width: $0, colorHex: live.matColorHex); manager.clearStylePreset(live.id) }
+                set: { manager.setMat(live.id, width: $0, colorHex: live.matColorHex) }
             ), in: 0...40, step: 1)
             .controlSize(.small)
             .accessibilityLabel("Mat width")
@@ -178,7 +221,7 @@ struct FrameInspector: View {
         } accessory: {
             ColorPicker("", selection: Binding(
                 get: { Color(nsColor: live.matColor) },
-                set: { manager.setMat(live.id, width: live.matWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(live.id) }
+                set: { manager.setMat(live.id, width: live.matWidth, colorHex: NSColor($0).hexString) }
             ))
             .labelsHidden()
             .frame(width: 42, height: 22)
@@ -190,7 +233,7 @@ struct FrameInspector: View {
         SettingRow("Border", value: live.borderWidth > 0 ? String(format: "%.1f", live.borderWidth) : "Off") {
             Slider(value: Binding(
                 get: { live.borderWidth },
-                set: { manager.setBorder(live.id, width: $0, colorHex: live.borderColorHex); manager.clearStylePreset(live.id) }
+                set: { manager.setBorder(live.id, width: $0, colorHex: live.borderColorHex) }
             ), in: 0...5, step: 0.5)
             .controlSize(.small)
             .accessibilityLabel("Border width")
@@ -198,7 +241,7 @@ struct FrameInspector: View {
         } accessory: {
             ColorPicker("", selection: Binding(
                 get: { Color(nsColor: NSColor.fromHex(live.borderColorHex) ?? .white) },
-                set: { manager.setBorder(live.id, width: live.borderWidth, colorHex: NSColor($0).hexString); manager.clearStylePreset(live.id) }
+                set: { manager.setBorder(live.id, width: live.borderWidth, colorHex: NSColor($0).hexString) }
             ))
             .labelsHidden()
             .frame(width: 42, height: 22)
@@ -242,7 +285,7 @@ struct FrameInspector: View {
         SettingRow("Stroke") {
             Picker("", selection: Binding(
                 get: { PhotoBorderStyle(rawValue: live.borderStyle) ?? .solid },
-                set: { manager.setBorderStyle(live.id, $0); manager.clearStylePreset(live.id) }
+                set: { manager.setBorderStyle(live.id, $0) }
             )) {
                 ForEach(PhotoBorderStyle.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
@@ -260,7 +303,6 @@ struct FrameInspector: View {
                 get: { live.borderGradientEnabled },
                 set: {
                     manager.setBorderGradient(live.id, enabled: $0, colorHex: live.borderGradientColorHex)
-                    manager.clearStylePreset(live.id)
                 }
             ))
             .toggleStyle(.switch)
@@ -276,7 +318,6 @@ struct FrameInspector: View {
                 get: { Color(nsColor: live.borderGradientColor) },
                 set: {
                     manager.setBorderGradient(live.id, enabled: true, colorHex: NSColor($0).hexString)
-                    manager.clearStylePreset(live.id)
                 }
             ))
             .labelsHidden()
@@ -286,10 +327,10 @@ struct FrameInspector: View {
             .accessibilityLabel("Second border colour")
         }
 
-        SettingRow("Edge Fade", value: live.vignetteEnabled ? "On" : "Off") {
+        SettingRow("Soft Vignette", value: live.vignetteEnabled ? "On" : "Off") {
             Toggle("", isOn: Binding(
                 get: { live.vignetteEnabled },
-                set: { manager.setVignette(live.id, enabled: $0); manager.clearStylePreset(live.id) }
+                set: { manager.setVignette(live.id, enabled: $0) }
             ))
             .toggleStyle(.switch)
             .controlSize(.mini)
@@ -313,5 +354,39 @@ struct FrameInspector: View {
         }
             }
         }
+    }
+}
+
+
+/// Uses the desktop's actual layers, including masks, mats, tilt, border and shadows.
+/// The source thumbnail already includes reference edits, so never apply them twice.
+@MainActor
+enum PhotoAppearancePreview {
+    static func image(photo: PhotoItem, thumbnail: NSImage, size: NSSize) -> NSImage? {
+        let saved = NSRectFromString(photo.frameString).size
+        let photoSize = saved.width > 0 && saved.height > 0 ? saved : thumbnail.size
+        guard photoSize.width > 0, photoSize.height > 0, size.width > 0, size.height > 0 else { return nil }
+        let inset = PhotoCanvas.inset(photoSize: photoSize, shadowEnabled: photo.shadowEnabled,
+                                     shadowBlur: photo.shadowBlur, matWidth: photo.matWidth,
+                                     tiltDegrees: CGFloat(photo.tiltDegrees)) + 4
+        let canvas = NSSize(width: photoSize.width + inset * 2, height: photoSize.height + inset * 2)
+        var settings = photo
+        settings.reference = PhotoReferenceSettings()
+        let view = DraggablePhotoView(frame: NSRect(origin: .zero, size: canvas), content: .still(thumbnail),
+                                      locked: true, canvasInset: inset, settings: settings)
+        guard let layer = view.layer,
+              let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
+                                            pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+                                            samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext else { return nil }
+        let scale = min(size.width / canvas.width, size.height / canvas.height)
+        context.scaleBy(x: 2, y: 2)
+        context.translateBy(x: (size.width - canvas.width * scale) / 2, y: (size.height - canvas.height * scale) / 2)
+        context.scaleBy(x: scale, y: scale)
+        layer.render(in: context)
+        let result = NSImage(size: size)
+        result.addRepresentation(bitmap)
+        return result
     }
 }

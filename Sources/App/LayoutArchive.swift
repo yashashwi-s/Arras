@@ -1,31 +1,24 @@
 import Foundation
 import AppKit
 
-// MARK: - Layout Export/Import ("Later" roadmap item)
+// MARK: - Layout Export/Import
 //
-// A `.tableau` bundle is a single file the user can AirDrop or email. We build it as a
-// plain ZIP (manifest.json + images/*.jpg) written with our own minimal, STORE-only
-// writer/reader below, rather than shelling out to /usr/bin/ditto via Process or relying
-// on FileWrapper's directory-package serialization. Both of those alternatives write a
-// real directory to disk (a "package" is only ever a Finder-UI illusion driven by a
-// registered UTI we don't have), which defeats "single file you can email" and adds
-// sandbox/Process-entitlement uncertainty for no benefit. A hand-rolled STORE-format ZIP
-// is a genuine single file, needs no compression library (the JPEGs inside are already
-// compressed, so DEFLATE would buy nothing), and is still openable by Archive Utility or
-// any standard unzip tool if a user gets curious.
+// An `.arras` archive is a portable single ZIP containing a manifest, managed
+// media and referenced fonts. The STORE-only reader/writer preserves those bytes
+// without relying on an external process or a Finder directory package.
 
 // MARK: - Manifest
 
-/// Top-level contents of a `.tableau` bundle's manifest.json.
+/// Top-level contents of an `.arras` bundle's manifest.json.
 ///
 /// `formatVersion` exists so a future change to the archive layout (not just to
 /// `PhotoItem`, which already tolerates missing keys) can detect and adapt to older
 /// bundles instead of failing to decode them silently.
 struct LayoutManifest: Codable {
-    /// v2 adds `preferences`, `relativeFrames`, and `itemCount`. Every added field is
+    /// v3 adds export scope, media integrity, and provenance metadata. Every added field is
     /// optional so a v1 bundle still decodes, and a v1 app reading a v2 bundle simply
     /// ignores what it doesn't know.
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
 
     let formatVersion: Int
     let appVersion: String
@@ -44,6 +37,10 @@ struct LayoutManifest: Codable {
     /// Screen-independent positions for per-image Space frames:
     /// photo id -> image filename -> position.
     let relativeImageFrames: [String: [String: RelativeFrame]]?
+
+    /// Scope, integrity hashes, and honest source-fidelity wording for new exports.
+    /// Missing on older archives, which therefore receive unknown provenance on import.
+    let exportMetadata: ArchiveExportMetadata?
 }
 
 /// A window position expressed as fractions of the screen's `visibleFrame` rather than
@@ -86,7 +83,7 @@ struct RelativeFrame: Codable {
 
 /// App-wide settings that live in `UserDefaults` rather than in `photos.json`.
 ///
-/// Without these a `.tableau` only carries half a setup — the widgets arrive but the
+/// Without these an `.arras` only carries half a setup — the widgets arrive but the
 /// hotkey, snapping, and login behaviour don't. Import is opt-in precisely because
 /// these are global: a layout someone shares should never silently rebind the
 /// recipient's system-wide shortcut or change what launches at login.
@@ -197,16 +194,74 @@ enum LayoutArchiveError: LocalizedError, Equatable {
     case notAZipFile
     case missingManifest
     case emptyLayout
+    case widgetNotFound(UUID)
     case missingStoredMedia(String)
+    case couldNotStageMedia(String)
+    case couldNotCommit
+    case unsupportedFormatVersion(Int)
+    case missingStoredFont(String)
 
     var errorDescription: String? {
         switch self {
-        case .notAZipFile: return "That file isn't a valid .tableau bundle."
+        case .notAZipFile: return "That file isn't a valid .arras bundle."
         case .missingManifest: return "That bundle is missing its layout data."
         case .emptyLayout: return "There are no photos to export."
+        case .widgetNotFound: return "That widget is no longer available to export."
         case .missingStoredMedia(let filename):
             return "The stored image \(filename) could not be included in the layout bundle."
+        case .couldNotStageMedia(let filename):
+            return "The imported media \(filename) could not be staged safely."
+        case .couldNotCommit:
+            return "The current layout could not be saved, so the import was not applied."
+        case .unsupportedFormatVersion(let version):
+            return "This backup uses format version \(version), which this version of Arras cannot import safely."
+        case .missingStoredFont(let filename):
+            return "The layout's custom font \(filename) is missing or could not be opened."
         }
+    }
+}
+
+/// One validated widget waiting for the user's import selection. Media is staged outside the
+/// durable photo store until `commitImport` is called, so Cancel and a failed Replace can cleanly
+/// discard every byte without touching the current layout.
+struct LayoutImportCandidate: Identifiable {
+    let id: Int
+    let item: PhotoItem
+    let stagedURLs: [URL]
+    let mediaCount: Int
+    var stagedFontURLs: [URL] = []
+
+    var typeName: String {
+        if item.desktopCollage != nil { return "Collage" }
+        if !item.spaceImageFilenames.isEmpty { return "Space" }
+        return "Photo"
+    }
+
+    var displayName: String {
+        if let customName = item.customName?.trimmingCharacters(in: .whitespacesAndNewlines), !customName.isEmpty {
+            return customName
+        }
+        if !item.filename.isEmpty {
+            let name = (item.filename as NSString).deletingPathExtension
+            if !name.isEmpty { return name }
+        }
+        return typeName
+    }
+}
+
+struct LayoutImportPreflight {
+    let manifest: LayoutManifest
+    let candidates: [LayoutImportCandidate]
+    let skippedReasons: [String]
+    let stagingDirectory: URL
+
+    var skippedCount: Int { skippedReasons.count }
+    var hasCandidates: Bool { !candidates.isEmpty }
+
+    /// Removes all staged media. This is idempotent so callers can use it after either Cancel or
+    /// a successful commit without needing a second ownership flag.
+    func cleanup() {
+        try? FileManager.default.removeItem(at: stagingDirectory)
     }
 }
 
@@ -218,31 +273,132 @@ extension PhotoManager {
         case merge
     }
 
-    /// Writes every current photo (single images and Spaces) plus their positions and
-    /// aesthetic settings into a `.tableau` bundle at `url`. `url` must come from an
-    /// `NSSavePanel` — the sandbox only grants write access to user-chosen paths.
-    func exportLayout(to url: URL, preferenceGroups: Set<ExportedPreferences.Group> = []) throws {
-        guard !photos.isEmpty else { throw LayoutArchiveError.emptyLayout }
+    /// Writes every current widget (photos, slideshows, and desktop collages) plus its
+    /// positions and aesthetic settings into a whole-layout `.arras` bundle. The existing API
+    /// remains the default path; `archivalQuality` adds integrity/provenance metadata while
+    /// retaining the exact stored bytes in either mode.
+    @discardableResult
+    func exportLayout(
+        to url: URL,
+        preferenceGroups: Set<ExportedPreferences.Group> = [],
+        archivalQuality: Bool = false
+    ) throws -> ArchiveExportReport {
+        try exportArchive(
+            items: photos,
+            to: url,
+            preferenceGroups: preferenceGroups,
+            archivalQuality: archivalQuality,
+            scope: .wholeLayout
+        )
+    }
+
+    /// Exports one widget as a portable `.arras` bundle. A slideshow includes all
+    /// of its referenced media, while a regular widget includes its primary stored file.
+    @discardableResult
+    func exportWidget(
+        _ id: UUID,
+        to url: URL,
+        archivalQuality: Bool = false
+    ) throws -> ArchiveExportReport {
+        guard let item = photos.first(where: { $0.id == id }) else {
+            throw LayoutArchiveError.widgetNotFound(id)
+        }
+        let items: [PhotoItem]
+        if item.desktopCollage != nil {
+            items = [item] + photos.filter { $0.collageParentID == item.id }
+        } else {
+            items = [item]
+        }
+        return try exportArchive(
+            items: items,
+            to: url,
+            preferenceGroups: [],
+            archivalQuality: archivalQuality,
+            scope: .widget
+        )
+    }
+
+    /// Shared writer for whole-layout and per-widget exports. The ZIP is STORE-only, so the
+    /// archive always contains the exact bytes currently in the photo store. Archival mode is an
+    /// explicit audit guarantee (hashes plus provenance wording), not a promise to recreate
+    /// camera originals that were downsampled or re-encoded before Arras stored them.
+    private func exportArchive(
+        items: [PhotoItem],
+        to url: URL,
+        preferenceGroups: Set<ExportedPreferences.Group>,
+        archivalQuality: Bool,
+        scope: LayoutArchiveScope
+    ) throws -> ArchiveExportReport {
+        guard !items.isEmpty else { throw LayoutArchiveError.emptyLayout }
+
+        // A live folder's managed media is portable; its security-scoped bookmark, absolute
+        // path, and resource fingerprint are machine-local and must never enter an archive.
+        let includedIDs = Set(items.map(\.id))
+        let sanitizedItems = items.map { source -> PhotoItem in
+            var snapshot = archiveSafeSnapshot(of: source)
+            if let parentID = snapshot.collageParentID, !includedIDs.contains(parentID) { snapshot.collageParentID = nil }
+            return snapshot
+        }
 
         var writer = SimpleZipWriter()
         var writtenImages = Set<String>()
+        var mediaRecords: [ArchiveMediaRecord] = []
+        var fidelityByFilename: [String: ArchiveMediaFidelity] = [:]
+        var payloadsByFilename: [String: Data] = [:]
+        var orderedFilenames: [String] = []
 
-        for item in photos {
-            for name in referencedFilenames(of: item) where !writtenImages.contains(name) {
+        for item in sanitizedItems {
+            if referencedFilenames(of: item).allSatisfy(\.isEmpty), item.desktopCollage == nil {
+                throw LayoutArchiveError.missingStoredMedia(item.filename)
+            }
+            for name in referencedFilenames(of: item) where !name.isEmpty && !writtenImages.contains(name) {
                 writtenImages.insert(name)
+                // Stored references must be leaf filenames. Refuse a corrupt model value such
+                // as `../secret` rather than allowing an export to read outside the media store.
+                guard (name as NSString).lastPathComponent == name,
+                      name != ".", name != ".." else {
+                    throw LayoutArchiveError.missingStoredMedia(name)
+                }
                 let source = storageDir.appendingPathComponent(name)
-                guard !name.isEmpty, let data = try? Data(contentsOf: source) else {
+                guard let data = try? Data(contentsOf: source) else {
                     throw LayoutArchiveError.missingStoredMedia(name)
                 }
                 writer.addEntry(name: "images/\(name)", data: data)
+                payloadsByFilename[name] = data
+                orderedFilenames.append(name)
             }
+            for name in referencedFilenames(of: item) where !name.isEmpty {
+                let fidelity = item.mediaFidelity[name] ?? .unknown
+                if let existing = fidelityByFilename[name] {
+                    fidelityByFilename[name] = existing.merged(with: fidelity)
+                } else {
+                    fidelityByFilename[name] = fidelity
+                }
+            }
+        }
+        mediaRecords = orderedFilenames.compactMap { filename in
+            guard let data = payloadsByFilename[filename] else { return nil }
+            return ArchiveMediaRecord(
+                filename: filename,
+                data: data,
+                fidelity: fidelityByFilename[filename] ?? .unknown
+            )
+        }
+
+        let fontNames = Set(sanitizedItems.flatMap { $0.desktopCollage?.fontFileNames ?? [] })
+        for name in fontNames {
+            guard CollageFontLibrary.isManagedFilename(name),
+                  let data = try? Data(contentsOf: CollageFontLibrary.directory(in: storageDir).appendingPathComponent(name)) else {
+                throw LayoutArchiveError.missingStoredFont(name)
+            }
+            writer.addEntry(name: "fonts/\(name)", data: data)
         }
 
         // Record every frame as a fraction of the screen it currently sits on, so the
         // layout can be rebuilt in proportion on a Mac with different displays.
         var relativeFrames: [String: RelativeFrame] = [:]
         var relativeImageFrames: [String: [String: RelativeFrame]] = [:]
-        for item in photos {
+        for item in sanitizedItems {
             let key = item.id.uuidString
             if let relative = Self.relativeFrame(for: item.frameString) {
                 relativeFrames[key] = relative
@@ -256,15 +412,26 @@ extension PhotoManager {
             if !perImage.isEmpty { relativeImageFrames[key] = perImage }
         }
 
+        let sourceStatus = ArchiveSourceStatus(media: mediaRecords)
+        let exportMetadata = ArchiveExportMetadata(
+            scope: scope,
+            archivalQuality: archivalQuality,
+            media: mediaRecords,
+            statement: ArchiveExportMetadata.statement(
+                archivalQuality: archivalQuality,
+                sourceStatus: sourceStatus
+            )
+        )
         let manifest = LayoutManifest(
             formatVersion: LayoutManifest.currentFormatVersion,
             appVersion: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown",
             exportedAt: Date(),
-            photos: photos,
-            itemCount: photos.count,
+            photos: sanitizedItems,
+            itemCount: sanitizedItems.count,
             preferences: preferenceGroups.isEmpty ? nil : .current(launchAtLogin: launchAtLogin, groups: preferenceGroups),
             relativeFrames: relativeFrames.isEmpty ? nil : relativeFrames,
-            relativeImageFrames: relativeImageFrames.isEmpty ? nil : relativeImageFrames
+            relativeImageFrames: relativeImageFrames.isEmpty ? nil : relativeImageFrames,
+            exportMetadata: exportMetadata
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -272,9 +439,17 @@ extension PhotoManager {
         writer.addEntry(name: "manifest.json", data: try encoder.encode(manifest))
 
         try writer.write(to: url)
+        return ArchiveExportReport(
+            scope: scope,
+            widgetCount: sanitizedItems.count,
+            mediaCount: mediaRecords.count,
+            archivalQuality: archivalQuality,
+            sourceStatus: sourceStatus,
+            statement: exportMetadata.statement
+        )
     }
 
-    /// Imports a `.tableau` bundle. In `.replace` mode the current layout is replaced in one
+    /// Imports an `.arras` bundle. In `.replace` mode the current layout is replaced in one
     /// durable model commit after every imported media payload has been staged and decoded —
     /// callers must still confirm this with the user, since a successful replacement can't be
     /// undone. In `.merge` mode imported photos are appended in the same single commit.
@@ -287,11 +462,22 @@ extension PhotoManager {
     /// onto the main screen instead of appearing there.
     @discardableResult
     func importLayout(from url: URL, mode: LayoutImportMode) throws -> Int {
+        let preflight = try preflightImportLayout(from: url)
+        return try commitImport(
+            preflight,
+            selectedIDs: Set(preflight.candidates.map(\.id)),
+            mode: mode
+        )
+    }
+
+    /// Parses, validates, and stages every widget without changing the durable layout. The
+    /// resulting candidates are safe to show in a selection UI; only `commitImport` moves the
+    /// selected files into the library and changes `photos.json`.
+    func preflightImportLayout(from url: URL) throws -> LayoutImportPreflight {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
-        let data = try Data(contentsOf: url)
-        let reader = try SimpleZipReader(data: data)
+        let reader = try SimpleZipReader(data: try Data(contentsOf: url))
         guard let manifestData = reader.entryData(named: "manifest.json") else {
             throw LayoutArchiveError.missingManifest
         }
@@ -299,131 +485,266 @@ extension PhotoManager {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(LayoutManifest.self, from: manifestData)
-
-        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        var preparedItems: [PhotoItem] = []
-        var stagedURLs: [URL] = []
-        var skippedItems = 0
-        var didCommit = false
+        guard manifest.formatVersion > 0,
+              manifest.formatVersion <= LayoutManifest.currentFormatVersion else {
+            throw LayoutArchiveError.unsupportedFormatVersion(manifest.formatVersion)
+        }
+        guard Set(manifest.photos.map(\.id)).count == manifest.photos.count else {
+            throw LayoutArchiveError.missingManifest
+        }
+        let stagingDirectory = storageDir.appendingPathComponent(
+            ".arras-import-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        var shouldKeepStaging = false
         defer {
-            // A staged file is not a library file until the corresponding model commit is
-            // durable. This covers malformed payloads, disk errors, and a failed photos.json
-            // write without deleting any media referenced by the pre-import layout.
-            if !didCommit {
-                for stagedURL in stagedURLs {
-                    try? FileManager.default.removeItem(at: stagedURL)
-                }
+            if !shouldKeepStaging {
+                try? FileManager.default.removeItem(at: stagingDirectory)
             }
         }
 
-        for sourceItem in manifest.photos {
-            let names = referencedFilenames(of: sourceItem)
-            guard !names.isEmpty else {
-                skippedItems += 1
+        var integrityRecords: [String: ArchiveMediaRecord] = [:]
+        for record in manifest.exportMetadata?.media ?? [] {
+            integrityRecords[record.filename] = record
+        }
+        var fontMap: [String: URL] = [:]
+        let fontDirectory = CollageFontLibrary.directory(in: stagingDirectory)
+        for name in Set(manifest.photos.flatMap { $0.desktopCollage?.fontFileNames ?? [] }) {
+            guard CollageFontLibrary.isManagedFilename(name),
+                  let payload = reader.entryData(named: "fonts/\(name)"), payload.count <= 20_000_000 else {
+                throw LayoutArchiveError.missingStoredFont(name)
+            }
+            try FileManager.default.createDirectory(at: fontDirectory, withIntermediateDirectories: true)
+            let newName = UUID().uuidString + "." + (name as NSString).pathExtension.lowercased()
+            let stagedURL = fontDirectory.appendingPathComponent(newName)
+            try payload.write(to: stagedURL, options: .atomic)
+            guard !CollageFontLibrary.names(at: stagedURL).isEmpty else { throw LayoutArchiveError.missingStoredFont(name) }
+            fontMap[name] = stagedURL
+        }
+        var candidates: [LayoutImportCandidate] = []
+        var skippedReasons: [String] = []
+
+        for (index, sourceItem) in manifest.photos.enumerated() where !sourceItem.isRetiredCompositionContainer {
+            var names: [String] = []
+            for name in referencedFilenames(of: sourceItem) where !name.isEmpty && !names.contains(name) {
+                names.append(name)
+            }
+            let sourceLabel = sourceItem.customName?.isEmpty == false
+                ? sourceItem.customName!
+                : (sourceItem.spaceImageFilenames.isEmpty ? "Photo" : "Space")
+            guard !names.isEmpty || sourceItem.desktopCollage != nil else {
+                skippedReasons.append("\(sourceLabel): no referenced media")
                 continue
             }
 
             var payloads: [String: Data] = [:]
-            var allPresent = true
+            var validationFailure: String?
             for name in names {
                 guard let payload = reader.entryData(named: "images/\(name)") else {
-                    allPresent = false
+                    validationFailure = "missing media \(name)"
                     break
+                }
+                if manifest.exportMetadata != nil {
+                    guard let record = integrityRecords[name], record.matches(payload) else {
+                        validationFailure = "media integrity check failed for \(name)"
+                        break
+                    }
                 }
                 payloads[name] = payload
             }
-            guard allPresent else {
-                skippedItems += 1
+            guard validationFailure == nil else {
+                skippedReasons.append("\(sourceLabel): \(validationFailure!)")
                 continue
-            }   // skip rather than create an empty widget
+            }
 
             var filenameMap: [String: String] = [:]
             for name in names {
-                // Keep the source extension. This used to force `.jpg` on everything, which
-                // mislabelled the bundled bytes — already wrong for the `.gif` an animated
-                // widget is stored as (PhotoContent.load keys animation off the extension),
-                // and reachable for PNG/HEIC now that imports can be written through without
-                // being transcoded. See PhotoIngest.
                 let ext = (name as NSString).pathExtension
                 filenameMap[name] = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
             }
-            var itemStagedURLs: [URL] = []
-            for (oldName, newName) in filenameMap {
-                guard let payload = payloads[oldName] else {
-                    throw LayoutArchiveError.missingStoredMedia(oldName)
+
+            var stagedURLs: [URL] = []
+            var stageError: String?
+            for name in names {
+                guard let payload = payloads[name], let newName = filenameMap[name] else { continue }
+                let stagedURL = stagingDirectory.appendingPathComponent(newName)
+                do {
+                    try payload.write(to: stagedURL, options: .atomic)
+                    stagedURLs.append(stagedURL)
+                } catch {
+                    stageError = newName
+                    break
                 }
-                let destination = storageDir.appendingPathComponent(newName)
-                try payload.write(to: destination, options: .atomic)
-                stagedURLs.append(destination)
-                itemStagedURLs.append(destination)
+            }
+            func stagedURL(for originalName: String) -> URL? {
+                guard let mappedName = filenameMap[originalName] else { return nil }
+                return stagingDirectory.appendingPathComponent(mappedName)
             }
 
-            // Presence in the ZIP is not enough: an archive can contain truncated bytes or a
-            // payload whose extension lies about its format. Decode every staged file through
-            // the same PhotoContent path used to create desktop windows before preparing the
-            // model item. Invalid items retain the old skip-and-report behavior.
-            guard itemStagedURLs.allSatisfy({ PhotoContent.load(from: $0) != nil }) else {
-                for stagedURL in itemStagedURLs {
-                    try? FileManager.default.removeItem(at: stagedURL)
-                }
-                stagedURLs.removeAll { itemStagedURLs.contains($0) }
-                skippedItems += 1
+            func validates(_ media: PhotoMedia, primaryName: String) -> Bool {
+                guard let primaryURL = stagedURL(for: primaryName) else { return false }
+                let posterURL = media.posterFilename.flatMap { stagedURL(for: $0) }
+                let pairedVideoURL = media.pairedVideoFilename.flatMap { stagedURL(for: $0) }
+                if media.kind == .livePhoto && pairedVideoURL == nil { return false }
+                return PhotoContent.load(
+                    from: primaryURL,
+                    posterURL: posterURL,
+                    pairedVideoURL: pairedVideoURL
+                ) != nil
+            }
+
+            let individuallyValid = stagedURLs.allSatisfy({ PhotoContent.load(from: $0) != nil })
+            let primaryMediaValid = sourceItem.filename.isEmpty
+                || validates(sourceItem.media, primaryName: sourceItem.filename)
+            let collectionMediaValid = sourceItem.photosLibraryAssets.allSatisfy {
+                validates($0.media, primaryName: $0.managedFilename)
+            }
+            guard stageError == nil,
+                  stagedURLs.count == names.count,
+                  individuallyValid,
+                  primaryMediaValid,
+                  collectionMediaValid else {
+                for stagedURL in stagedURLs { try? FileManager.default.removeItem(at: stagedURL) }
+                skippedReasons.append("\(sourceLabel): media could not be staged or decoded")
                 continue
             }
 
-            var newItem = remapped(sourceItem, filenameMap: filenameMap)
-
-            // Prefer the screen-independent position when the bundle carries one; fall
-            // back to the absolute frame (clamped on-screen) for v1 bundles.
-            let sourceKey = sourceItem.id.uuidString
-            if let relative = manifest.relativeFrames?[sourceKey] {
-                let aspect = Self.aspectRatio(ofFrameString: sourceItem.frameString)
-                newItem.frameString = NSStringFromRect(
-                    relative.absoluteFrame(in: visibleFrame, aspectRatio: aspect)
-                )
-                newItem.widgetWidth = NSRectFromString(newItem.frameString).width
-            } else {
-                newItem.frameString = Self.clampFrameString(newItem.frameString, toFit: visibleFrame)
-            }
-
-            let relativePerImage = manifest.relativeImageFrames?[sourceKey]
-            for (key, config) in newItem.folderImageConfigs {
-                // folderImageConfigs was already re-keyed to the new filenames, but the
-                // manifest's relative entries are still keyed by the original ones.
-                let originalName = filenameMap.first(where: { $0.value == key })?.key ?? key
-                if let relative = relativePerImage?[originalName] {
-                    let frame = relative.absoluteFrame(
-                        in: visibleFrame,
-                        aspectRatio: Self.aspectRatio(ofFrameString: config.frameString)
-                    )
-                    newItem.folderImageConfigs[key] = FolderImageConfig(
-                        frameString: NSStringFromRect(frame),
-                        widgetWidth: frame.width
-                    )
-                } else {
-                    newItem.folderImageConfigs[key] = FolderImageConfig(
-                        frameString: Self.clampFrameString(config.frameString, toFit: visibleFrame),
-                        widgetWidth: config.widgetWidth
-                    )
+            var item = remapped(sourceItem, filenameMap: filenameMap)
+            if var settings = item.desktopCollage {
+                if let file = settings.captionStyle.fontFileName { settings.captionStyle.fontFileName = fontMap[file]?.lastPathComponent }
+                for i in settings.labels.indices {
+                    if let file = settings.labels[i].style.fontFileName { settings.labels[i].style.fontFileName = fontMap[file]?.lastPathComponent }
                 }
+                item.desktopCollage = settings
             }
-
-            preparedItems.append(newItem)
-        }
-
-        if skippedItems > 0 {
-            recordMediaImportFailure(
-                "\(skippedItems) widget\(skippedItems == 1 ? "" : "s") in the backup had missing or undecodable media and was skipped."
+            for name in names {
+                let mappedName = filenameMap[name]!
+                item.mediaFidelity[mappedName] = integrityRecords[name]?.fidelity ?? item.mediaFidelity[mappedName] ?? .unknown
+            }
+            candidates.append(
+                LayoutImportCandidate(
+                    id: index,
+                    item: item,
+                    stagedURLs: stagedURLs,
+                    mediaCount: names.count,
+                    stagedFontURLs: (sourceItem.desktopCollage?.fontFileNames ?? []).compactMap { fontMap[$0] }
+                )
             )
         }
 
-        // A damaged or empty backup must never erase a working layout. All archive data is
-        // validated and staged before a replacement becomes destructive.
-        guard !preparedItems.isEmpty else { return 0 }
-        guard commitImportedItems(preparedItems, replacing: mode == .replace) else { return 0 }
-        didCommit = true
+        let importedIDsBySourceID = Dictionary(uniqueKeysWithValues: candidates.map {
+            (manifest.photos[$0.id].id, $0.item.id)
+        })
+        let importedCollages = Set(candidates.filter { $0.item.desktopCollage != nil }.map(\.item.id))
+        candidates = candidates.map { candidate in
+            var item = candidate.item
+            if let parent = item.collageParentID, let mapped = importedIDsBySourceID[parent],
+               importedCollages.contains(mapped), item.desktopCollage == nil,
+               mapped != item.id {
+                item.collageParentID = mapped
+            } else { item.collageParentID = nil }
+            return LayoutImportCandidate(
+                id: candidate.id,
+                item: item,
+                stagedURLs: candidate.stagedURLs,
+                mediaCount: candidate.mediaCount,
+                stagedFontURLs: candidate.stagedFontURLs
+            )
+        }
 
-        return preparedItems.count
+        let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1280, height: 800)
+        var transformedByID: [UUID: PhotoItem] = [:]
+        for parent in candidates.map(\.item) where parent.desktopCollage != nil {
+            let originalID = manifest.photos[candidates.first { $0.item.id == parent.id }!.id].id.uuidString
+            let source = NSRectFromString(parent.frameString)
+            let target = manifest.relativeFrames?[originalID]?.absoluteFrame(in: screen, aspectRatio: source.width / max(1, source.height))
+                ?? NSRectFromString(Self.clampFrameString(parent.frameString, toFit: screen))
+            let members = [parent] + candidates.map(\.item).filter { $0.collageParentID == parent.id }
+            for item in adaptImportedCollage(members, to: target, in: screen) { transformedByID[item.id] = item }
+        }
+        candidates = candidates.map { candidate in
+            LayoutImportCandidate(id: candidate.id, item: transformedByID[candidate.item.id] ?? candidate.item,
+                                  stagedURLs: candidate.stagedURLs, mediaCount: candidate.mediaCount,
+                                  stagedFontURLs: candidate.stagedFontURLs)
+        }
+        shouldKeepStaging = true
+        return LayoutImportPreflight(
+            manifest: manifest,
+            candidates: candidates,
+            skippedReasons: skippedReasons,
+            stagingDirectory: stagingDirectory
+        )
+    }
+
+    /// Commits only the preflight candidates selected by the user. A failed move or model write
+    /// removes moved media and leaves the old layout untouched; Preferences are deliberately
+    /// applied by the caller only after this method succeeds.
+    @discardableResult
+    func commitImport(
+        _ preflight: LayoutImportPreflight,
+        selectedIDs: Set<Int>,
+        mode: LayoutImportMode
+    ) throws -> Int {
+        defer { preflight.cleanup() }
+        let selected = preflight.candidates.filter { selectedIDs.contains($0.id) }
+        guard !selected.isEmpty else { return 0 }
+
+        let fileManager = FileManager.default
+        var movedURLs: [URL] = []
+        var registeredFonts: [URL] = []
+        do {
+            let fonts = Set(selected.flatMap(\.stagedFontURLs))
+            if !fonts.isEmpty { try fileManager.createDirectory(at: CollageFontLibrary.directory(in: storageDir), withIntermediateDirectories: true) }
+            for stagedFont in fonts {
+                let destination = CollageFontLibrary.directory(in: storageDir).appendingPathComponent(stagedFont.lastPathComponent)
+                guard !fileManager.fileExists(atPath: destination.path) else { throw LayoutArchiveError.couldNotStageMedia(stagedFont.lastPathComponent) }
+                try fileManager.moveItem(at: stagedFont, to: destination)
+                movedURLs.append(destination)
+                guard let newlyRegistered = CollageFontLibrary.registerForImport(destination) else { throw LayoutArchiveError.missingStoredFont(stagedFont.lastPathComponent) }
+                if newlyRegistered { registeredFonts.append(destination) }
+            }
+            for candidate in selected {
+                for stagedURL in candidate.stagedURLs {
+                    let destination = storageDir.appendingPathComponent(stagedURL.lastPathComponent)
+                    guard !fileManager.fileExists(atPath: destination.path) else {
+                        throw LayoutArchiveError.couldNotStageMedia(stagedURL.lastPathComponent)
+                    }
+                    try fileManager.moveItem(at: stagedURL, to: destination)
+                    movedURLs.append(destination)
+                }
+            }
+
+            let selectedItemIDs = Set(selected.map(\.item.id))
+            let items = selected.map { candidate -> PhotoItem in
+                var item = candidate.item
+                if let parentID = item.collageParentID, !selectedItemIDs.contains(parentID) { item.collageParentID = nil }
+                return item
+            }
+            guard commitImportedItems(items, replacing: mode == .replace) else {
+                throw LayoutArchiveError.couldNotCommit
+            }
+            return items.count
+        } catch {
+            for font in registeredFonts { CollageFontLibrary.unregister(font) }
+            for movedURL in movedURLs {
+                try? fileManager.removeItem(at: movedURL)
+            }
+            throw error
+        }
+    }
+
+    func adaptImportedCollage(_ originals: [PhotoItem], to target: CGRect, in screen: CGRect) -> [PhotoItem] {
+        guard let parent = originals.first, let settings = parent.desktopCollage else { return originals }
+        let source = NSRectFromString(parent.frameString)
+        guard source.width > 0, source.height > 0, target.width > 0 else { return originals }
+        let proposed = min(target.width / source.width, screen.height / source.height)
+        let scale = min(8 / settings.compositionScale, max(0.1 / settings.compositionScale, proposed))
+        let size = CGSize(width: source.width * scale, height: source.height * scale)
+        let origin = CGPoint(x: min(screen.maxX - size.width, max(screen.minX, target.midX - size.width / 2)),
+                             y: min(screen.maxY - size.height, max(screen.minY, target.midY - size.height / 2)))
+        return transformedCollageItems(originals, scale: scale, corner: .topRight, anchor: source.origin,
+                                       translation: CGPoint(x: origin.x - source.minX, y: origin.y - source.minY))
     }
 
     /// Applies preferences carried by a bundle. Separate from `importLayout` and never
@@ -486,7 +807,12 @@ extension PhotoManager {
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(LayoutManifest.self, from: manifestData)
+        let manifest = try decoder.decode(LayoutManifest.self, from: manifestData)
+        guard manifest.formatVersion > 0,
+              manifest.formatVersion <= LayoutManifest.currentFormatVersion else {
+            throw LayoutArchiveError.unsupportedFormatVersion(manifest.formatVersion)
+        }
+        return manifest
     }
 
     // MARK: - Helpers
@@ -494,7 +820,11 @@ extension PhotoManager {
     private func referencedFilenames(of item: PhotoItem) -> [String] {
         var names: [String] = []
         if !item.filename.isEmpty { names.append(item.filename) }
+        if let poster = item.media.posterFilename, !poster.isEmpty { names.append(poster) }
+        if let paired = item.media.pairedVideoFilename, !paired.isEmpty { names.append(paired) }
         names.append(contentsOf: item.spaceImageFilenames)
+        names.append(contentsOf: item.liveFolderEntries.map(\.managedFilename))
+        names.append(contentsOf: item.photosLibraryAssets.flatMap(\.managedFilenames))
         return names
     }
 
@@ -523,6 +853,9 @@ extension PhotoManager {
         item.borderColorHex = source.borderColorHex
         item.vignetteEnabled = source.vignetteEnabled
 
+        item.desktopCollage = source.desktopCollage
+        item.collageParentID = source.collageParentID
+
         // v2.1 appearance is portable user intent. Keep every field, including the optional
         // named preset, so an imported frame looks exactly like the one that was exported.
         item.matWidth = source.matWidth
@@ -539,12 +872,70 @@ extension PhotoManager {
         item.rotationInterval = source.rotationInterval
         item.folderImageIndex = source.folderImageIndex
         item.customRotationSeconds = source.customRotationSeconds
+        item.playbackOrder = source.playbackOrder
+        item.playbackSeed = source.playbackSeed
+        item.playbackStep = source.playbackStep
+        item.playbackHistory = source.playbackHistory.map { filenameMap[$0] ?? $0 }
+        item.clickAction = source.clickAction
+
+        item.mediaFidelity = source.mediaFidelity.reduce(into: [:]) { mapped, entry in
+            mapped[filenameMap[entry.key] ?? entry.key] = entry.value
+        }
+        item.media = PhotoMedia(
+            kind: source.media.kind,
+            posterFilename: source.media.posterFilename.map { filenameMap[$0] ?? $0 },
+            pairedVideoFilename: source.media.pairedVideoFilename.map { filenameMap[$0] ?? $0 },
+            isMuted: source.media.isMuted
+        )
+        item.focalPoint = source.focalPoint
+        item.reference = source.reference
 
         var remappedConfigs: [String: FolderImageConfig] = [:]
         for (key, config) in source.folderImageConfigs {
             remappedConfigs[filenameMap[key] ?? key] = config
         }
         item.folderImageConfigs = remappedConfigs
+
+        // Imported live folders are snapshots until the recipient explicitly relinks them. Keep
+        // the marker and source names for an eventual relink, but never restore the exporting
+        // Mac's bookmark, path, or volume-specific resource identifiers.
+        if let source = source.liveFolderSource {
+            item.liveFolderSource = source.archiveSnapshot
+        }
+        item.liveFolderEntries = source.liveFolderEntries.map {
+            LiveFolderEntry(
+                // Resource identifiers are volume-specific fingerprints. Keep the managed
+                // filename and source name for the snapshot, but discover fresh IDs only after
+                // the recipient explicitly relinks this folder.
+                sourceIdentifier: "",
+                sourceName: $0.sourceName,
+                managedFilename: filenameMap[$0.managedFilename] ?? $0.managedFilename,
+                sourceByteCount: $0.sourceByteCount,
+                sourceModificationDate: $0.sourceModificationDate
+            )
+        }
+
+        if let source = source.photosLibrarySource {
+            item.photosLibrarySource = source.archiveSnapshot
+        }
+        item.photosLibraryAssets = source.photosLibraryAssets.map { asset in
+            PhotosLibraryAsset(
+                localIdentifier: "",
+                displayName: asset.displayName,
+                managedFilename: filenameMap[asset.managedFilename] ?? asset.managedFilename,
+                media: PhotoMedia(
+                    kind: asset.media.kind,
+                    posterFilename: asset.media.posterFilename.map { filenameMap[$0] ?? $0 },
+                    pairedVideoFilename: asset.media.pairedVideoFilename.map { filenameMap[$0] ?? $0 },
+                    isMuted: asset.media.isMuted
+                ),
+                status: .snapshot,
+                sourceModificationDate: nil,
+                sourceByteCount: asset.sourceByteCount,
+                pairedVideoByteCount: asset.pairedVideoByteCount,
+                lastError: nil
+            )
+        }
 
         // Portable per-photo preferences: these describe intent, not hardware, so they
         // travel.
@@ -569,11 +960,31 @@ extension PhotoManager {
         return item
     }
 
-    /// Aspect ratio of a saved frame, used to rebuild a proportional frame on import.
-    private static func aspectRatio(ofFrameString frameString: String) -> CGFloat {
-        let rect = NSRectFromString(frameString)
-        guard rect.width > 0, rect.height > 0 else { return 1 }
-        return rect.width / rect.height
+    private func archiveSafeSnapshot(of source: PhotoItem) -> PhotoItem {
+        var snapshot = source
+        if let liveSource = source.liveFolderSource {
+            snapshot.liveFolderSource = liveSource.archiveSnapshot
+        }
+        // Sanitize entries independently of the source metadata. A malformed or older store
+        // can retain a live-folder entry after its source was cleared; archives must never leak
+        // the source's machine/resource identifier in that case.
+        snapshot.liveFolderEntries = source.liveFolderEntries.map {
+            LiveFolderEntry(
+                sourceIdentifier: "",
+                sourceName: $0.sourceName,
+                managedFilename: $0.managedFilename,
+                sourceByteCount: $0.sourceByteCount,
+                sourceModificationDate: $0.sourceModificationDate
+            )
+        }
+        if let photosSource = source.photosLibrarySource {
+            snapshot.photosLibrarySource = photosSource.archiveSnapshot
+        }
+        // Treat the asset list as sensitive on its own as well. A malformed or older store can
+        // retain entries after its source metadata was cleared; archive export must never leak
+        // PhotoKit local identifiers in that case.
+        snapshot.photosLibraryAssets = source.photosLibraryAssets.map { $0.archiveSnapshot }
+        return snapshot
     }
 
     /// Expresses a saved frame relative to whichever screen currently contains it.
@@ -605,7 +1016,7 @@ extension PhotoManager {
 
 // MARK: - Minimal ZIP writer (STORE only)
 
-private struct SimpleZipWriter {
+struct SimpleZipWriter {
     private struct Entry {
         let name: String
         let data: Data
@@ -685,7 +1096,7 @@ private struct SimpleZipWriter {
 
 // MARK: - Minimal ZIP reader (STORE only)
 
-private struct SimpleZipReader {
+struct SimpleZipReader {
     private struct IndexedEntry {
         let localHeaderOffset: Int
         let compressedSize: Int
@@ -734,8 +1145,9 @@ private struct SimpleZipReader {
         let nameLength = Int(bytes.readUInt16LE(at: header + 26))
         let extraLength = Int(bytes.readUInt16LE(at: header + 28))
         let dataStart = header + 30 + nameLength + extraLength
+        guard dataStart <= bytes.count,
+              entry.compressedSize <= bytes.count - dataStart else { return nil }
         let dataEnd = dataStart + entry.compressedSize
-        guard dataEnd <= bytes.count else { return nil }
 
         return Data(bytes[dataStart..<dataEnd])
     }

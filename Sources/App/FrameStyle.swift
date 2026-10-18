@@ -97,13 +97,30 @@ enum StylePreset: String, Codable, CaseIterable {
     case polaroid
     case minimal
     case modern
+    case museum
+    case linen
 
     var displayName: String {
         switch self {
-        case .gallery: return "Gallery"
-        case .polaroid: return "Polaroid"
-        case .minimal: return "Minimal"
-        case .modern: return "Modern"
+        // Keep the raw values stable: they are persisted in layouts. These names describe
+        // the restrained result a person will actually see, rather than a visual trend.
+        case .gallery: return "Thin Frame"
+        case .polaroid: return "Print"
+        case .minimal: return "Plain"
+        case .modern: return "Soft Shadow"
+        case .museum: return "Dark Mat"
+        case .linen: return "Warm Paper"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .gallery: "A fine neutral edge with a subtle shadow."
+        case .polaroid: "A warm paper mat around the whole photo."
+        case .minimal: "Rounded corners, with no frame or shadow."
+        case .modern: "Soft depth without a border or paper mat."
+        case .museum: "A charcoal mount that gives bright photos room to glow."
+        case .linen: "A generous warm mount with a fine, muted edge."
         }
     }
 
@@ -130,42 +147,86 @@ enum StylePreset: String, Codable, CaseIterable {
     var values: Values {
         switch self {
         case .gallery:
-            // A mounted print behind glass: white mat, hairline border, soft even shadow.
+            // A quiet hairline around the photo. No mat means this also works at small sizes.
             return Values(
-                cornerRadius: 4, shadowEnabled: true, shadowBlur: 14, shadowOpacity: 0.28,
-                borderWidth: 1, borderColorHex: "#E5E5E5", borderStyle: .solid,
+                cornerRadius: 6, shadowEnabled: true, shadowBlur: 8, shadowOpacity: 0.14,
+                borderWidth: 1, borderColorHex: "#D1D1D6", borderStyle: .solid,
                 borderGradientEnabled: false, borderGradientColorHex: "#000000",
-                matWidth: 16, matColorHex: "#FFFFFF",
+                matWidth: 0, matColorHex: "#FFFFFF",
                 shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
             )
         case .polaroid:
-            // Thick mat, square corners, a slight tilt so a cluster reads as a scattered
-            // pile of prints instead of a grid.
+            // A printed photograph with enough breathing room to feel tactile, while still
+            // preserving the photo's rectangular silhouette and its placement on the desktop.
             return Values(
-                cornerRadius: 2, shadowEnabled: true, shadowBlur: 12, shadowOpacity: 0.35,
+                cornerRadius: 2, shadowEnabled: true, shadowBlur: 10, shadowOpacity: 0.22,
                 borderWidth: 0, borderColorHex: "#FFFFFF", borderStyle: .solid,
                 borderGradientEnabled: false, borderGradientColorHex: "#000000",
-                matWidth: 22, matColorHex: "#FAFAFA",
-                shapeMask: .roundedRect, tiltDegrees: -3, vignetteEnabled: false
+                matWidth: 16, matColorHex: "#FAFAFA",
+                shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
             )
         case .minimal:
-            // No mat, no border -- just a quiet corner radius and a whisper of shadow.
+            // The image on its own. This is the reliable default for photos and collages.
             return Values(
-                cornerRadius: 10, shadowEnabled: true, shadowBlur: 6, shadowOpacity: 0.16,
+                cornerRadius: 8, shadowEnabled: false, shadowBlur: 0, shadowOpacity: 0,
                 borderWidth: 0, borderColorHex: "#FFFFFF", borderStyle: .solid,
                 borderGradientEnabled: false, borderGradientColorHex: "#000000",
                 matWidth: 0, matColorHex: "#FFFFFF",
                 shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
             )
-        case .modern:
-            // Squircle crop with a colour-swept border -- the most "designed" of the four.
+        case .museum:
             return Values(
-                cornerRadius: 24, shadowEnabled: true, shadowBlur: 18, shadowOpacity: 0.3,
-                borderWidth: 3, borderColorHex: "#5AC8FA", borderStyle: .solid,
-                borderGradientEnabled: true, borderGradientColorHex: "#FF2D95",
+                cornerRadius: 1, shadowEnabled: true, shadowBlur: 12, shadowOpacity: 0.24,
+                borderWidth: 1, borderColorHex: "#45433F", borderStyle: .solid,
+                borderGradientEnabled: false, borderGradientColorHex: "#000000",
+                matWidth: 24, matColorHex: "#242320",
+                shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
+            )
+        case .linen:
+            return Values(
+                cornerRadius: 0, shadowEnabled: true, shadowBlur: 8, shadowOpacity: 0.16,
+                borderWidth: 1, borderColorHex: "#C9BDA8", borderStyle: .solid,
+                borderGradientEnabled: false, borderGradientColorHex: "#000000",
+                matWidth: 28, matColorHex: "#EDE4D3",
+                shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
+            )
+        case .modern:
+            // Depth without decoration. In particular, do not replace the photo silhouette
+            // with a squircle, colour its edge, or darken its content.
+            return Values(
+                cornerRadius: 10, shadowEnabled: true, shadowBlur: 14, shadowOpacity: 0.20,
+                borderWidth: 0, borderColorHex: "#FFFFFF", borderStyle: .solid,
+                borderGradientEnabled: false, borderGradientColorHex: "#000000",
                 matWidth: 0, matColorHex: "#FFFFFF",
-                shapeMask: .squircle, tiltDegrees: 0, vignetteEnabled: true
+                shapeMask: .roundedRect, tiltDegrees: 0, vignetteEnabled: false
             )
         }
+    }
+}
+
+
+extension StylePreset {
+    /// Shared by the real edit and its preview so a card cannot promise a different look.
+    func applying(to original: PhotoItem) -> PhotoItem {
+        var item = original
+        let v = values
+
+        item.stylePreset = rawValue
+        item.cornerRadius = v.cornerRadius
+        item.shadowEnabled = v.shadowEnabled
+        item.shadowBlur = v.shadowBlur
+        item.shadowOpacity = v.shadowOpacity
+        item.borderWidth = v.borderWidth
+        item.borderColorHex = v.borderColorHex
+        item.borderStyle = v.borderStyle.rawValue
+        item.borderGradientEnabled = v.borderGradientEnabled
+        item.borderGradientColorHex = v.borderGradientColorHex
+        item.matWidth = v.matWidth
+        item.matColorHex = v.matColorHex
+        item.shapeMask = v.shapeMask.rawValue
+        item.tiltDegrees = v.tiltDegrees
+        item.vignetteEnabled = v.vignetteEnabled
+
+        return item
     }
 }

@@ -25,12 +25,61 @@ targetTemplates:
         PRODUCT_NAME: "Arras"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Arras"
-        GENERATE_INFOPLIST_FILE: YES
-        CURRENT_PROJECT_VERSION: 22
-        MARKETING_VERSION: 2.4.9
+        GENERATE_INFOPLIST_FILE: NO
+        CURRENT_PROJECT_VERSION: 2209
+        MARKETING_VERSION: 2.5.0
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES
+    preBuildScripts:
+      - name: Capture application source
+        script: python3 "$SRCROOT/scripts/build_provenance.py" prepare
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/ArrasSourceSnapshot.json
+    postBuildScripts:
+      - name: Verify and stamp application source
+        script: python3 "$SRCROOT/scripts/build_provenance.py" stamp
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        inputFiles:
+          - $(DERIVED_FILE_DIR)/ArrasSourceSnapshot.json
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ArrasBuildProvenance.json
+    info:
+      path: Info.generated.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDisplayName: Arras
+        LSUIElement: true
+        # Enable only after the website route, retention and disclosures are live.
+        ArrasPrivateTelemetryPilot: false
+        ArrasTelemetryEnabled: true
+        ArrasTelemetryReportingDays: 7
+        ArrasTelemetryURL: https://tryarras.tech/api/telemetry/v1
+        LSApplicationCategoryType: public.app-category.photography
+        NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
+        CFBundleDocumentTypes:
+          - CFBundleTypeExtensions:
+              - arras
+              - tableau
+            CFBundleTypeName: Arras Layout
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - com.yashashwi.arras.layout
+        UTExportedTypeDeclarations:
+          - UTTypeConformsTo:
+              - public.data
+            UTTypeDescription: Arras Layout
+            UTTypeIdentifier: com.yashashwi.arras.layout
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - arras
+                - tableau
 
 targets:
   Arras:
@@ -47,6 +96,7 @@ targets:
         # Notarization rejects any binary that carries it.
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          CLANG_ENABLE_CODE_COVERAGE: NO
 
   ArrasTests:
     type: bundle.unit-test
@@ -83,7 +133,17 @@ schemes:
       config: Debug
     test:
       config: Debug
-      gatherCoverageData: true
+      environmentVariables:
+        ARRAS_UNIT_TESTING: "1"
+      # Window fixtures must not inherit the user's live hiding preferences.
+      # These command-line defaults exist only in the test host process.
+      commandLineArguments:
+        "-presence.autoHideForConferencingApps NO": true
+        "-presence.hideWhenFullscreenActive NO": true
+        "-presence.excludeFromScreenCapture NO": true
+      # Opt in with -enableCodeCoverage YES when measuring tests. Xcode also
+      # instruments ordinary Release builds when the scheme enables coverage.
+      gatherCoverageData: false
       targets:
         - ArrasTests
         - ArrasUITests

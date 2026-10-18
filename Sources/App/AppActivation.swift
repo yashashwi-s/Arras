@@ -54,6 +54,9 @@ final class AppActivation {
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
+        let star = NSMenuItem(title: "Star on GitHub…", action: #selector(AppDelegate.starOnGitHub), keyEquivalent: "")
+        star.target = AppDelegate.current
+        menu.addItem(star)
         menu.addItem(.separator())
 
         // Targets the AppDelegate rather than the responder chain, so it works
@@ -63,7 +66,7 @@ final class AppActivation {
             action: #selector(AppDelegate.showSettingsFromMenu),
             keyEquivalent: ","
         )
-        settings.target = NSApp.delegate
+        settings.target = AppDelegate.current
         menu.addItem(settings)
 
         menu.addItem(.separator())

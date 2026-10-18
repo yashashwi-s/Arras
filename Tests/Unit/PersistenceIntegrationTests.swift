@@ -4,6 +4,182 @@ import XCTest
 
 final class PersistenceIntegrationTests: XCTestCase {
     @MainActor
+    func testFailedRenameCannotLeakAnUnsavedNameIntoASavedSetup() throws {
+        for collage in [false, true] {
+            for requestedName in ["Unsaved name", ""] {
+                try withTestLibrary { manager in
+                    let id: UUID
+                    if collage { id = try XCTUnwrap(manager.addDesktopCollage()) }
+                    else {
+                        XCTAssertTrue(manager.addStarterExample(.minimal, makeVisible: false))
+                        id = try XCTUnwrap(manager.photos.first?.id)
+                    }
+                    manager.renamePhoto(id, to: "Saved sample name")
+                    let original = try XCTUnwrap(manager.photos.first { $0.id == id })
+                    let storedURL = manager.storageDir.appendingPathComponent("photos.json")
+                    let stored = try Data(contentsOf: storedURL)
+                    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: manager.storageDir.path)
+                    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: manager.storageDir.path) }
+
+                    manager.renamePhoto(id, to: requestedName)
+
+                    let actual = try XCTUnwrap(manager.photos.first { $0.id == id })
+                    XCTAssertEqual(manager.label(for: actual), "Saved sample name")
+                    XCTAssertEqual(try photoDictionary(actual) as NSDictionary, try photoDictionary(original) as NSDictionary)
+                    XCTAssertEqual(try Data(contentsOf: storedURL), stored)
+                    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: manager.storageDir.path)
+                    let setupID = try manager.saveDesktopSetup(named: "After refused rename")
+                    let setup = try XCTUnwrap(try DesktopSetupLibrary.read(in: manager.storageDir).setups.first { $0.id == setupID })
+                    XCTAssertEqual(setup.photos.first { $0.id == id }?.customName, original.customName,
+                                   "A later setup must capture the durable name, not the refused rename")
+
+                    manager.renamePhoto(id, to: requestedName)
+                    let saved = try JSONDecoder().decode([PhotoItem].self, from: Data(contentsOf: storedURL))
+                    XCTAssertEqual(saved.first { $0.id == id }?.customName, requestedName.isEmpty ? nil : requestedName)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testRetiredContainersLoadAsStandalonePhotosWithoutLosingTheirMedia() throws {
+        try withTestLibrary { manager in
+            for material in ["bubble", "polaroid"] {
+                var container = PhotoItem(filename: ""); container.isVisible = false
+                var child = PhotoItem(filename: "saved.png"); child.isVisible = false
+                child.frameString = "{{120, 140}, {280, 190}}"; child.stylePreset = "print"
+                var oldContainer = try photoDictionary(container)
+                oldContainer["composition"] = ["material": material, "caption": "Old container"]
+                var oldChild = try photoDictionary(child)
+                oldChild["compositionParentID"] = container.id.uuidString
+                oldChild["compositionPinned"] = true
+                let data = try JSONSerialization.data(withJSONObject: [oldContainer, oldChild])
+                try data.write(to: manager.storageDir.appendingPathComponent("photos.json"))
+                let loaded = PhotoManager(storageDirectory: manager.storageDir)
+                XCTAssertEqual(loaded.photos.map(\.id), [child.id])
+                XCTAssertEqual(loaded.photos[0].filename, child.filename)
+                XCTAssertEqual(loaded.photos[0].frameString, child.frameString)
+                XCTAssertEqual(loaded.photos[0].stylePreset, child.stylePreset)
+                XCTAssertTrue(loaded.persist())
+                let saved = try Data(contentsOf: manager.storageDir.appendingPathComponent("photos.json"))
+                let text = String(decoding: saved, as: UTF8.self)
+                XCTAssertFalse(text.contains("compositionParentID"))
+                XCTAssertFalse(text.contains("compositionPinned"))
+                XCTAssertFalse(text.contains("\"composition\""))
+            }
+        }
+    }
+
+    @MainActor
+    func testMixedOldAndNewLibraryPreservesCollageModelsAndStandaloneMedia() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ArrasRecovery-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = PhotoManager(storageDirectory: directory)
+        let legacy = try JSONDecoder().decode(PhotoItem.self, from: Data(#"{"id":"31E63F72-9039-41B6-B6A2-09BC231A835A","filename":"old.png","frameString":"{{10,20},{300,200}}","widgetWidth":300,"isLocked":false,"isVisible":false}"#.utf8))
+        var group = PhotoItem(filename: ""); group.isVisible = false
+        var settings = DesktopCollageSettings(); settings.caption = "Saved caption"
+        settings.labels = [CollageTextLabel(text: "Saved label")]
+        group.desktopCollage = settings
+        var child = PhotoItem(filename: "child.png"); child.isVisible = false; child.collageParentID = group.id
+        child.media = PhotoMedia(kind: .video, posterFilename: "poster.png", isMuted: true)
+        child.clickAction = .quickLook; child.revealOnHover = true
+        manager.photos = [legacy, group, child]
+        XCTAssertTrue(manager.persist())
+        let loaded = PhotoManager(storageDirectory: directory)
+        XCTAssertEqual(loaded.photos.count, 3)
+        XCTAssertEqual(loaded.photos[1].desktopCollage, settings)
+        XCTAssertEqual(loaded.photos[2].collageParentID, group.id)
+        XCTAssertEqual(loaded.photos[2].media, child.media)
+        XCTAssertEqual(loaded.photos[2].clickAction, .quickLook)
+        XCTAssertTrue(loaded.photos[2].revealOnHover)
+        XCTAssertNil(loaded.photos[0].desktopCollage)
+        XCTAssertTrue(loaded.windows.isEmpty)
+    }
+
+    @MainActor
+    func testOffscreenCollageRestorationTranslatesChildrenAndSlideshowFramesTogether() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ArrasRecoveryDisplay-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = PhotoManager(storageDirectory: directory)
+        var parent = PhotoItem(filename: ""); parent.desktopCollage = DesktopCollageSettings(); parent.isVisible = false
+        let original = CGRect(x: 100000, y: 100000, width: 500, height: 400)
+        parent.frameString = NSStringFromRect(original)
+        var child = PhotoItem(filename: "child.png"); child.collageParentID = parent.id; child.isVisible = false
+        let childFrame = original.offsetBy(dx: 30, dy: 50)
+        child.frameString = NSStringFromRect(childFrame)
+        child.folderImageConfigs["child.png"] = FolderImageConfig(frameString: child.frameString, widgetWidth: child.widgetWidth)
+        manager.photos = [parent, child]; XCTAssertTrue(manager.persist())
+        let loaded = PhotoManager(storageDirectory: directory)
+        let restored = NSRectFromString(loaded.photos[0].frameString)
+        XCTAssertNotEqual(restored.origin, original.origin)
+        let expected = childFrame.offsetBy(dx: restored.minX - original.minX, dy: restored.minY - original.minY)
+        XCTAssertEqual(NSRectFromString(loaded.photos[1].frameString), expected)
+        XCTAssertEqual(NSRectFromString(loaded.photos[1].folderImageConfigs["child.png"]!.frameString), expected)
+    }
+
+
+    @MainActor
+    func testDuplicateIDsAreRejectedWithoutOverwritingTheLayout() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = PhotoManager(storageDirectory: directory)
+        var item = PhotoItem(filename: "duplicate.jpg")
+        item.isVisible = false
+        manager.photos = [item]
+        XCTAssertTrue(manager.persist())
+        let file = directory.appendingPathComponent("photos.json")
+        let original = try Data(contentsOf: file)
+        manager.photos.append(item)
+        XCTAssertFalse(manager.persist())
+        XCTAssertEqual(try Data(contentsOf: file), original)
+
+        let damaged = try JSONEncoder().encode([item, item])
+        try damaged.write(to: file, options: .atomic)
+        let reloaded = PhotoManager(storageDirectory: directory)
+        XCTAssertTrue(reloaded.photos.isEmpty)
+        XCTAssertTrue(reloaded.windows.isEmpty)
+        XCTAssertFalse(reloaded.persist())
+        XCTAssertEqual(try Data(contentsOf: file), damaged)
+    }
+
+    @MainActor
+    func testStorageResolutionIsolatesUITestingWithoutChangingExplicitOrNormalStorage() {
+        let temporary = URL(fileURLWithPath: "/tmp/ArrasStoragePolicy", isDirectory: true)
+        let explicit = temporary.appendingPathComponent("explicit", isDirectory: true)
+        let configured = temporary.appendingPathComponent("configured", isDirectory: true)
+        for unitTesting in [false, true] {
+            for uiTesting in [false, true] {
+                for path: String? in [nil, "", configured.path] {
+                    let actual = PhotoManager.resolveStorageDirectory(explicitDirectory: nil, uiTestPath: path,
+                        unitTesting: unitTesting, uiTesting: uiTesting,
+                        temporaryDirectory: temporary, processIdentifier: 1234)
+                    if path == configured.path { XCTAssertEqual(actual, configured) }
+                    else if unitTesting {
+                        XCTAssertEqual(actual, temporary.appendingPathComponent("ArrasUnitHost-1234", isDirectory: true))
+                    } else if uiTesting {
+                        XCTAssertEqual(actual, temporary.appendingPathComponent("ArrasUITestHost-1234", isDirectory: true),
+                                       "A missing/empty UI-test path must never select the personal library")
+                    } else { XCTAssertNil(actual, "Normal launches retain the historical storage location") }
+                    XCTAssertEqual(PhotoManager.resolveStorageDirectory(explicitDirectory: explicit, uiTestPath: path,
+                        unitTesting: unitTesting, uiTesting: uiTesting,
+                        temporaryDirectory: temporary, processIdentifier: 1234), explicit)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testUnitHostUsesTemporaryStorageAndExplicitManagersKeepTheirDirectory() throws {
+        XCTAssertTrue(PhotoManager.isUnitTestHost, "The test scheme must isolate the app host")
+        let host = PhotoManager()
+        XCTAssertTrue(host.storageDir.lastPathComponent.hasPrefix("ArrasUnitHost-"))
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let explicit = PhotoManager(storageDirectory: directory)
+        XCTAssertEqual(explicit.storageDir, directory)
+    }
+
+    @MainActor
     func testManagerPersistsAndReloadsLayoutInIsolatedDirectory() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ArrasTests-\(UUID().uuidString)", isDirectory: true)
@@ -55,6 +231,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         item.borderGradientColorHex = "#ABCDEF"
         item.tiltDegrees = -4
         item.stylePreset = StylePreset.modern.rawValue
+        item.focalPoint = NormalizedFocalPoint(x: 0.12, y: 0.88)
         item.displayIdentifier = "exporting-machine"
         item.savedDisplayFrames = ["exporting-machine": "{{1, 2}, {3, 4}}"]
         item.isHiddenForDisplay = true
@@ -80,6 +257,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(imported.borderGradientColorHex, "#ABCDEF")
         XCTAssertEqual(imported.tiltDegrees, -4)
         XCTAssertEqual(imported.stylePreset, StylePreset.modern.rawValue)
+        XCTAssertEqual(imported.focalPoint, item.focalPoint)
         XCTAssertNil(imported.displayIdentifier)
         XCTAssertTrue(imported.savedDisplayFrames.isEmpty)
         XCTAssertFalse(imported.isHiddenForDisplay)
@@ -172,7 +350,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         let corruptData = Data("not valid Arras JSON".utf8)
         try corruptData.write(to: targetDirectory.appendingPathComponent("photos.json"), options: .atomic)
 
-        XCTAssertEqual(try target.importLayout(from: archive, mode: .replace), 0)
+        XCTAssertThrowsError(try target.importLayout(from: archive, mode: .replace))
         XCTAssertEqual(target.photos.map(\.customName), ["Keep me"])
 
         // The staged imported image was never adopted by a durable model, so it must not be
@@ -288,6 +466,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertTrue(manager.spaceImages[space.id] == nil)
         XCTAssertEqual(manager.folderImageCount(space.id), 3)
     }
+
 
     @MainActor
     func testCorruptStoreIsPreservedWithoutOverwritingIt() throws {

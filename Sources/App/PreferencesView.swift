@@ -1,52 +1,127 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// App-wide settings.
-///
-/// These used to be crammed into the photo list's footer, which made a per-photo
-/// screen also the home for global switches. Splitting them out is what lets the
-/// footer go back to being a footer.
+/// App-wide behavior and recovery, separate from individual photo editing.
 struct PreferencesView: View {
     @ObservedObject var manager: PhotoManager
+    @ObservedObject var navigation: SettingsNavigation
     var onMenuUpdate: (() -> Void)?
 
     @ObservedObject private var hotKeys = HotKeyManager.shared
     @ObservedObject private var menuBar = MenuBarCustomization.shared
     @ObservedObject private var updater = Updater.shared
 
+    @AppStorage(RemovalConfirmation.skipSettingsKey, store: RemovalConfirmation.preferenceStore) private var skipRemovalConfirmation = false
+
+    @State private var showingSetups = false
+    @State private var isPresented = false
+    @State private var repositoryStars: Int?
+    @State private var starsFocusRequest = UUID()
+
+    private struct StarsRefreshID: Hashable {
+        let tab: MainWindowView.Tab
+        let focus: UUID
+    }
+
     @State private var snapEnabled = SnapEngine.shared.isEnabled
     @State private var snapOtherApps = SnapEngine.shared.includesOtherApps
 
-    // These live here rather than on the export/import dialogs. As accessory views on an
-    // NSAlert or NSSavePanel they would not render at all in this app — see the git history
-    // for four attempts — and a control nobody can see is worse than one click more.
     @AppStorage("backup.includeSettings") private var includeSettingsInBackup = false
+    @AppStorage("backup.archivalQuality") private var archivalQuality = false
     @AppStorage("backup.applySettingsOnImport") private var applySettingsOnImport = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                general
-                shortcut
-                menuBarSection
-                updates
-                backup
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Make Arras work your way").font(.title3.weight(.semibold))
+                        caption("These settings apply across your desktops. Edit individual photos from the Photos tab.")
+                    }
+                    general
+                    positioning
+                    shortcut
+                    updates.id("updates")
+                        .accessibilityIdentifier("settings-updates")
+                    backup
+                    menuBarSection
+                    HStack {
+                        Text("\(Constants.appName) \(Constants.version)").foregroundStyle(.secondary)
+                        Spacer()
+                        Link(destination: Constants.repositoryURL) {
+                            HStack(spacing: 6) {
+                                Label("Star on GitHub", systemImage: "star")
+                                if let repositoryStars {
+                                    Text(repositoryStars.formatted()).monospacedDigit()
+                                }
+                            }
+                        }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityLabel(repositoryStars.map { "Star on GitHub, \($0) stars" } ?? "Star on GitHub")
+                            .accessibilityHint("Opens the Arras repository in your browser")
+                    }
+                    .font(.system(size: 11))
+                }
+                .padding(20)
             }
-            .padding(16)
+            .onAppear {
+                isPresented = true
+                revealRequestedUpdates(using: proxy)
+            }
+            .onDisappear { isPresented = false }
+            .task(id: StarsRefreshID(tab: navigation.selection, focus: starsFocusRequest)) {
+                // Hosted view tests must not create third-party network traffic.
+                guard navigation.selection == .preferences, !PhotoManager.isUnitTestHost else { return }
+                let count = await RepositoryStarsStore.shared.count()
+                guard !Task.isCancelled else { return }
+                repositoryStars = count
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+                // The managed Settings window is retained when closed. Focus
+                // also refreshes its cached count when it reopens on this tab.
+                guard navigation.selection == .preferences,
+                      let window = note.object as? NSWindow,
+                      window === AppDelegate.current?.settingsWindow else { return }
+                starsFocusRequest = UUID()
+            }
+            .onChange(of: navigation.updatesRequest) { _, _ in
+                if isPresented { revealRequestedUpdates(using: proxy) }
+            }
         }
+        .disclosureGroupStyle(FullRowDisclosureStyle())
+        .sheet(isPresented: $showingSetups) {
+            SavedSetupsView(manager: manager, onChange: onMenuUpdate)
+        }
+    }
+
+    private func revealRequestedUpdates(using proxy: ScrollViewProxy) {
+        guard navigation.updatesRequest != nil else { return }
+        proxy.scrollTo("updates", anchor: .top)
+        navigation.updatesRequest = nil
     }
 
     // MARK: - General
 
     private var general: some View {
-        section("GENERAL") {
+        section("Everyday behavior", icon: "gearshape") {
             Toggle("Launch at Login", isOn: Binding(
                 get: { manager.launchAtLogin },
                 set: { manager.setLaunchAtLogin($0); onMenuUpdate?() }
             ))
             .accessibilityHint("Starts \(Constants.appName) automatically when you log in")
 
-            Toggle("Snap to Edges", isOn: $snapEnabled)
+            Toggle("Confirm removal in Settings", isOn: Binding(
+                get: { !skipRemovalConfirmation }, set: { skipRemovalConfirmation = !$0 }
+            ))
+            .help("Menu-bar removal always asks for confirmation.")
+
+        }
+    }
+
+    private var positioning: some View {
+        section("Moving & aligning", icon: "arrow.up.left.and.arrow.down.right") {
+            Toggle("Snap photos and collages into alignment", isOn: $snapEnabled)
                 .onChange(of: snapEnabled) { _, value in SnapEngine.shared.isEnabled = value }
                 .accessibilityHint("Aligns photos to screen edges and other photos while you drag")
 
@@ -54,27 +129,34 @@ struct PreferencesView: View {
                 .onChange(of: snapOtherApps) { _, value in SnapEngine.shared.includesOtherApps = value }
                 .disabled(!snapEnabled)
                 .accessibilityHint("Aligns photos to other applications' windows and to the system's desktop widgets")
-            caption("Reads window positions only. No permissions are needed and no window contents are read.")
+            caption("Hold Command while dragging to ignore snapping. Hold Shift to move along one axis.")
+            if snapOtherApps && snapEnabled {
+                caption("Uses window positions, never window contents.")
+            }
         }
     }
 
     // MARK: - Shortcut
 
     private var shortcut: some View {
-        section("GLOBAL SHORTCUT") {
-            HStack(spacing: 8) {
-                Toggle("Show / hide all photos", isOn: Binding(
+        section("Desktop shortcut", icon: "keyboard") {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Show / hide all widgets", isOn: Binding(
                     get: { hotKeys.isEnabled },
                     set: { hotKeys.isEnabled = $0; onMenuUpdate?() }
                 ))
 
-                ShortcutRecorder(
-                    shortcut: Binding(
-                        get: { hotKeys.shortcut },
-                        set: { hotKeys.shortcut = $0; onMenuUpdate?() }
-                    ),
-                    isEnabled: hotKeys.isEnabled
-                )
+                HStack {
+                    Text("Shortcut").foregroundStyle(.secondary)
+                    Spacer()
+                    ShortcutRecorder(
+                        shortcut: Binding(
+                            get: { hotKeys.shortcut },
+                            set: { hotKeys.shortcut = $0; onMenuUpdate?() }
+                        ),
+                        isEnabled: hotKeys.isEnabled
+                    )
+                }
 
                 if hotKeys.isEnabled && !hotKeys.isRegistered {
                     Label("In use by another app", systemImage: "exclamationmark.triangle.fill")
@@ -82,27 +164,31 @@ struct PreferencesView: View {
                         .foregroundStyle(.orange)
                         .labelStyle(.titleAndIcon)
                 }
-                Spacer()
             }
+            caption("Temporarily clear your desktop, then bring your photos and collages back with the same shortcut.")
         }
     }
 
     // MARK: - Menu bar
 
     private var menuBarSection: some View {
-        section("MENU BAR") {
-            caption("Choose what appears in the menu bar. Add Photo, Settings and Quit are always there.")
+        section("Menu bar", icon: "menubar.rectangle") {
+            caption("Quick access to clipboard images, screen capture, PDF pages and slideshows.")
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Show in the Arras menu").font(.subheadline.weight(.medium))
+                caption("Turn on a command here, then open Arras in the menu bar. Photo import commands appear under Add.")
 
-            ForEach(MenuBarCustomization.Item.allCases) { item in
-                Toggle(isOn: Binding(
-                    get: { menuBar.isVisible(item) },
-                    set: { menuBar.setVisible(item, $0); onMenuUpdate?() }
-                )) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(item.title)
-                        Text(item.detail)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
+                ForEach(MenuBarCustomization.Item.allCases) { item in
+                    Toggle(isOn: Binding(
+                        get: { menuBar.isVisible(item) },
+                        set: { menuBar.setVisible(item, $0); onMenuUpdate?() }
+                    )) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(item.title)
+                            Text(item.detail)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -112,68 +198,65 @@ struct PreferencesView: View {
     // MARK: - Updates
 
     private var updates: some View {
-        section("UPDATES") {
-            Toggle("Automatically install verified updates", isOn: Binding(
-                get: { updater.automaticUpdatesEnabled },
-                set: { updater.automaticUpdatesEnabled = $0 }
-            ))
-            .accessibilityHint("Checks on the selected schedule. When enabled, installs updates after checksum and app-bundle validation. When disabled, notifies you when a new version is found.")
+        section("Updates", icon: "arrow.triangle.2.circlepath") {
+            if !updater.updatesAllowed {
+                caption("Updates are paused for this private test build. Install a newer test build when it is shared with you.")
+            } else {
+                Toggle("Automatically install updates", isOn: Binding(
+                    get: { updater.automaticUpdatesEnabled },
+                    set: { updater.automaticUpdatesEnabled = $0 }
+                ))
+                .accessibilityHint("Checks on the selected schedule. When enabled, installs updates after checksum and app-bundle validation. When disabled, notifies you when a new version is found.")
 
-            caption(updater.checkFrequency == .never
-                ? "Automatic checking is off. Use Check Now to look for updates."
-                : updater.automaticUpdatesEnabled
-                    ? "Checks \(updater.checkFrequency.label.lowercased()) and installs verified updates automatically."
-                    : "Checks \(updater.checkFrequency.label.lowercased()) and notifies you when a newer version is found.")
+                caption(updater.checkFrequency == .never
+                    ? "Automatic checking is off. Use Check Now to look for updates."
+                    : updater.automaticUpdatesEnabled
+                        ? "Checks \(updater.checkFrequency.label.lowercased()) and installs verified updates when you’re not editing."
+                        : "Checks \(updater.checkFrequency.label.lowercased()) and notifies you when a newer version is found.")
 
-            HStack(spacing: 8) {
-                Picker("Check for updates", selection: Binding(
-                    get: { updater.checkFrequency },
-                    set: { updater.checkFrequency = $0 }
-                )) {
-                    ForEach(Updater.CheckFrequency.allCases) { frequency in
-                        Text(frequency.label).tag(frequency)
+                HStack(spacing: 8) {
+                    Picker("Check for updates", selection: Binding(
+                        get: { updater.checkFrequency },
+                        set: { updater.checkFrequency = $0 }
+                    )) {
+                        ForEach(Updater.CheckFrequency.allCases) { frequency in
+                            Text(frequency.label).tag(frequency)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .accessibilityHint("Sets the schedule for background checks. You can always check manually.")
+
+                    UpdateActionButton()
+                        .accessibilityIdentifier("settings-update-action")
+
+                    Spacer()
                 }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .accessibilityHint("Controls how often updates are checked")
 
-                UpdateActionButton()
-
-                Spacer()
+                UpdateStatusLine()
             }
-
-            UpdateStatusLine()
         }
     }
 
     // MARK: - Backup & transfer
 
-    /// One command, one file format, one place.
-    ///
-    /// There used to be two mechanisms: "Export Layout…", hidden behind an unlabelled glyph in
-    /// the Photos tab, which carried the widgets and had the only "include app settings"
-    /// checkbox; and "Export Settings…" here, which was named for settings, offered no options
-    /// at all, and silently wrote five of them. People looking for the checkbox looked at the
-    /// button that says Settings and did not find it.
     private var backup: some View {
-        section("PORTABLE BACKUP") {
-            caption("Export creates one .arras file containing your widgets and their stored images. Import that file to restore them here or move them to another Mac.")
-
-            Toggle("Include app settings when exporting", isOn: $includeSettingsInBackup)
-                .accessibilityHint("Adds your login item, global shortcut, menu bar choices, update behavior and privacy switches to the backup file")
-
-            Toggle("Apply app settings when importing", isOn: $applySettingsOnImport)
-                .accessibilityHint("Lets an imported backup change this Mac's settings. Off by default, so a shared layout can never rebind your shortcut")
-
-            caption("App settings are optional and off by default, so a shared backup cannot carry your login item or rebind someone else's shortcut.")
-
+        section("Setups & backup", icon: "externaldrive") {
+            caption("Saved Setups keeps different arrangements on this Mac. A backup packages your current desktop and stored media for recovery or another Mac.")
+            Button("Saved Setups…", systemImage: "rectangle.stack") { showingSetups = true }
             HStack(spacing: 8) {
                 Button("Export Backup…") { exportBackup() }
-                    .controlSize(.small)
                 Button("Import Backup…") { importBackup() }
-                    .controlSize(.small)
-                Spacer()
+            }
+            Divider().padding(.vertical, 2)
+            DisclosureGroup("Backup options") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Include app settings when exporting", isOn: $includeSettingsInBackup)
+                    Toggle("Apply app settings when importing", isOn: $applySettingsOnImport)
+                    caption("Settings can include your shortcut, login behavior, updates and privacy choices. Leave these off to transfer only the desktop.")
+                    Toggle("Archive-quality export", isOn: $archivalQuality)
+                    caption("Preserves Arras’s stored files exactly and records their quality. It cannot recover originals that were resized before storage.")
+                }
             }
         }
     }
@@ -191,9 +274,14 @@ struct PreferencesView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            try manager.exportLayout(to: url, preferenceGroups: groups)
+            let report = try manager.exportLayout(
+                to: url,
+                preferenceGroups: groups,
+                archivalQuality: archivalQuality
+            )
+            LayoutArchiveExportFlow.present(report)
         } catch {
-            presentAlert("Couldn't Export Backup", error.localizedDescription, .warning)
+            LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Backup")
         }
     }
 
@@ -207,84 +295,38 @@ struct PreferencesView: View {
         panel.message = "Choose an Arras backup"
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        // Read the manifest first so the dialog can describe what is actually inside, rather
-        // than asking the user to commit to an opaque file.
-        let manifest = try? PhotoManager.inspect(url)
-
-        let alert = NSAlert()
-        alert.messageText = "Import Backup"
-
-        var details: [String] = []
-        if let manifest {
-            let count = manifest.itemCount ?? manifest.photos.count
-            details.append("\(count) widget\(count == 1 ? "" : "s")")
-            details.append("from Arras \(manifest.appVersion)")
-            details.append(manifest.exportedAt.formatted(date: .abbreviated, time: .shortened))
-        }
-        let provenance = details.isEmpty ? "" : details.joined(separator: " · ") + "\n\n"
-
-        alert.informativeText = provenance + (manager.photos.isEmpty
-            ? "Add the widgets from this backup to your desktop."
-            : "Add these widgets to what you already have, or replace your current layout entirely? Replacing removes your existing widgets and can't be undone.")
-
-
-        alert.addButton(withTitle: "Merge")
-        alert.addButton(withTitle: "Replace Everything")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-
-        let mode: PhotoManager.LayoutImportMode
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: mode = .merge
-        case .alertSecondButtonReturn: mode = .replace
-        default: return
-        }
-
-        do {
-            let count = try manager.importLayout(from: url, mode: mode)
-            if applySettingsOnImport, let preferences = manifest?.preferences {
-                manager.applyImportedPreferences(preferences)
+        LayoutArchiveImportFlow.present(
+            url: url,
+            manager: manager,
+            applySettings: applySettingsOnImport,
+            onMenuUpdate: onMenuUpdate,
+            onPreferencesApplied: {
                 snapEnabled = SnapEngine.shared.isEnabled
                 snapOtherApps = SnapEngine.shared.includesOtherApps
             }
-            onMenuUpdate?()
-            if count == 0 {
-                presentAlert("Nothing to Import", "That backup didn't contain any widgets with valid images.", .informational)
-            }
-        } catch {
-            presentAlert("Couldn't Import Backup", error.localizedDescription, .warning)
-        }
+        )
     }
-
-    private func presentAlert(_ title: String, _ message: String, _ style: NSAlert.Style) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = style
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
-    }
-
 
     // MARK: - Building blocks
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.8)
+    private func section<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .settingsSectionSurface()
         .toggleStyle(.checkbox)
         .font(.system(size: 12))
     }
 
     private func caption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

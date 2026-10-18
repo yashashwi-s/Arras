@@ -1,0 +1,18 @@
+{
+  "version": "2.5.0",
+  "title": "A desktop made of your photos",
+  "summary": "Arrange photos into desktop collages, save favorite setups, and reuse a look across widgets. Reference tools and arrangement undo make it easier to experiment while keeping your original photos.",
+  "details": [
+    "Install the universal Apple Silicon and Intel app with Developer ID signing and Apple notarization.",
+    "Group desktop photos into collages with adjustable spacing, materials, labels and fonts. Hidden photos no longer distort visible collage bounds or placement.",
+    "Undo and redo alignment, distribution, dragging, resizing, and moves into or out of a collage.",
+    "Save named desktop setups, switch between them, restore the previous desktop, and recover the most recently removed widgets after relaunch.",
+    "Compare six photo looks with a live preview, then fine-tune them in Adjust. Copy and paste appearance without replacing images, positions or reference edits. Find editing tools from the Tools panel.",
+    "Crop, rotate, flip or grayscale your photos without rewriting managed originals. Add reference notes and source links, with a fitted preview of your edits.",
+    "Keep a slideshow linked to a Photos collection, with managed local copies and recovery guidance when Photos access is denied.",
+    "Use consistent confirmation dialogs and direct links to the relevant Photos and Screen Recording permission panes.",
+    "Try six editable examples with bundled artwork and guided next steps. Photo Tools can replace the sample image while keeping its look.",
+    "Find app-wide controls in reorganized Preferences and Privacy panels, and search Photos albums in a compact picker.",
+    "Limited usage and weekly configuration statistics are disclosed in Privacy and the Security & Privacy policy. Photos and personal content stay local."
+  ]
+}

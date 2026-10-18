@@ -12,5 +12,11 @@ struct PhotoWidgetOSXApp: App {
         Settings {
             EmptyView()
         }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.showSettingsWindow() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 }

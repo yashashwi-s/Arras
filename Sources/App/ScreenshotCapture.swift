@@ -1,5 +1,28 @@
 import AppKit
 
+@MainActor
+enum ScreenCapturePermission {
+    static func ensureAccess(
+        preflight: () -> Bool = { CGPreflightScreenCaptureAccess() },
+        request: () -> Bool = { CGRequestScreenCaptureAccess() },
+        recover: @MainActor () -> Void = { presentRecovery() }
+    ) -> Bool {
+        if preflight() || request() { return true }
+        recover()
+        return false
+    }
+
+    private static func presentRecovery() {
+        let alert = AppDialog.make(
+            title: "Allow Screen Recording",
+            message: "In System Settings → Privacy & Security → Screen & System Audio Recording, allow Arras to capture the screen. On older macOS versions this pane is called Screen Recording. Reopen Arras if macOS asks, then try Capture Screen Region again.",
+            actions: [.init(title: "Open Screen Recording Settings"), .init(title: "Cancel", role: .cancel)]
+        )
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { PrivacySettingsPane.screenRecording.open() }
+    }
+}
+
 /// Pins a user-selected region of the screen as a persistent desktop widget --
 /// useful for a chart or reference doc someone wants to keep visible, not just
 /// a photo (see FEATURES.md, "Content sources").
@@ -18,6 +41,7 @@ extension PhotoManager {
     /// `terminationHandler`, which AppKit invokes on a background queue, so
     /// this is safe to call from the main actor without freezing the app.
     func captureScreenshotRegion() {
+        guard ScreenCapturePermission.ensureAccess() else { return }
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".png")
 
@@ -46,6 +70,7 @@ extension PhotoManager {
             try task.run()
         } catch {
             recordMediaImportFailure("Screen capture could not be started: \(error.localizedDescription).")
+            AppDialog.inform(title: "Couldn’t Capture Screen Region", message: error.localizedDescription, style: .warning)
         }
     }
 }

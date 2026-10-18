@@ -2,6 +2,7 @@ import Foundation
 
 struct Constants {
     static let appName = "Arras"
+    static let repositoryURL = URL(string: "https://github.com/yashashwi-s/Arras")!
 
     /// Keep the SwiftUI root, its tab content, and the AppKit window constraint aligned so the
     /// window cannot be resized below the layout's actual minimum.

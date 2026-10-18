@@ -1,14 +1,14 @@
 {
   "schemaVersion": 2,
   "name": "Arras",
-  "canonicalUrl": "https://arras.yashashwi.me/",
+  "canonicalUrl": "https://tryarras.tech/",
   "repositoryUrl": "https://github.com/yashashwi-s/Arras",
   "publisher": {
     "name": "Yashashwi Singhania",
     "url": "https://yashashwi.me/"
   },
   "category": "native macOS desktop photo widget",
-  "shortDescription": "Native macOS photo widget that preserves each image's original aspect ratio.",
+  "shortDescription": "Free native macOS photo widgets and editable desktop collages, with custom looks and linked albums.",
   "repositoryDescription": "Put any photo on your macOS desktop as a borderless widget at its true aspect ratio",
   "bundleIdentifier": "com.yashashwi.tableau",
   "historicalNames": [
@@ -17,11 +17,11 @@
   ],
   "minimumMacOS": "14.0",
   "documentation": {
-    "mainUrl": "https://arras.yashashwi.me/",
-    "installationUrl": "https://arras.yashashwi.me/#install",
-    "quickStartUrl": "https://arras.yashashwi.me/faqs#how-to-use",
-    "faqUrl": "https://arras.yashashwi.me/faqs",
-    "securityUrl": "https://arras.yashashwi.me/security",
+    "mainUrl": "https://tryarras.tech/",
+    "installationUrl": "https://tryarras.tech/#install",
+    "quickStartUrl": "https://tryarras.tech/faq#how-to-use",
+    "faqUrl": "https://tryarras.tech/faq",
+    "securityUrl": "https://tryarras.tech/security",
     "featureContractUrl": "https://github.com/yashashwi-s/Arras/blob/main/FEATURES.md",
     "architectureUrl": "https://github.com/yashashwi-s/Arras/blob/main/ARCHITECTURE.md",
     "securityPolicyUrl": "https://github.com/yashashwi-s/Arras/blob/main/SECURITY.md"
@@ -32,8 +32,9 @@
       "arm64",
       "x86_64"
     ],
-    "signing": "ad-hoc",
-    "notarized": false
+    "signing": "developer-id",
+    "notarized": true,
+    "version": "2.5.0"
   },
   "sourceBuild": {
     "sourceUrl": "https://github.com/yashashwi-s/Arras",
@@ -43,6 +44,8 @@
     "spdx": "MIT",
     "url": "https://github.com/yashashwi-s/Arras/blob/main/LICENSE"
   },
-  "telemetry": false,
-  "featureContractPath": "FEATURES.md"
+  "telemetry": true,
+  "featureContractPath": "FEATURES.md",
+  "telemetryStatus": "Limited usage statistics, including a weekly configuration summary",
+  "telemetryDisclosure": "Limited usage and configuration statistics linked by a random installation UUID; no photos, filenames, paths, layouts or personal content."
 }

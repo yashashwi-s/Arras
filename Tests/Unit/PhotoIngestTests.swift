@@ -32,6 +32,26 @@ final class PhotoIngestTests: XCTestCase {
     }
 
     @MainActor
+    func testTransparentReplacementSurvivesSaveAndReload() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = PhotoManager(storageDirectory: directory)
+        var item = PhotoItem(filename: "old.png")
+        item.isVisible = false
+        item.revealOnHover = true
+        try pngImageData(width: 16, height: 16, alpha: 255).write(to: directory.appendingPathComponent(item.filename))
+        manager.photos = [item]
+        XCTAssertTrue(manager.persist())
+        XCTAssertTrue(manager.replacePhoto(item.id, with: try makeImage(width: 16, height: 16, alpha: 0)))
+        manager.loadSaved()
+        let restored = try XCTUnwrap(manager.photos.first)
+        XCTAssertEqual((restored.filename as NSString).pathExtension, "png")
+        XCTAssertTrue(restored.revealOnHover)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(restored.filename))))
+        XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 0, y: 0)).alphaComponent, 0, accuracy: 0.01)
+    }
+
+    @MainActor
     func testNSImageStillEncodingPreservesTransparencyButKeepsOpaqueJPEG() throws {
         let transparent = try makeImage(width: 16, height: 16, alpha: 0)
         let opaque = try makeImage(width: 16, height: 16, alpha: nil)

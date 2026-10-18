@@ -1,7 +1,7 @@
 # Repository guidance for coding agents
 
 Use this file with [ARCHITECTURE.md](ARCHITECTURE.md), which owns subsystem
-boundaries, and [FEATURES.md](FEATURES.md), which owns current shipped behavior.
+boundaries, and [FEATURES.md](FEATURES.md), which separates the public contract from the next-release guide.
 Inspect source and tests before changing either contract.
 
 ## Working principles
@@ -25,23 +25,20 @@ Inspect source and tests before changing either contract.
 `Arras.xcodeproj`. New source files are discovered by XcodeGen. Never hand-edit
 the project file; regenerate it after configuration or file changes.
 
-```sh
-xcodegen generate
-./build.sh
-
-/Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild \
-  -project Arras.xcodeproj \
-  -scheme Arras \
-  -destination 'platform=macOS' \
-  test
-```
+Use the commands in [CONTRIBUTING.md](CONTRIBUTING.md#build-and-test) to build
+and test. Regenerate the project after source file or configuration changes.
 
 The deployment target is macOS 14. The intended current Settings presentation
 depends on the macOS 27 SDK. Compiler warnings alone are not an API audit across
 the supported OS range.
 
-`./build.sh --run` installs and launches a local build.
+`./build.sh --run` launches the validated local build without replacing an installed app.
 `./build.sh --release` creates local ZIP and DMG files; it does not publish.
+`./build.sh --pilot BUILD` creates a private telemetry pilot with a new number
+(greater than the last shared internal build identifier). Build only from
+the repository root. Keep obsolete builds and source snapshots out of the checkout.
+Never stamp a digest onto an old app or copy a pilot flag onto an existing bundle.
+The Xcode phases and packaging checks bind the app to current source inputs.
 
 ## Load-bearing compatibility rules
 
@@ -49,8 +46,7 @@ the supported OS range.
 
 `PhotoItem.init(from:)` is hand-written. Every new field needs
 `decodeIfPresent(...) ?? default` or another explicit backward-compatible
-migration. A decoding failure can strand the entire widget library. Test a real
-older `photos.json`, current round-trip behavior, and `.arras` import when the
+migration. A decoding failure can strand the entire widget library. Test a minimal historical fixture, current round-trip behavior, and `.arras` import when the
 schema changes.
 
 Production storage is `~/Library/Application Support/PhotoWidget/`. Tests must
@@ -105,13 +101,20 @@ authorizes publication.
 ## Documentation ownership
 
 - `README.md`: concise GitHub front door, at most 200 lines.
-- `FEATURES.md`: reviewed current shipped and reachable behavior, without a
-  patch-version heading or roadmap.
+- `FEATURES.md`: reviewed shipped behavior and an explicitly labeled next-release guide;
+  unfinished features must never be attributed to the public download.
 - `ARCHITECTURE.md`: durable ownership and engineering contracts.
 - `SECURITY.md`: distribution trust, data/network behavior, and reporting.
 - `CHANGELOG.md` and `release-notes/`: truthful historical records.
 - `product-metadata.json`: stable machine-readable public facts. GitHub
   Releases/appcast own release-specific version, date, URLs, and digests.
+- [SECURITY.md](SECURITY.md#telemetry-protocol-and-activation): exact telemetry protocol and production activation steps.
+
+Keep documentation consolidated. Record development changes under Unreleased
+in CHANGELOG, dated verification and remaining release checks in CONTRIBUTING,
+and engineering contracts in ARCHITECTURE. Do not add duplicate milestone
+inventories, branch handoffs, audit reports or payload-copy files unless the user
+requests them. Use temporary directories for scratch logs; keep recovery copies outside the checkout.
 
 Whenever user-visible behavior changes, the same pull request must update the
 relevant product documentation or explicitly demonstrate why no documentation

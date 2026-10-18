@@ -2,14 +2,13 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Ways of getting an image into the app that aren't the open panel: the
-/// pasteboard (⌘V) and drags onto the menu bar icon. Both funnel into
-/// `addPhoto`, so imported images pick up the same defaults as any other.
+/// pasteboard (⌘V) and drags onto the menu bar icon. Both funnel into the same
+/// byte-based importer, so format detection and batch reporting stay consistent.
 extension PhotoManager {
 
-    /// Image formats accepted from a drag or a paste. Matches what `NSImage`
-    /// can actually decode — anything else is silently skipped rather than
-    /// creating an empty widget.
-    static let importableTypes: [UTType] = [.image, .png, .jpeg, .heic, .tiff, .gif, .bmp, .webP]
+    /// Image and movie types advertised by drag/paste inputs. Preparation validates their
+    /// bytes and reports unsupported or undecodable media through the shared batch result.
+    static let importableTypes: [UTType] = PhotoImportPolicy.supportedTypes
 
     /// Whether there's something on the pasteboard we could turn into a widget.
     /// Drives menu item enablement so ⌘V never looks available when it isn't.
@@ -17,43 +16,34 @@ extension PhotoManager {
         Self.imageCount(on: .general) > 0
     }
 
-    /// Creates widgets from every image on the pasteboard.
-    /// - Returns: the number of widgets created.
+    /// Imports the pasteboard's original file bytes when Finder copied a file, or its image
+    /// bytes when another app supplied a bitmap. Keeping the bytes intact is what lets WebP and
+    /// BMP use the same persistence and archive path as the older image formats.
     @discardableResult
-    func addFromPasteboard(_ pasteboard: NSPasteboard = .general) -> Int {
-        // File URLs are checked first on purpose: copying a file in Finder puts
-        // both the URL *and* a downscaled preview on the pasteboard, and the
-        // original file is the higher-fidelity source of the two.
+    func importFromPasteboard(_ pasteboard: NSPasteboard = .general) async -> ImportBatchResult {
+        // File URLs are checked first on purpose: copying a file in Finder puts both the URL and
+        // a downscaled preview on the pasteboard, and the original file is the higher-fidelity
+        // source of the two.
         let urls = Self.imageFileURLs(on: pasteboard)
         if !urls.isEmpty {
-            return addImages(from: urls)
+            return await importPhotos(urls: urls)
         }
 
-        guard let image = NSImage(pasteboard: pasteboard), image.isValid else {
-            recordMediaImportFailure("The pasted image could not be decoded.")
-            return 0
+        if let data = Self.imageData(on: pasteboard) {
+            return await importPhotos(data: [data], sourceNames: ["Clipboard image"])
         }
-        addPhoto(image)
-        return 1
-        // Left on the NSImage path deliberately: a pasteboard image has no original file
-        // behind it, so there are no source bytes to pass through.
-    }
 
-    /// Creates widgets from image files on disk. Used by drag-and-drop.
-    ///
-    /// Returns how many files *look* importable and kicks the real work off in the
-    /// background — the caller (a drag handler) has no way to await, and the batched path
-    /// prepares the files concurrently off the main actor.
-    /// - Returns: the number of widgets that will be created.
-    @discardableResult
-    func addImages(from urls: [URL]) -> Int {
-        let candidates = urls.filter { url in
-            guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
-            return Self.importableTypes.contains { type.conforms(to: $0) }
+        guard let image = NSImage(pasteboard: pasteboard), image.isValid,
+              let tiff = image.tiffRepresentation else {
+            return ImportBatchResult(entries: [
+                .init(
+                    source: "Clipboard image",
+                    status: .failed,
+                    reason: "The pasteboard did not contain a decodable image."
+                )
+            ])
         }
-        guard !candidates.isEmpty else { return 0 }
-        Task { @MainActor in await addPhotos(urls: candidates) }
-        return candidates.count
+        return await importPhotos(data: [tiff], sourceNames: ["Clipboard image"])
     }
 
     // MARK: - Pasteboard inspection
@@ -71,6 +61,18 @@ extension PhotoManager {
     static func imageCount(on pasteboard: NSPasteboard) -> Int {
         let urls = imageFileURLs(on: pasteboard)
         if !urls.isEmpty { return urls.count }
+        if imageData(on: pasteboard) != nil { return 1 }
         return pasteboard.canReadObject(forClasses: [NSImage.self], options: nil) ? 1 : 0
+    }
+
+    /// Original image payloads on the pasteboard, including public.webp and public.bmp data.
+    /// Some producers expose only an `NSImage`, so callers retain the TIFF fallback above.
+    private static func imageData(on pasteboard: NSPasteboard) -> Data? {
+        for rawType in pasteboard.types ?? [] {
+            guard let type = UTType(rawType.rawValue), type.conforms(to: .image),
+                  let data = pasteboard.data(forType: rawType) else { continue }
+            return data
+        }
+        return nil
     }
 }

@@ -38,8 +38,8 @@ class ReleaseMarkdownTests(unittest.TestCase):
     def test_footer_uses_current_public_distribution_contract(self):
         self.assertIn("macOS 14.0+", PRODUCT_FOOTER)
         self.assertIn("Universal Apple Silicon (`arm64`) and Intel (`x86_64`) release downloads", PRODUCT_FOOTER)
-        self.assertIn("[Official website](https://arras.yashashwi.me/)", PRODUCT_FOOTER)
-        self.assertIn("[Installation guide](https://arras.yashashwi.me/#install)", PRODUCT_FOOTER)
+        self.assertIn("[Official website](https://tryarras.tech/)", PRODUCT_FOOTER)
+        self.assertIn("[Installation guide](https://tryarras.tech/#install)", PRODUCT_FOOTER)
         self.assertIn("[Source](https://github.com/yashashwi-s/Arras)", PRODUCT_FOOTER)
 
     def test_footer_reflects_metadata_architecture_changes(self):

@@ -37,6 +37,7 @@ enum UpdateStatusPhrasing {
 /// button you press to install, in the same spot.
 struct UpdateActionButton: View {
     @ObservedObject private var updater = Updater.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -84,7 +85,7 @@ struct UpdateActionButton: View {
                 .controlSize(.small)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: updater.phase)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }
 }
 
@@ -93,17 +94,17 @@ struct UpdateStatusLine: View {
     @ObservedObject private var updater = Updater.shared
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let label = text(now: context.date)
-            Text(label)
+        TimelineView(.periodic(from: .now, by: 60)) { timeline in
+            let text = text(at: timeline.date)
+            Text(text)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(label)
+                .accessibilityLabel(text)
         }
     }
 
-    private func text(now: Date) -> String {
+    private func text(at now: Date) -> String {
         switch updater.phase {
         case .available(let version, let notes):
             return UpdateStatusPhrasing.availableUpdate(
@@ -120,9 +121,9 @@ struct UpdateStatusLine: View {
         case .checking:
             return "Checking for updates…"
         case .downloading(let progress):
-            return "Downloading verified update (\(Int(progress * 100))%)…"
+            return "Downloading update (\(Int(progress * 100))%)…"
         case .installing:
-            return "Installing verified update…"
+            return "Verifying and installing update…"
         case .idle:
             return UpdateCheckPhrasing.lastChecked(updater.lastChecked, now: now)
         }
@@ -132,58 +133,61 @@ struct UpdateStatusLine: View {
 /// The compact version label and update control in the settings footer.
 struct UpdateStatusView: View {
     @ObservedObject private var updater = Updater.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("v\(Constants.version)")
+            Text(updater.updatesAllowed ? "v\(Constants.version)" : "v\(Constants.version) · Test \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")")
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.quaternary)
                 .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
 
-            switch updater.phase {
-            case .available(let version, _):
-                Button("Update to \(version)") {
-                    Task { await updater.installPendingUpdate() }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-
-            case .checking:
-                ProgressView()
-                    .progressViewStyle(.circular)
+            if updater.updatesAllowed {
+                switch updater.phase {
+                case .available(let version, _):
+                    Button("Update to \(version)") {
+                        Task { await updater.installPendingUpdate() }
+                    }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .scaleEffect(0.6)
-                    .frame(width: 14, height: 14)
 
-            case .upToDate:
-                Text("up to date")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                case .checking:
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .scaleEffect(0.6)
+                        .frame(width: 14, height: 14)
 
-            case .downloading(let progress):
-                Text("\(Int(progress * 100))%")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                case .upToDate:
+                    Text("up to date")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.tertiary)
 
-            case .installing:
-                Text("installing")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+                case .downloading(let progress):
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
 
-            case .idle, .installed, .failed:
-                // The cadence setting lives in Preferences; burying a picker in a footer menu
-                // made a one-click action into a two-level decision for no benefit.
-                Button("Check for Updates") {
-                    Task { await updater.check(userInitiated: true) }
+                case .installing:
+                    Text("installing")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+
+                case .idle, .installed, .failed:
+                    // The cadence setting lives in Preferences; burying a picker in a footer menu
+                    // made a one-click action into a two-level decision for no benefit.
+                    Button("Check for Updates") {
+                        Task { await updater.check(userInitiated: true) }
+                    }
+                    .font(.system(size: 10))
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(Color.accentColor)
+                    .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
                 }
-                .font(.system(size: 10))
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .foregroundStyle(Color.accentColor)
-                .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: updater.phase)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }
 }
