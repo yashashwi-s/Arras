@@ -141,30 +141,6 @@ targets:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
           CLANG_ENABLE_CODE_COVERAGE: NO
 
-  ArrasTests:
-    type: bundle.unit-test
-    platform: macOS
-    sources:
-      - path: Tests/Unit
-    dependencies:
-      - target: Arras
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.tests
-        GENERATE_INFOPLIST_FILE: YES
-
-  ArrasUITests:
-    type: bundle.ui-testing
-    platform: macOS
-    sources:
-      - path: Tests/UI
-    dependencies:
-      - target: Arras
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.uitests
-        GENERATE_INFOPLIST_FILE: YES
-
   ArrasAppStoreTests:
     type: bundle.unit-test
     platform: macOS
@@ -203,6 +179,30 @@ targets:
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: Tests/AppStore/UITests.entitlements
+
+  ArrasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/Unit
+    dependencies:
+      - target: Arras
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  ArrasUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/UI
+    dependencies:
+      - target: Arras
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau.uitests
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   Arras:
