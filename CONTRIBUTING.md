@@ -914,3 +914,11 @@ actual parent display; their existing bodies scroll. The failed collage drag
 recorded no mouse events reaching its photo view, so that separate automation
 path remains unverified rather than diagnosed as a group-movement regression.
 The official 2.5.0 artifacts stay unchanged; a follow-up app release needs review.
+
+The first overflow-fix CI run passed the broad feature-reachability check that
+previously could not click Appearance’s Done button. Its remaining two editor
+checks use controls inside scrollable bodies: the UI helper now scrolls the
+actual containing editor viewport, as it already did for Photos rows, before
+synthesizing a click. It preserves the footer reachability and persisted-reference
+assertions. The separate native background-photo drag still has no delivered
+pointer trace; that failure is retained, without changing production hit testing.
