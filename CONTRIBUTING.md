@@ -982,7 +982,7 @@ navigation. These checks do not establish TestFlight delivery or permission
 recovery on an installed Store build.
 
 Apple registered the separate Store identifier and created app record
-`6824271927`, **Arras: Desktop Photos** (the plain name was unavailable). Version
+`6824271927`, **Arras Widgets** (saved after Apple rejected the plain Arras name). Version
 2.5.0 customer-facing metadata is saved with manual release selected. The USD
 4.99 base-price schedule is configured. The owner deferred creating distribution
 certificates; signing, upload, TestFlight acceptance, listing completion and App
