@@ -1,7 +1,7 @@
 # Repository guidance for coding agents
 
 Use this file with [ARCHITECTURE.md](ARCHITECTURE.md), which owns subsystem
-boundaries, and [FEATURES.md](FEATURES.md), which separates the public contract from the next-release guide.
+boundaries, and [FEATURES.md](FEATURES.md), which describes the version prepared by this checkout and labels any unfinished work.
 Inspect source and tests before changing either contract.
 
 ## Working principles
@@ -91,9 +91,14 @@ To prepare a release:
 3. after tests and explicit publishing authorization, create and push the
    matching `vX.Y.Z` tag.
 
-The release workflow owns the GitHub release body, artifacts, and generated
-`appcast.json` URL/checksum. Never insert a locally calculated artifact hash:
-the runner rebuilds the downloadable archive.
+The release workflow normally builds, notarizes and uploads the official artifacts,
+then generates the release body and `appcast.json` from those exact uploads.
+For an explicitly authorized publication of already verified local notarized
+packages, compare GitHub's uploaded asset digests with the notarization receipt
+before updating the feed. Its URL/checksum must identify the published ZIP;
+never use an ad-hoc build's checksum or let a duplicate workflow replace the
+verified uploads. Once published, keep release assets immutable and use a new
+version for fixes. See [CONTRIBUTING.md](CONTRIBUTING.md#build-and-test).
 
 Do not create tags, releases, or publish artifacts unless the user explicitly
 authorizes publication.
@@ -101,7 +106,7 @@ authorizes publication.
 ## Documentation ownership
 
 - `README.md`: concise GitHub front door, at most 200 lines.
-- `FEATURES.md`: reviewed shipped behavior and an explicitly labeled next-release guide;
+- `FEATURES.md`: reviewed behavior for the checkout's version and clearly labeled unfinished work;
   unfinished features must never be attributed to the public download.
 - `ARCHITECTURE.md`: durable ownership and engineering contracts.
 - `SECURITY.md`: distribution trust, data/network behavior, and reporting.

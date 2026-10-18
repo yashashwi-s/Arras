@@ -405,14 +405,18 @@ ancestor. Its download scope starts with the selection and captures the desktop
 generation before the async transfer; results cannot enter a newly restored setup.
 
 Every release has reviewed `release-notes/<version>.json`. CI rejects missing,
-mismatched or placeholder copy. The release runner builds/uploads artifacts and
-writes its resulting URL/checksum and reviewed notes into `appcast.json`.
-Locally computed hashes must not be placed in that feed.
+mismatched or placeholder copy. The release runner normally builds, notarizes and
+uploads artifacts, then writes the published ZIP's URL/checksum and reviewed
+notes into `appcast.json`. An explicitly authorized publication of preverified
+local notarized output must first match GitHub's uploaded asset digests against
+the distribution receipt. The feed always describes those exact published bytes.
+Published assets are immutable; fixes receive a new version rather than replacing
+files already downloaded or referenced by a checksum.
 
 | Document | Maintained responsibility |
 | --- | --- |
 | README.md | Concise overview, official download and starting points |
-| FEATURES.md | Task-based next-release guide, separated from reviewed public behavior |
+| FEATURES.md | Task-based guide for the checkout's version, with unfinished work clearly labeled |
 | ARCHITECTURE.md | Ownership and engineering contracts |
 | SECURITY.md | Distribution trust, local data, networking and disclosure policy |
 | CONTRIBUTING.md / CLAUDE.md | Contributor/agent guidance and verification |
