@@ -109,7 +109,7 @@ struct PhotoToolsView: View {
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }.padding(16)
         }
-        .frame(width: 480, height: 650)
+        .frame(width: 480, height: Constants.editorHeight(650))
         .onAppear {
             let selectedPhotos = photos.filter { manager.selectedPhotoIDs.contains($0.id) }
             if let initialPhotoID, photos.contains(where: { $0.id == initialPhotoID }) { selectedID = initialPhotoID }

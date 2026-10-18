@@ -902,3 +902,15 @@ sheet. CI preserves native result bundles for remaining pointer/reachability
 investigation. These are test/diagnostic changes; the published app source digest
 and notarized artifacts are unchanged. Passing manual acceptance does not erase
 an automated failure, and a skipped animation check is not animation coverage.
+
+Publication verification's second CI run completed 449 checks: 440 passed,
+five skipped and four UI checks failed. All 433 unit checks had zero failures
+(428 passed, five system-policy skips). Native artifacts are retained at
+https://github.com/yashashwi-s/Arras/actions/runs/39103489942. The three transition
+checks separately passed with animations enabled on the development Mac.
+The 1024×768 runner's Appearance and Reference sheets place their footer below
+the visible screen. A follow-up constrains their height and Photo Tools to the
+actual parent display; their existing bodies scroll. The failed collage drag
+recorded no mouse events reaching its photo view, so that separate automation
+path remains unverified rather than diagnosed as a group-movement regression.
+The official 2.5.0 artifacts stay unchanged; a follow-up app release needs review.

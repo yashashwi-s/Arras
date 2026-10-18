@@ -94,7 +94,7 @@ struct ReferenceInspector: View {
             }.padding(16)
         }
         .disclosureGroupStyle(FullRowDisclosureStyle())
-        .frame(width: 500, height: 710)
+        .frame(width: 500, height: Constants.editorHeight(710))
         .onAppear {
             original = manager.loadDisplayContent(for: item).flatMap {
                 PhotoReferenceRenderer.previewSource($0.representativeImage)

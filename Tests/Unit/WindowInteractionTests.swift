@@ -3,6 +3,16 @@ import XCTest
 @testable import Arras
 
 final class WindowInteractionTests: XCTestCase {
+    func testEditorFootersFitShortAndOffsetDisplaysWithoutGrowingNormalSheets() {
+        let small = CGRect(x: 0, y: 78, width: 1024, height: 666)
+        let short = Constants.editorHeight(710, visibleFrame: small, parentContentTop: 685)
+        XCTAssertLessThanOrEqual(short + small.minY + 24, 685)
+        XCTAssertEqual(short, 526)
+        let secondary = CGRect(x: -1280, y: -800, width: 1280, height: 700)
+        XCTAssertEqual(Constants.editorHeight(670, visibleFrame: secondary, parentContentTop: -180), 560)
+        XCTAssertEqual(Constants.editorHeight(670, visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080), parentContentTop: 1000), 670)
+    }
+
     @MainActor
     func testSwiftUIHostRegistersTheLiveOwnerForIntentsAndSettings() throws {
         let owner = try XCTUnwrap(AppDelegate.current, "The actual SwiftUI host must register its adaptor at startup")

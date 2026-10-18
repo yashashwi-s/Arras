@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 struct Constants {
     static let appName = "Arras"
@@ -8,6 +8,21 @@ struct Constants {
     /// window cannot be resized below the layout's actual minimum.
     static let settingsMinimumWidth: CGFloat = 460
     static let settingsMinimumHeight: CGFloat = 480
+
+    /// Sheets attach below the Settings title bar. Their scrollable body must
+    /// shrink before their footer runs under the Dock on a short display.
+    @MainActor
+    static func editorHeight(_ preferred: CGFloat) -> CGFloat {
+        let parent = NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow ?? NSApp.mainWindow
+        guard let screen = parent?.screen ?? NSScreen.main else { return preferred }
+        let top = parent.map { $0.convertToScreen($0.contentLayoutRect).maxY } ?? screen.visibleFrame.maxY
+        return editorHeight(preferred, visibleFrame: screen.visibleFrame, parentContentTop: top)
+    }
+
+    static func editorHeight(_ preferred: CGFloat, visibleFrame: CGRect, parentContentTop: CGFloat) -> CGFloat {
+        let available = min(visibleFrame.height - 140, min(parentContentTop, visibleFrame.maxY) - visibleFrame.minY - 24)
+        return min(preferred, max(300, available))
+    }
 
     /// The bundle identifier deliberately still says "tableau". It is what the updater
     /// checks a downloaded build against, and what every UserDefaults key is scoped to —
