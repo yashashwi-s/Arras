@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.4.9",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.4.9/Arras.app.zip?source=arras-updater&version=2.4.9",
-  "sha256": "4adb380e83f836946b08bf733291d0502cc7c2c0573f9fd675db0cab83fffab7",
-  "releaseNotes": "Reliable update checks and a clearer menu: Update checks now follow your selected schedule, recover after Mac sleep, and show a live last-checked time. The menu bar groups existing commands under Add, Widgets, and Options.",
+  "latestVersion": "2.5.0",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.5.0/Arras.app.zip?source=arras-updater&version=2.5.0",
+  "sha256": "92394a2da94e9058afbe74aa2b7e7b08b35fdbb3aee6acefd91e0a1f2683171a",
+  "releaseNotes": "A desktop made of your photos: Arrange photos into desktop collages, save favorite setups, and reuse a look across widgets. Reference tools and arrangement undo make it easier to experiment while keeping your original photos.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

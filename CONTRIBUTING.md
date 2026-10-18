@@ -876,14 +876,20 @@ capture. Website audit/evidence and the final AEO payload are under
 redirects and the AEO apply command remains subject to the owner's final approval.
 
 
-The 18 October publication preflight also queried GitHub: the app repository has
-zero registered Actions runners and no configured release-variable names. Its
-`xcode-27` tag workflow therefore cannot currently produce a release. Do not
-confuse a tag push with a completed release. The already verified local
-`dist/notarized-20261018/` packages provide a manual publication path after owner
-approval: create a draft for the approved source commit, upload those exact files,
-verify their published asset digests, then publish and stamp the updater feed from
-the uploaded ZIP's digest. Never substitute `dist/Arras.app.zip` (ad-hoc local
-output), advertise a pending upload as notarized, or rely on an unconfigured CI
-signing identity. Website/domain cutover and the AEO apply command follow only
-after the paired release/source facts are verified. The public feed remains 2.4.9.
+The 18 October release was explicitly approved by the owner. Its verified local
+`dist/notarized-20261018/` files were uploaded to the GitHub draft, and both asset
+digests matched the notarization receipt before publication. The public release
+is [v2.5.0](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.0); its source
+commit is `3af56a192190608d2916089427f47ebd2859fd24`. The updater feed uses the
+uploaded ZIP digest. Never substitute the ad-hoc `dist/Arras.app.zip`.
+
+The earlier absence of registered self-hosted runners did not establish hosted
+runner availability. The source-push CI actually started, verified macOS SDK 27,
+and ran native checks. Signing variables were absent at preflight, so publication
+used the verified local packages rather than asking CI to rebuild them. Current
+CI status belongs to the GitHub run, not an inference from registered runners.
+
+Release validation also corrected the old-domain and unsigned-install assumptions
+in product-document checks. All 73 Python checks passed, and the compiled source
+digest still matches the notarization receipt. Earlier dated sections retain their
+pre-release holds and limitations as historical evidence.
