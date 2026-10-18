@@ -663,15 +663,15 @@ is not proof of a completed installation, and notifications are not instantaneou
 
 Vercel’s free access permits daily referrer/path aggregates. The provider rejected
 UTM queries on 18 October with an explicit Web Analytics Plus/Enterprise requirement;
-no paid upgrade was enabled. The prepared website therefore adds separate Arras-only
+no paid upgrade was enabled. The website uses separate Arras-only
 server request/download counters with short referrer and UTM labels, no IPs, full
 referring URLs, raw user agents, cookies or visitor IDs. These anonymous day buckets
 expire after 90 days; the private local archive retains daily aggregates for later
 comparison. A default 5,000-event monthly write allowance and per-day cardinality
 bound protect this extra store, but do not guarantee a provider command budget.
-No website identifier is joined to the app installation UUID. The website collector
-must be activated with the reviewed production configuration at launch; it does not
-backfill unavailable historical UTM data. See the website’s Security page for the
+No website identifier is joined to the app installation UUID. The website collector was activated with the reviewed production configuration
+on 18 October 2026; the normal dashboard launcher read its first aggregate day
+successfully. It does not backfill unavailable historical UTM data. See the website’s Security page for the
 customer disclosure. Provider connection logs have separate retention.
 
 ### Reset history and future production capacity
@@ -698,9 +698,11 @@ behavior. Reconcile privacy disclosures and monitoring with the verified design.
 
 Release scope confirmed 7 October 2026: consent/withdrawal controls are not a
 blocker for the current direct-distribution release. The first telemetry version
-intentionally has no opt-out toggle. Production activation still requires the
-endpoint, accurate disclosures, retention and emergency controls to be deployed
-and validated as described above; this is complete for the private pilot. A stable random UUID remains linkable within
+intentionally has no opt-out toggle. The production endpoint, disclosures, retention and emergency controls are
+deployed. Isolated Redis tests cover rejection, deduplication, expiry and failure
+behavior; live checks verify both endpoint hosts and anonymous website writes.
+No synthetic app batches were sent to production. Provider-scale quota behavior
+and capacity for 5,000 Macs remain unproven. A stable random UUID remains linkable within
 one installation.
 
 Before any future Mac App Store submission, re-evaluate telemetry controls,

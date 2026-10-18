@@ -123,8 +123,8 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   visibility and personal locks remain available.
 - Use the widget's right-click menu for locking, stack order, and removal. The
   Settings row and menu-bar widget submenu expose the broader controls.
-- Snap to display edges and centers, the macOS desktop-widget gutter/grid, and
-  other Arras widgets. Snapping to other applications' windows is optional.
+- Snap to display edges and centers and other Arras widgets. Snapping to other
+  applications' windows is optional.
   Hold Command to disable snapping temporarily; hold Shift to constrain a move
   to one axis. Solid and dotted guides distinguish direct and extended edges.
   In 2.5.0, the guessed empty desktop grid is removed; alignment uses nearby real
@@ -308,6 +308,10 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   verified app/DMG tickets. macOS may ask to confirm opening an internet download.
   Older 2.4.9 artifacts were ad-hoc signed and not notarized; their first-launch
   warning does not describe the current release.
+- On a short display, 2.5.0’s fixed-height Appearance and Reference Tools sheets
+  can place footer actions below the visible desktop. A separate
+  [editor-height fix is under review](https://github.com/yashashwi-s/Arras/pull/3);
+  it is not included in the published 2.5.0 packages.
 - The app is intentionally not sandboxed because its in-place updater replaces
   its bundle and launches a helper that outlives the running process.
 - Arras stores media locally but is not an original-photo archive. Export
