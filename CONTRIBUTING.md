@@ -922,3 +922,21 @@ actual containing editor viewport, as it already did for Photos rows, before
 synthesizing a click. It preserves the footer reachability and persisted-reference
 assertions. The separate native background-photo drag still has no delivered
 pointer trace; that failure is retained, without changing production hit testing.
+
+Final publication checks: both public package digests and the updater feed passed
+the repository’s Public Release Audit. Production website AEO/SEO and 117 exact
+legacy redirects passed; both telemetry hosts return direct enabled responses.
+The unified dashboard reads all three sources, including a real first-party
+website aggregate day, and reports no active incident. The monthly review apply
+workflow passed and closed issue #5. Its exact source commit reached Vercel;
+final website commit `09af65eccdbc72fdfb22714fd257a93a031ce5ba` is deployed to
+Production. The separate live-report workflow passed as well.
+
+Lighthouse measurements differ by host: the development Mac observed mobile
+performance 99 and desktop 100; the GitHub runner observed mobile 82 (700 ms
+blocking time) and desktop 100. Both had zero layout shift and 100 for
+accessibility, best practices, SEO and agentic browsing. These are observations,
+not guaranteed scores or app battery measurements. Portfolio/CV/PureMac/Fadeo
+pages returned 200, and the public CV PDF remained byte-identical to its
+separately authorized version. The editor-height fix is tracked in PR #3 and is
+not in the immutable 2.5.0 release packages.
