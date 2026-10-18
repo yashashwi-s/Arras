@@ -37,8 +37,8 @@ network behavior and retention.
 - **Slideshows and linked collections.** Rotate local photos, link a Finder folder
   or Photos album, and keep a managed snapshot for offline use. Add still images,
   GIF/APNG animations and local videos.
-- **Layers and placement.** Choose Desktop, Above Widgets, Floating or Always on
-  Top. Snap, align, distribute and lock widgets. Collages own their depth and
+- **Layers and placement.** Choose Behind Icons, On Desktop, Above Widgets or
+  Floating. Snap, align, distribute and lock widgets. Collages own their depth and
   Space pinning while keeping each photo’s standalone values for detaching.
 - **Your own look.** Use visual presets, masks, mats, frames, tilt, opacity,
   shadows and gradients. Copy appearance between photos. Crop, rotate, flip or
