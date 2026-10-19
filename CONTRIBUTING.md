@@ -28,6 +28,19 @@ Native menu tests queue their opening clicks and verify
 before observing WindowServer order. These fixtures do not replace physical input
 or Space-switch acceptance.
 
+CI validates documentation on every change. App, test, build-script or workflow
+changes also run both distributions' unit suites and universal Release validation,
+plus separate native UI jobs for each scheme. UI failures remain required failures
+but no longer prevent package validation from running. Documentation, website
+assets and public-feed-only changes do not rebuild either app. `CI checks` is the
+stable aggregate check for branch rules; it requires every applicable job and
+rejects failures or cancellations. New commits cancel superseded runs on that PR.
+CI never uploads Store applications, archives or packages.
+
+Use a short-lived branch for active work. GitHub deletes its branch after merge;
+keep unmerged work until it is integrated or explicitly superseded. Release tags
+retain published history without permanent version branches.
+
 `./build.sh --run` opens the validated local app; it does not replace Applications.
 `./build.sh --release` packages locally. `./build.sh --pilot BUILD` builds a
 private telemetry pilot; replace BUILD with a new integer (greater than the last shared internal build identifier). Build only from the current source checkout.

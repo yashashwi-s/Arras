@@ -6,7 +6,39 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: arras-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.scope.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Identify app changes
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PYTHON'
+          import os, subprocess
+          base = os.environ['BASE_SHA']
+          command = ['git', 'diff', '--name-only', '-z', base, 'HEAD'] if base.strip('0') else ['git', 'ls-files', '-z']
+          paths = subprocess.check_output(command).decode().split('\0')
+          def documentation(path):
+              return path.endswith('.md') or path in ('appcast.json', 'product-metadata.json') or path.startswith(('assets/', 'release-notes/', '.github/ISSUE_TEMPLATE/'))
+          app = any(path and not documentation(path) for path in paths)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'app={str(app).lower()}\n')
+          PYTHON
+
   documentation:
     runs-on: ubuntu-latest
     permissions:
@@ -47,7 +79,9 @@ jobs:
 
   build:
     name: ${{ matrix.distribution }} validation
-    # One target's UI failure must not suppress the other target's build evidence.
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    # Both distributions build independently of native UI results.
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +108,7 @@ jobs:
         if: matrix.distribution == 'direct'
         run: python3 -m unittest discover -s scripts -p 'test_updater_rollback.py'
 
-      - name: Test direct target
+      - name: Test direct unit suite
         if: matrix.distribution == 'direct'
         run: |
           xcodebuild \
@@ -82,7 +116,9 @@ jobs:
             -scheme Arras \
             -configuration Debug \
             -destination 'platform=macOS' \
-            -resultBundlePath "$RUNNER_TEMP/Arras-CI.xcresult" \
+            -only-testing:ArrasTests \
+            -derivedDataPath "$RUNNER_TEMP/arras-direct-tests" \
+            -parallel-testing-enabled NO \
             test
 
       - name: Test sandboxed App Store target
@@ -98,15 +134,6 @@ jobs:
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM='' \
             test
 
-      - name: Preserve direct UI test diagnostics
-        if: always() && matrix.distribution == 'direct'
-        uses: actions/upload-artifact@v4
-        with:
-          name: arras-native-results-${{ github.run_id }}
-          path: ${{ runner.temp }}/Arras-CI.xcresult
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: Build and validate direct target
         if: matrix.distribution == 'direct'
         run: ./build.sh
@@ -115,3 +142,73 @@ jobs:
         if: matrix.distribution == 'app-store'
         run: ./build.sh --app-store
         # Never upload this target to GitHub Releases or public build artifacts.
+
+  desktop-ui:
+    name: ${{ matrix.distribution }} desktop UI
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: xcode-27
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distribution: direct
+            scheme: Arras
+            suite: ArrasUITests
+          - distribution: app-store
+            scheme: ArrasAppStore
+            suite: ArrasAppStoreUITests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and verify project
+        run: |
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" = "27"
+          brew install xcodegen
+          xcodegen generate
+          git diff --exit-code -- Arras.xcodeproj
+      - name: Test native desktop interactions
+        run: |
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme '${{ matrix.scheme }}' \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:'${{ matrix.suite }}' \
+            -derivedDataPath "$RUNNER_TEMP/arras-desktop-ui" \
+            -resultBundlePath "$RUNNER_TEMP/Arras-UI.xcresult" \
+            -parallel-testing-enabled NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM='' \
+            test
+      - name: Preserve UI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arras-${{ matrix.distribution }}-ui-${{ github.run_id }}
+          path: ${{ runner.temp }}/Arras-UI.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+          # Test results only; never upload Store apps, archives or packages.
+
+  checks:
+    name: CI checks
+    if: always()
+    needs: [changes, documentation, build, desktop-ui]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all applicable checks
+        env:
+          SCOPE: ${{ needs.changes.result }}
+          DOCS: ${{ needs.documentation.result }}
+          APP: ${{ needs.changes.outputs.app }}
+          BUILD: ${{ needs.build.result }}
+          UI: ${{ needs.desktop-ui.result }}
+        run: |
+          test "$SCOPE" = success
+          test "$DOCS" = success
+          if [ "$APP" = true ]; then
+            test "$BUILD" = success
+            test "$UI" = success
+          else
+            test "$BUILD" = skipped
+            test "$UI" = skipped
+          fi
