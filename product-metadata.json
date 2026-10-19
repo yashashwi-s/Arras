@@ -47,5 +47,20 @@
   "telemetry": true,
   "featureContractPath": "FEATURES.md",
   "telemetryStatus": "Limited usage statistics, including a weekly configuration summary",
-  "telemetryDisclosure": "Limited usage and configuration statistics linked by a random installation UUID; no photos, filenames, paths, layouts or personal content."
+  "telemetryDisclosure": "Limited usage and configuration statistics linked by a random installation UUID; no photos, filenames, paths, layouts or personal content.",
+  "appStore": {
+    "status": "in-preparation",
+    "target": "ArrasAppStore",
+    "bundleIdentifier": "com.yashashwi.arras.appstore",
+    "price": {
+      "currency": "USD",
+      "amount": "4.99"
+    },
+    "sandboxed": true,
+    "telemetry": false,
+    "updates": "Mac App Store",
+    "releaseMode": "manual",
+    "appleId": "6824271927",
+    "listingName": "Arras Widgets"
+  }
 }

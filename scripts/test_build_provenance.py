@@ -37,6 +37,13 @@ class BuildProvenanceTests(unittest.TestCase):
             objects[reference] = {'isa': 'PBXFileReference', 'path': name, 'sourceTree': 'SOURCE_ROOT'}
             objects[build] = {'fileRef': reference}
             objects['group']['children'].append(reference); objects['sources']['files'].append(build)
+        store_path = self.root / 'Sources/AppStore/Store.swift'
+        store_path.parent.mkdir(parents=True); store_path.write_text('// Store fixture')
+        objects['store-file'] = {'isa': 'PBXFileReference', 'path': 'Sources/AppStore/Store.swift', 'sourceTree': 'SOURCE_ROOT'}
+        objects['store-build'] = {'fileRef': 'store-file'}
+        objects['group']['children'].append('store-file')
+        objects['store-target'] = {'isa': 'PBXNativeTarget', 'name': 'ArrasAppStore', 'buildPhases': ['store-sources']}
+        objects['store-sources'] = {'isa': 'PBXSourcesBuildPhase', 'files': objects['sources']['files'] + ['store-build']}
         project.write_text(json.dumps({'objects': objects, 'rootObject': 'project'}))
         def fake_git(root, *arguments):
             return {'--show-toplevel': str(self.root), '--abbrev-ref': 'codex/test',
@@ -64,6 +71,8 @@ class BuildProvenanceTests(unittest.TestCase):
         def codesign_or_run(arguments, *args, **kwargs):
             if arguments[0] == "/usr/bin/codesign":
                 return SimpleNamespace(stdout=plistlib.dumps(self.signed_entitlements))
+            if arguments[0] == "/usr/bin/lipo":
+                return SimpleNamespace(stdout="arm64 x86_64")
             if arguments[0] == "/usr/bin/otool":
                 return SimpleNamespace(stdout=self.binary_sections)
             return original_run(arguments, *args, **kwargs)
@@ -100,6 +109,76 @@ class BuildProvenanceTests(unittest.TestCase):
         self.build('2203')
         with self.assertRaisesRegex(ValueError, 'CFBundleVersion'):
             validate(self.bundle, self.root / 'project.yml')
+
+    def build_store(self):
+        path = self.bundle / 'Contents/Info.plist'
+        info = plistlib.loads(path.read_bytes())
+        for key in ('ArrasTelemetryURL', 'ArrasTelemetryReportingDays'):
+            info.pop(key, None)
+        info.update(ArrasAppStoreBuild=True, ArrasTelemetryEnabled=False,
+                    CFBundleIdentifier='com.yashashwi.arras.appstore',
+                    NSScreenCaptureUsageDescription='Capture a selected screen region.')
+        path.write_bytes(plistlib.dumps(info))
+        resources = self.bundle / 'Contents/Resources'; resources.mkdir(exist_ok=True)
+        shutil.copyfile(ROOT / 'Sources/AppStore/PrivacyInfo.xcprivacy', resources / 'PrivacyInfo.xcprivacy')
+        self.signed_entitlements = plistlib.loads((ROOT / 'Sources/AppStore/ArrasAppStore.entitlements').read_bytes())
+        prepare(self.root, self.prepared, 'ArrasAppStore')
+        stamp(self.root, self.prepared, self.bundle)
+
+    def test_store_bundle_validates_with_its_explicit_distribution(self):
+        self.build_store()
+        validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
+    def test_direct_packaging_rejects_store_bundle(self):
+        self.build_store()
+        with self.assertRaisesRegex(ValueError, 'ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
+            validate(self.bundle, self.root / 'project.yml')
+
+    def test_store_packaging_rejects_direct_bundle(self):
+        self.build()
+        with self.assertRaisesRegex(ValueError, 'ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
+            validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
+    def test_store_stamp_and_validator_reject_telemetry_pilots(self):
+        self.build_store()
+        with self.assertRaisesRegex(ValueError, 'App Store'):
+            stamp(self.root, self.prepared, self.bundle, '2210')
+        with self.assertRaisesRegex(ValueError, 'App Store'):
+            validate(self.bundle, self.root / 'project.yml', '2210', 'app-store')
+
+    def test_store_cannot_configure_telemetry_endpoint(self):
+        self.build_store()
+        path = self.bundle / 'Contents/Info.plist'; info = plistlib.loads(path.read_bytes())
+        info['ArrasTelemetryURL'] = 'https://example.invalid/telemetry'; path.write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError, 'must not configure a telemetry'):
+            validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
+    def test_store_privacy_manifest_requires_api_reasons(self):
+        self.build_store()
+        path = self.bundle / 'Contents/Resources/PrivacyInfo.xcprivacy'; privacy = plistlib.loads(path.read_bytes())
+        privacy['NSPrivacyAccessedAPITypes'] = []; path.write_bytes(plistlib.dumps(privacy))
+        with self.assertRaisesRegex(ValueError, 'required API reasons'):
+            validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
+    def test_each_store_slice_requires_sandbox_without_debug_exceptions(self):
+        self.build_store()
+        original_run = subprocess.run
+        for extra in ({'com.apple.security.app-sandbox': False},
+                      {'com.apple.security.temporary-exception.files.absolute-path.read-write': ['/tmp/']},
+                      {'com.apple.security.get-task-allow': True}):
+            def altered_slice(arguments, *args, **kwargs):
+                if arguments[0] == '/usr/bin/codesign' and 'x86_64' in arguments:
+                    return SimpleNamespace(stdout=plistlib.dumps(self.signed_entitlements | extra))
+                return original_run(arguments, *args, **kwargs)
+            with self.subTest(extra=extra), patch('validate_app_bundle.subprocess.run', side_effect=altered_slice):
+                with self.assertRaisesRegex(ValueError, 'x86_64'):
+                    validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
+    def test_source_membership_cannot_leak_between_targets(self):
+        path = self.root / 'Arras.xcodeproj/project.pbxproj'; project = json.loads(path.read_text())
+        project['objects']['sources']['files'].append('store-build'); path.write_text(json.dumps(project))
+        with self.assertRaisesRegex(ValueError, 'membership'):
+            prepare(self.root, self.prepared)
 
     def test_stamp_rejects_source_changed_during_build(self):
         prepare(self.root, self.prepared)

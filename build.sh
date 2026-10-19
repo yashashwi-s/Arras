@@ -5,13 +5,13 @@ cd "$(cd "$(dirname "$0")" && pwd -P)"
 MODE="${1:-build}"
 PILOT_BUILD=0
 case "$MODE" in
-  build|--release|--run) [ "$#" -le 1 ] || { echo 'Unexpected arguments' >&2; exit 1; } ;;
+  build|--release|--run|--app-store|--app-store-archive) [ "$#" -le 1 ] || { echo 'Unexpected arguments' >&2; exit 1; } ;;
   --pilot)
     [[ "${2:-}" =~ ^[0-9]+$ ]] && [ "${2:-0}" -ge 2203 ] && [ "$#" -eq 2 ] || {
       echo 'Usage: ./build.sh --pilot BUILD (2203 or newer)' >&2; exit 1;
     }
     PILOT_BUILD="$2" ;;
-  *) echo 'Usage: ./build.sh [--release | --run | --pilot BUILD]' >&2; exit 1 ;;
+  *) echo 'Usage: ./build.sh [--release | --run | --pilot BUILD | --app-store | --app-store-archive]' >&2; exit 1 ;;
 esac
 
 for XCODE_PATH in /Applications/Xcode.app /Applications/Xcode-beta.app; do
@@ -24,12 +24,10 @@ done
 SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
 [[ "$SDK_VERSION" == 27.* ]] || { echo "Required SDK 27, found $SDK_VERSION" >&2; exit 1; }
 
-BUILD_ROOT="$PWD/build/current"
-[ "$PILOT_BUILD" = 0 ] || BUILD_ROOT="$PWD/build/pilot-$PILOT_BUILD"
-APP_PATH="$BUILD_ROOT/Release/Arras.app"
+require_app_stopped() {
 # Replacing a running test bundle can invalidate macOS permission identity and
 # leave its process loading resources from a different build. Fail before edits.
-python3 - "$APP_PATH" <<'PYRUNNING'
+python3 - "$1" <<'PYRUNNING'
 from pathlib import Path
 import subprocess, sys
 target = (Path(sys.argv[1]) / 'Contents/MacOS/Arras').resolve()
@@ -40,6 +38,39 @@ except subprocess.CalledProcessError:
 if any(Path(line.strip()).resolve() == target for line in processes.splitlines() if line.strip().startswith('/')):
     sys.exit(f'Quit the app at {sys.argv[1]} before rebuilding it. No build output was changed.')
 PYRUNNING
+}
+
+# Store builds never enter the direct-download packaging or notarization path.
+if [ "$MODE" = --app-store ] || [ "$MODE" = --app-store-archive ]; then
+  STORE_ROOT="$PWD/build/app-store"
+  mkdir -p "$STORE_ROOT"
+  xcodegen generate
+  if [ "$MODE" = --app-store-archive ]; then
+    ARCHIVE="$STORE_ROOT/Arras.xcarchive"
+    [ ! -e "$ARCHIVE" ] || { echo "Archive already exists: $ARCHIVE. Preserve it or remove it deliberately before archiving again." >&2; exit 1; }
+    xcodebuild -project Arras.xcodeproj -scheme ArrasAppStore -configuration Release \
+      -destination 'generic/platform=macOS' -derivedDataPath "$STORE_ROOT/DerivedData" \
+      -archivePath "$ARCHIVE" -allowProvisioningUpdates ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+      archive > "$STORE_ROOT/archive.log" 2>&1 || { tail -45 "$STORE_ROOT/archive.log" >&2; exit 1; }
+    echo "App Store archive: $ARCHIVE. Export with App Store Connect distribution; no GitHub artifact was created."
+  else
+    require_app_stopped "$STORE_ROOT/Release/Arras.app"
+    rm -rf "$STORE_ROOT/Release/Arras.app"
+    xcodebuild -project Arras.xcodeproj -scheme ArrasAppStore -configuration Release \
+      -derivedDataPath "$STORE_ROOT/DerivedData" CONFIGURATION_BUILD_DIR="$STORE_ROOT/Release" \
+      ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM='' \
+      build > "$STORE_ROOT/build.log" 2>&1 || { tail -45 "$STORE_ROOT/build.log" >&2; exit 1; }
+    python3 scripts/validate_app_bundle.py "$STORE_ROOT/Release/Arras.app" --distribution app-store
+    codesign --verify --deep --strict "$STORE_ROOT/Release/Arras.app"
+    echo "Verified local sandbox build: $STORE_ROOT/Release/Arras.app. This ad-hoc build cannot be submitted to the App Store."
+  fi
+  exit 0
+fi
+
+BUILD_ROOT="$PWD/build/current"
+[ "$PILOT_BUILD" = 0 ] || BUILD_ROOT="$PWD/build/pilot-$PILOT_BUILD"
+APP_PATH="$BUILD_ROOT/Release/Arras.app"
+require_app_stopped "$APP_PATH"
 mkdir -p "$BUILD_ROOT" "$PWD/dist"
 xcodegen generate
 # Never allow an earlier executable to survive a failed rebuild in the packaging location.

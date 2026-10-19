@@ -22,7 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     private var dropView: StatusItemDropView?
     private var pasteMonitor: Any?
+    #if !ARRAS_APP_STORE
     private var telemetry: TelemetryRuntime?
+    #endif
 
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-testing")
@@ -42,6 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         // the first frame rather than appearing a moment later.
         AppActivation.shared.apply()
 
+        #if !ARRAS_APP_STORE
         // Let the swap helper know that this bundle reached its own startup before any update
         // UI or network work can delay it. A matching version is required by the helper's health
         // breadcrumb, so a rollback cannot accidentally acknowledge the replacement.
@@ -52,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         if !isUITesting {
             InstallLocation.offerToInstallIfNeeded()
         }
+        #endif
 
         setupStatusItem()
         setupGlobalHotKey()
@@ -69,6 +73,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
             DispatchQueue.main.async { [weak self] in self?.manager.restoreCollageOrdering() }
         }
 
+        #if ARRAS_APP_STORE
+        if isUITesting {
+            showSettingsWindow()
+            presentUITestPreflightIfRequested()
+        } else if manager.photos.isEmpty {
+            showSettingsWindow()
+        }
+        #else
         // Show settings after an update attempt, so success or rollback is visible rather
         // than the app appearing to have closed and reopened for no reason.
         if isUITesting {
@@ -95,6 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
                 telemetry = TelemetryRuntime(manager: manager, configuration: configuration)
             }
         }
+        #endif
     }
 
     /// UI tests can request one isolated archive-preflight presentation without driving an
@@ -658,6 +671,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         hideItem.target = self
         optionsMenu.addItem(hideItem)
 
+        #if ARRAS_APP_STORE
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        optionsMenu.addItem(updateItem)
+        #else
         if Updater.shared.updatesAllowed {
             let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
             updateItem.target = self
@@ -665,6 +683,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         } else {
             optionsMenu.addItem(NSMenuItem(title: "Updates Paused for Test Build", action: nil, keyEquivalent: ""))
         }
+        #endif
 
         menu.addItem(.separator())
 
@@ -692,11 +711,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     // MARK: - Updates
 
-    /// Opens Settings and runs a check there, so the result lands in the same
-    /// place the user would look for it rather than in a modal they dismiss.
+    /// Routes updates through Preferences using the selected distribution's updater.
     @objc func checkForUpdates() {
         showUpdateSettings()
+        #if ARRAS_APP_STORE
+        AppStoreUpdates.checkForUpdates()
+        #else
         Task { await Updater.shared.check(userInitiated: true) }
+        #endif
     }
 
     func showUpdateSettings() {

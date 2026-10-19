@@ -14,6 +14,15 @@ arrange a desktop that feels like yours.
 
 ![macOS](https://img.shields.io/badge/macOS-14.0+-black?style=flat-square&logo=apple) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) [![Latest release](https://img.shields.io/github/v/release/yashashwi-s/Arras?style=flat-square)](https://github.com/yashashwi-s/Arras/releases/latest)
 
+## Distribution
+
+The free direct download below remains available. This repository also contains
+a sandboxed **ArrasAppStore** target for a planned $4.99 Mac App Store edition.
+It is not yet available on the App Store. Its signed 2.5.0 beta is on TestFlight;
+hands-on acceptance and App Review remain pending. Both targets
+share the widget and collage code; Store updates come through Apple and that
+build excludes app telemetry. See [build guidance](CONTRIBUTING.md#app-store-target).
+
 ## Download Arras 2.5.0
 
 **[Download the DMG](https://tryarras.tech/download?ref=github)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.0)
