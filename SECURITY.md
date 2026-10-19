@@ -111,8 +111,10 @@ library or installation identifier. Updates open the Mac App Store. Release
 entitlements reject temporary filesystem and Debug/runtime exceptions; the
 narrow UI-test fixture exception belongs only to Debug.
 
-TestFlight, distribution signing and App Review remain distinct acceptance steps;
-source verification alone does not establish Store approval.
+The distribution-signed 2.5.0 beta was installed through TestFlight and submitted
+to App Review on 19 October 2026 with manual release selected. Apple has not yet
+approved or publicly released it. Its published App Privacy response is **Data
+Not Collected**; Apple separately manages TestFlight feedback and diagnostics.
 
 ## Network behavior
 
@@ -716,7 +718,7 @@ environment separation, emergency disabling and bounded retention. Quota
 exhaustion must stop collection without buying capacity or changing photo
 behavior. Reconcile privacy disclosures and monitoring with the verified design.
 
-### Distribution scope and future App Store review
+### Distribution scope and App Store review
 
 Release scope confirmed 7 October 2026: consent/withdrawal controls are not a
 blocker for the current direct-distribution release. The first telemetry version
@@ -727,10 +729,11 @@ No synthetic app batches were sent to production. Provider-scale quota behavior
 and capacity for 5,000 Macs remain unproven. A stable random UUID remains linkable within
 one installation.
 
-Before any future Mac App Store submission, re-evaluate telemetry controls,
-consent/withdrawal, disclosures and App Store privacy requirements against the
-then-current [App Review guidelines](https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage).
-This direct-distribution decision does not establish App Store readiness.
+The separate Store target excludes this telemetry engine and declares no data
+collection. Any future change must re-evaluate controls, consent/withdrawal,
+disclosures and privacy declarations against the then-current
+[App Review guidelines](https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage).
+The direct-distribution decision does not establish Store approval.
 The 2.5.0 Developer ID distribution is described above. Direct releases use
 unsandboxed self-updating.
 
