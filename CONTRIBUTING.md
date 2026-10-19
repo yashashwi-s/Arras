@@ -987,3 +987,11 @@ Apple registered the separate Store identifier and created app record
 4.99 base-price schedule is configured. The owner deferred creating distribution
 certificates; signing, upload, TestFlight acceptance, listing completion and App
 Review remain pending. The website must not show an available Store badge yet.
+
+The initial dual-target CI run reproduced all four UI failures from main run
+`39103489942`: native drag attachment, two offscreen control checks and reference
+Apply persistence. All 433 direct unit checks passed in CI (five system-policy
+skips). PR #3 separately fixes the editor-height/reachability cases; its remaining
+native-input failure stays open. CI now validates each distribution in a separate
+matrix job with fail-fast disabled, so a direct UI failure does not prevent Store
+unit/build validation. Existing UI assertions and failure status are retained.
