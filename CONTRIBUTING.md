@@ -1090,3 +1090,12 @@ native attachment and equal-gap placement successfully. The subsequent group-dra
 fixture selected a point in the transparent shadow canvas, which deliberately
 rejects input; its target now uses the middle of the visible background padding.
 Production hit testing and gesture behavior are unchanged by these test fixes.
+
+The corrected app checks passed in CI run
+[39198138482](https://github.com/yashashwi-s/Arras/actions/runs/39198138482):
+both distributions' unit suites and universal Release validation passed, along
+with all 16 direct and 17 Store native UI checks. The script suite passed 81
+checks. Existing environment-dependent unit skips remain separate from passes.
+The final scope guard was also exercised in temporary Git repositories: docs-only,
+Store source, source renamed into documentation and deleted source all selected
+the expected checks. Main's post-merge workflow verifies the combined result.

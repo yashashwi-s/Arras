@@ -30,7 +30,8 @@ jobs:
           python3 - <<'PYTHON'
           import os, subprocess
           base = os.environ['BASE_SHA']
-          command = ['git', 'diff', '--name-only', '-z', base, 'HEAD'] if base.strip('0') else ['git', 'ls-files', '-z']
+          # Inspect both sides of renames, including source moved into a docs path.
+          command = ['git', 'diff', '--no-renames', '--name-only', '-z', base, 'HEAD'] if base.strip('0') else ['git', 'ls-files', '-z']
           paths = subprocess.check_output(command).decode().split('\0')
           def documentation(path):
               return path.endswith('.md') or path in ('appcast.json', 'product-metadata.json') or path.startswith(('assets/', 'release-notes/', '.github/ISSUE_TEMPLATE/'))
