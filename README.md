@@ -18,8 +18,8 @@ arrange a desktop that feels like yours.
 
 The free direct download below remains available. This repository also contains
 a sandboxed **ArrasAppStore** target for a planned $4.99 Mac App Store edition.
-It is not yet available on the App Store. Its signed 2.5.0 beta is on TestFlight;
-hands-on acceptance and App Review remain pending. Both targets
+It is not yet available on the App Store. Its signed 2.5.0 beta was installed
+through TestFlight and is **Waiting for Review**, with manual release selected. Both targets
 share the widget and collage code; Store updates come through Apple and that
 build excludes app telemetry. See [build guidance](CONTRIBUTING.md#app-store-target).
 

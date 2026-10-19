@@ -73,7 +73,8 @@ with one skip and 77 script checks passing. Its UI runs passed 14 distinct cases
 three synthetic typing/drag cases remained red despite basic manual typing and
 dragging acceptance. Those results are historical evidence, not results for this
 merged target. Preserve the source folder until the merged build and needed
-recovery data are verified. TestFlight installation and App Review remain open.
+recovery data are verified. The merged target's TestFlight and review status is
+recorded in [dual-target merge verification](#dual-target-merge-verification--18-october-2026).
 
 For Developer ID distribution, build first and run the separate postprocessor:
 
@@ -993,10 +994,22 @@ and processed the upload as 2.5.0; it is assigned to the private **Release
 Testing** group with only the owner's account. Automatic group distribution is
 disabled. The owner's TestFlight installation was verified at
 `/Applications/Arras 2.app`: Apple's TestFlight Beta Distribution signature,
-receipt, sandbox and both architectures match the uploaded source. This proves
-delivery and installation, not hands-on workflow acceptance. Listing completion
-and App Review remain pending; the website must not show an available Store
-badge yet. The owner-confirmed content questionnaire saved a 4+ age rating.
+receipt, sandbox and both architectures match the uploaded source. The owner
+confirmed Settings opens. In that installed beta, the native example picker
+created a three-photo collage; native backup export produced a format-3 `.arras`
+with one collage, its three members and three media files. A normal quit/reopen
+restored all three photos and their collage. These smoke checks do not establish
+Photos/iCloud permission recovery or physical Space/display acceptance.
+
+Apple accepted three actual TestFlight window screenshots at 2560 × 1600. The
+owner-confirmed content-rights answer, 4+ age rating and published **Data Not
+Collected** privacy declaration are saved. Paid agreement, bank and tax statuses
+were verified Active without copying their private details into this repository.
+Version 2.5.0 is **Waiting for Review** after submission on 19 October 2026,
+submission ID `b5547666-6198-4b8e-a46e-ead4c67d0e04`. **Manual release** remains
+selected. Review submission is not approval or public availability. The website
+privacy clarification is deployed; its Store badge remains hidden until approval
+and a verified live listing. The free direct download stays primary.
 Local evidence:
 `/tmp/arras-store-submission-20261018/submission-evidence.json`, with archive/export/
 upload logs under `build/app-store` (ignored, never release artifacts).
