@@ -1069,3 +1069,24 @@ zero failures), universal Release validation and documentation checks. Its direc
 suite passed all 433 unit tests with five policy skips, then reproduced the same
 four UI failures; the overall workflow remains red. No failed assertion was
 disabled to obtain the Store result.
+
+### CI repair — 19 October 2026
+
+The editor follow-up is integrated with the two-target project while public
+release metadata remains at 2.5.0. Its native drag fixture now uses XCTest's mouse
+`click(forDuration:thenDragTo:)` instead of a press gesture; the failed press
+attachment had correct desktop coordinates but no delivered photo mouse events.
+Attach, equal-gap, group translation and detach assertions remain native UI checks.
+
+The first dual-target repair run passed Store unit/build validation but exposed
+an intermittent direct unit check that gave a queued action only 20 milliseconds
+to run. Visible-click verification now awaits its actual callback, rejects duplicate
+callbacks and checks the original surface identity. The hidden-click check awaits
+a main-queue barrier before asserting that its stale action was discarded.
+These changes retain the regression assertions without depending on runner speed.
+
+Both editions' editor UI checks passed in that run. The mouse API also delivered
+native attachment and equal-gap placement successfully. The subsequent group-drag
+fixture selected a point in the transparent shadow canvas, which deliberately
+rejects input; its target now uses the middle of the visible background padding.
+Production hit testing and gesture behavior are unchanged by these test fixes.

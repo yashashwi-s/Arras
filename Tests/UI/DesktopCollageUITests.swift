@@ -90,7 +90,11 @@ final class DesktopCollageUITests: XCTestCase {
         XCTAssertEqual(squareFrame.maxY, firstFrame.maxY, accuracy: 1)
         XCTAssertEqual(squareFrame.size, CGSize(width: 120, height: 120))
         evidence("Glass collage, mixed photos and equal gap")
-        let border = container.coordinate(withNormalizedOffset: CGVector(dx: 0.025, dy: 0.5))
+        // The accessibility surface includes the transparent shadow canvas.
+        // Pick the middle of this fixture's 28-point visible left padding.
+        let groupFrame = try frame(collage)
+        let border = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: -groupFrame.width / 2 + 14, dy: 0))
         border.click(forDuration: 0.15, thenDragTo: border.withOffset(CGVector(dx: 32, dy: -24)))
         XCTAssertEqual(try frame(portrait).minX, firstFrame.minX + 32, accuracy: 1)
         XCTAssertEqual(try frame(portrait).minY, firstFrame.minY + 24, accuracy: 1)

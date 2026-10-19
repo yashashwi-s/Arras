@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: arras-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -79,6 +79,7 @@ jobs:
 
   build:
     name: ${{ matrix.distribution }} validation
+    timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.app == 'true'
     # Both distributions build independently of native UI results.
@@ -145,6 +146,7 @@ jobs:
 
   desktop-ui:
     name: ${{ matrix.distribution }} desktop UI
+    timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: xcode-27
