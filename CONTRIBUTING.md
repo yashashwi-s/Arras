@@ -73,7 +73,7 @@ with one skip and 77 script checks passing. Its UI runs passed 14 distinct cases
 three synthetic typing/drag cases remained red despite basic manual typing and
 dragging acceptance. Those results are historical evidence, not results for this
 merged target. Preserve the source folder until the merged build and needed
-recovery data are verified. Signing, TestFlight and App Review remain open.
+recovery data are verified. TestFlight installation and App Review remain open.
 
 For Developer ID distribution, build first and run the separate postprocessor:
 
@@ -984,9 +984,17 @@ recovery on an installed Store build.
 Apple registered the separate Store identifier and created app record
 `6824271927`, **Arras Widgets** (saved after Apple rejected the plain Arras name). Version
 2.5.0 customer-facing metadata is saved with manual release selected. The USD
-4.99 base-price schedule is configured. The owner deferred creating distribution
-certificates; signing, upload, TestFlight acceptance, listing completion and App
-Review remain pending. The website must not show an available Store badge yet.
+4.99 base-price schedule is configured. On 19 October, the owner added Apple
+Distribution and Mac Installer Distribution identities. Source commit
+`0dc5baad19c306c97b77fd6be2b3718f0a24c23e` was archived and exported with Apple's
+distribution provisioning profile. The expanded package passed both-architecture
+source, sandbox and signature validation without installing it. Apple accepted
+and processed the upload as 2.5.0; it is assigned to the private **Release
+Testing** group with only the owner's account. Automatic group distribution is
+disabled. TestFlight installation, listing completion and App Review remain
+pending; the website must not show an available Store badge yet. Local evidence:
+`/tmp/arras-store-submission-20261018/submission-evidence.json`, with archive/export/
+upload logs under `build/app-store` (ignored, never release artifacts).
 
 The initial dual-target CI run reproduced all four UI failures from main run
 `39103489942`: native drag attachment, two offscreen control checks and reference
@@ -995,3 +1003,8 @@ skips). PR #3 separately fixes the editor-height/reachability cases; its remaini
 native-input failure stays open. CI now validates each distribution in a separate
 matrix job with fail-fast disabled, so a direct UI failure does not prevent Store
 unit/build validation. Existing UI assertions and failure status are retained.
+Run `39185427005` passed the Store unit suite (399 tests, five system-policy skips,
+zero failures), universal Release validation and documentation checks. Its direct
+suite passed all 433 unit tests with five policy skips, then reproduced the same
+four UI failures; the overall workflow remains red. No failed assertion was
+disabled to obtain the Store result.
