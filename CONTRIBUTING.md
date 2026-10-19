@@ -991,8 +991,13 @@ distribution provisioning profile. The expanded package passed both-architecture
 source, sandbox and signature validation without installing it. Apple accepted
 and processed the upload as 2.5.0; it is assigned to the private **Release
 Testing** group with only the owner's account. Automatic group distribution is
-disabled. TestFlight installation, listing completion and App Review remain
-pending; the website must not show an available Store badge yet. Local evidence:
+disabled. The owner's TestFlight installation was verified at
+`/Applications/Arras 2.app`: Apple's TestFlight Beta Distribution signature,
+receipt, sandbox and both architectures match the uploaded source. This proves
+delivery and installation, not hands-on workflow acceptance. Listing completion
+and App Review remain pending; the website must not show an available Store
+badge yet. The owner-confirmed content questionnaire saved a 4+ age rating.
+Local evidence:
 `/tmp/arras-store-submission-20261018/submission-evidence.json`, with archive/export/
 upload logs under `build/app-store` (ignored, never release artifacts).
 
