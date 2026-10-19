@@ -78,10 +78,10 @@ final class SettingsUITests: XCTestCase {
         reference.click()
         let grayscale = app.checkBoxes["Grayscale"]
         XCTAssertTrue(grayscale.waitForExistence(timeout: 5))
-        grayscale.click()
+        clickWhenHittable(grayscale)
         let editor = XCTAttachment(screenshot: window.screenshot())
         editor.name = "Reference tools editor"; editor.lifetime = .keepAlways; add(editor)
-        app.buttons["Apply"].click()
+        clickWhenHittable(app.windows["Arras"].sheets.buttons["Apply"])
         let saved = XCTNSPredicateExpectation(predicate: NSPredicate { [weak self] _, _ in
             guard let self,
                   let data = try? Data(contentsOf: self.storageDirectory.appendingPathComponent("photos.json")),
@@ -270,8 +270,15 @@ final class SettingsUITests: XCTestCase {
     private func clickWhenHittable(_ element: XCUIElement, timeout: TimeInterval = 5) {
         // AppKit reports offscreen SwiftUI rows as hittable. Scroll the actual viewport
         // first so a row's unclipped coordinates cannot send the click to the footer.
-        let list = app.scrollViews["photos-scroll-view"]
-        if list.exists, (element.identifier.hasPrefix("photo-row-") || element.identifier == "photo-more-actions" || element.identifier.hasPrefix("photo-more-options-")) {
+        // Nested editors have their own viewport too. AX can report a clipped
+        // checkbox as hittable and send its click onto the footer underneath.
+        let identifier = element.identifier
+        let match = identifier.isEmpty
+            ? NSPredicate(format: "label == %@", element.label)
+            : NSPredicate(format: "identifier == %@", identifier)
+        if let list = app.scrollViews.allElementsBoundByIndex.reversed().first(where: {
+            $0.descendants(matching: element.elementType).matching(match).firstMatch.exists
+        }) {
             for _ in 0..<12 {
                 let viewport = list.frame.insetBy(dx: 0, dy: 12)
                 let target = element.frame

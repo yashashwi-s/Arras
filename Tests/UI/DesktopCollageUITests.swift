@@ -62,38 +62,45 @@ final class DesktopCollageUITests: XCTestCase {
         snapshot.name = name + " saved layout"; snapshot.lifetime = .keepAlways; add(snapshot)
     }
 
-    func testNativeDragAttachEqualGapGroupMoveAndDetach() throws {
+    func testFloatingNativeDragAttachEqualGapGroupMoveAndDetachWithSettingsOpen() throws {
         try seed(floating: true)
         app.launch(); app.activate()
         let settings = app.windows["Arras"]
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
-        settings.buttons[XCUIIdentifierCloseWindow].click()
+        // Floating widgets must accept mouse input above Settings. Use XCTest's
+        // mouse click-and-drag API; a press gesture did not deliver mouse events
+        // to these nonactivating panels on the native CI desktop.
+        XCTAssertTrue(settings.isHittable)
         let first = app.descendants(matching: .any)["desktop-photo-" + portrait.uuidString]
         let second = app.descendants(matching: .any)["desktop-photo-" + square.uuidString]
         let container = app.descendants(matching: .any)["desktop-collage-" + collage.uuidString]
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         XCTAssertTrue(container.waitForExistence(timeout: 5))
         let firstStart = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        firstStart.press(forDuration: 0.15, thenDragTo: container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        firstStart.click(forDuration: 0.15, thenDragTo: container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         waitForParent(portrait, parent: collage)
         let firstFrame = try frame(portrait)
         XCTAssertEqual(firstFrame.size, CGSize(width: 180, height: 240))
         let squareStart = second.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let squareTarget = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 170, dy: -60))
-        squareStart.press(forDuration: 0.15, thenDragTo: squareTarget)
+        squareStart.click(forDuration: 0.15, thenDragTo: squareTarget)
         waitForParent(square, parent: collage)
         let squareFrame = try frame(square)
         XCTAssertEqual(squareFrame.minX - firstFrame.maxX, 20, accuracy: 1)
         XCTAssertEqual(squareFrame.maxY, firstFrame.maxY, accuracy: 1)
         XCTAssertEqual(squareFrame.size, CGSize(width: 120, height: 120))
         evidence("Glass collage, mixed photos and equal gap")
-        let border = container.coordinate(withNormalizedOffset: CGVector(dx: 0.025, dy: 0.5))
-        border.press(forDuration: 0.15, thenDragTo: border.withOffset(CGVector(dx: 32, dy: -24)))
+        // The accessibility surface includes the transparent shadow canvas.
+        // Pick the middle of this fixture's 28-point visible left padding.
+        let groupFrame = try frame(collage)
+        let border = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: -groupFrame.width / 2 + 14, dy: 0))
+        border.click(forDuration: 0.15, thenDragTo: border.withOffset(CGVector(dx: 32, dy: -24)))
         XCTAssertEqual(try frame(portrait).minX, firstFrame.minX + 32, accuracy: 1)
         XCTAssertEqual(try frame(portrait).minY, firstFrame.minY + 24, accuracy: 1)
         XCTAssertEqual(try frame(square).minX, squareFrame.minX + 32, accuracy: 1)
         let leave = second.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        leave.press(forDuration: 0.15, thenDragTo: leave.withOffset(CGVector(dx: 260, dy: 150)))
+        leave.click(forDuration: 0.15, thenDragTo: leave.withOffset(CGVector(dx: 260, dy: 150)))
         waitForParent(square, parent: nil)
         XCTAssertEqual(try frame(square).size, CGSize(width: 120, height: 120))
         evidence("Photo detached at native drop position")

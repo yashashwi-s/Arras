@@ -89,7 +89,7 @@ struct FrameInspector: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 560, height: 670)
+        .frame(width: 560, height: Constants.editorHeight(670))
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("frame-inspector")

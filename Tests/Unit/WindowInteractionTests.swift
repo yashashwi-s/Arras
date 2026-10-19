@@ -3,6 +3,16 @@ import XCTest
 @testable import Arras
 
 final class WindowInteractionTests: XCTestCase {
+    func testEditorFootersFitShortAndOffsetDisplaysWithoutGrowingNormalSheets() {
+        let small = CGRect(x: 0, y: 78, width: 1024, height: 666)
+        let short = Constants.editorHeight(710, visibleFrame: small, parentContentTop: 685)
+        XCTAssertLessThanOrEqual(short + small.minY + 24, 685)
+        XCTAssertEqual(short, 526)
+        let secondary = CGRect(x: -1280, y: -800, width: 1280, height: 700)
+        XCTAssertEqual(Constants.editorHeight(670, visibleFrame: secondary, parentContentTop: -180), 560)
+        XCTAssertEqual(Constants.editorHeight(670, visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080), parentContentTop: 1000), 670)
+    }
+
     @MainActor
     func testSwiftUIHostRegistersTheLiveOwnerForIntentsAndSettings() throws {
         let owner = try XCTUnwrap(AppDelegate.current, "The actual SwiftUI host must register its adaptor at startup")
@@ -381,7 +391,7 @@ final class WindowInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testHiddenCollageDiscardsAQueuedDesktopDoubleClick() throws {
+    func testHiddenCollageDiscardsAQueuedDesktopDoubleClick() async throws {
         let window = CollageDesktopWindow(settings: DesktopCollageSettings())
         defer { window.hidePhoto() }
         window.setPhotoFrame(CGRect(x: 120, y: 160, width: 360, height: 280))
@@ -396,7 +406,9 @@ final class WindowInteractionTests: XCTestCase {
 
         window.hidePhoto()
         let before = ordering
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        let drained = expectation(description: "Main queue passed the deferred click")
+        DispatchQueue.main.async { drained.fulfill() }
+        await fulfillment(of: [drained], timeout: 2)
 
         XCTAssertEqual(edits, 0, "A click queued before hiding must not reopen the hidden collage's editor")
         XCTAssertEqual(ordering, before, "A stale click must not reorder a closed panel")
@@ -405,19 +417,22 @@ final class WindowInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testVisibleCollageDeliversItsDeferredDesktopDoubleClick() throws {
+    func testVisibleCollageDeliversItsDeferredDesktopDoubleClick() async throws {
         let window = CollageDesktopWindow(settings: DesktopCollageSettings())
         defer { window.hidePhoto() }
         window.setPhotoFrame(CGRect(x: 120, y: 160, width: 360, height: 280))
         window.orderFront(nil)
+        XCTAssertTrue(window.isVisible)
         let surface = try XCTUnwrap(window.contentView as? CollageSurfaceView)
         var edits = 0
-        window.onEdit = { edits += 1 }
+        let edited = expectation(description: "Visible collage presents its queued action")
+        edited.assertForOverFulfill = true
+        window.onEdit = { edits += 1; edited.fulfill() }
         let point = CGPoint(x: window.photoFrame.midX, y: window.photoFrame.midY)
         surface.mouseDown(with: try testMouseEvent(.leftMouseDown, in: window, at: point, clicks: 2))
         XCTAssertEqual(edits, 0)
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        await fulfillment(of: [edited], timeout: 2)
 
         XCTAssertEqual(edits, 1, "The visible original surface must retain its normal queued action")
         XCTAssertTrue(window.contentView === surface)

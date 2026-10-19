@@ -337,3 +337,8 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 Release history is recorded in [CHANGELOG.md](CHANGELOG.md#250).
 [SECURITY.md](SECURITY.md) documents limited statistics;
 the [protocol reference](SECURITY.md#telemetry-protocol-and-activation) owns its schema and operating controls.
+
+A follow-up under review makes Appearance, Reference Tools and Photo Tools fit
+short displays so their footer actions remain visible. The published 2.5.0
+package retains fixed editor heights; its 1024×768 CI desktop exposed clipped
+footer actions. This follow-up is not included in the published artifacts.

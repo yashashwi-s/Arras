@@ -28,6 +28,19 @@ Native menu tests queue their opening clicks and verify
 before observing WindowServer order. These fixtures do not replace physical input
 or Space-switch acceptance.
 
+CI validates documentation on every change. App, test, build-script or workflow
+changes also run both distributions' unit suites and universal Release validation,
+plus separate native UI jobs for each scheme. UI failures remain required failures
+but no longer prevent package validation from running. Documentation, website
+assets and public-feed-only changes do not rebuild either app. `CI checks` is the
+stable aggregate check for branch rules; it requires every applicable job and
+rejects failures or cancellations. New commits cancel superseded runs on that PR.
+CI never uploads Store applications, archives or packages.
+
+Use a short-lived branch for active work. GitHub deletes its branch after merge;
+keep unmerged work until it is integrated or explicitly superseded. Release tags
+retain published history without permanent version branches.
+
 `./build.sh --run` opens the validated local app; it does not replace Applications.
 `./build.sh --release` packages locally. `./build.sh --pilot BUILD` builds a
 private telemetry pilot; replace BUILD with a new integer (greater than the last shared internal build identifier). Build only from the current source checkout.
@@ -947,6 +960,26 @@ investigation. These are test/diagnostic changes; the published app source diges
 and notarized artifacts are unchanged. Passing manual acceptance does not erase
 an automated failure, and a skipped animation check is not animation coverage.
 
+Publication verification's second CI run completed 449 checks: 440 passed,
+five skipped and four UI checks failed. All 433 unit checks had zero failures
+(428 passed, five system-policy skips). Native artifacts are retained at
+https://github.com/yashashwi-s/Arras/actions/runs/39103489942. The three transition
+checks separately passed with animations enabled on the development Mac.
+The 1024×768 runner's Appearance and Reference sheets place their footer below
+the visible screen. A follow-up constrains their height and Photo Tools to the
+actual parent display; their existing bodies scroll. The failed collage drag
+recorded no mouse events reaching its photo view, so that separate automation
+path remains unverified rather than diagnosed as a group-movement regression.
+The official 2.5.0 artifacts stay unchanged; a follow-up app release needs review.
+
+The first overflow-fix CI run passed the broad feature-reachability check that
+previously could not click Appearance’s Done button. Its remaining two editor
+checks use controls inside scrollable bodies: the UI helper now scrolls the
+actual containing editor viewport, as it already did for Photos rows, before
+synthesizing a click. It preserves the footer reachability and persisted-reference
+assertions. The separate native background-photo drag still has no delivered
+pointer trace; that failure is retained, without changing production hit testing.
+
 Final publication checks: both public package digests and the updater feed passed
 the repository’s Public Release Audit. Production website AEO/SEO and 117 exact
 legacy redirects passed; both telemetry hosts return direct enabled responses.
@@ -964,6 +997,16 @@ not guaranteed scores or app battery measurements. Portfolio/CV/PureMac/Fadeo
 pages returned 200, and the public CV PDF remained byte-identical to its
 separately authorized version. The editor-height fix is tracked in PR #3 and is
 not in the immutable 2.5.0 release packages.
+
+The editor follow-up’s latest native run passed 429 unit checks and all three
+previously failing editor UI checks, including persisted reference edits (15 UI
+passes, one drag failure, five policy skips). The remaining drag fixture closed
+Arras’s last active window before trying to synthesize input. A focused Floating
+variant now leaves Settings visible, additionally exercising the required window
+order while retaining native attach, equal-gap, group-move and detach assertions.
+It does not establish inactive-app input acceptance or erase the earlier trace.
+The prepared 2.5.1 app/DMG passed Apple notarization and exact package checks;
+publication remains pending the owner’s separate choice.
 
 ### Dual-target merge verification — 18 October 2026
 
@@ -1026,3 +1069,33 @@ zero failures), universal Release validation and documentation checks. Its direc
 suite passed all 433 unit tests with five policy skips, then reproduced the same
 four UI failures; the overall workflow remains red. No failed assertion was
 disabled to obtain the Store result.
+
+### CI repair — 19 October 2026
+
+The editor follow-up is integrated with the two-target project while public
+release metadata remains at 2.5.0. Its native drag fixture now uses XCTest's mouse
+`click(forDuration:thenDragTo:)` instead of a press gesture; the failed press
+attachment had correct desktop coordinates but no delivered photo mouse events.
+Attach, equal-gap, group translation and detach assertions remain native UI checks.
+
+The first dual-target repair run passed Store unit/build validation but exposed
+an intermittent direct unit check that gave a queued action only 20 milliseconds
+to run. Visible-click verification now awaits its actual callback, rejects duplicate
+callbacks and checks the original surface identity. The hidden-click check awaits
+a main-queue barrier before asserting that its stale action was discarded.
+These changes retain the regression assertions without depending on runner speed.
+
+Both editions' editor UI checks passed in that run. The mouse API also delivered
+native attachment and equal-gap placement successfully. The subsequent group-drag
+fixture selected a point in the transparent shadow canvas, which deliberately
+rejects input; its target now uses the middle of the visible background padding.
+Production hit testing and gesture behavior are unchanged by these test fixes.
+
+The corrected app checks passed in CI run
+[39198138482](https://github.com/yashashwi-s/Arras/actions/runs/39198138482):
+both distributions' unit suites and universal Release validation passed, along
+with all 16 direct and 17 Store native UI checks. The script suite passed 81
+checks. Existing environment-dependent unit skips remain separate from passes.
+The final scope guard was also exercised in temporary Git repositories: docs-only,
+Store source, source renamed into documentation and deleted source all selected
+the expected checks. Main's post-merge workflow verifies the combined result.

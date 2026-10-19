@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping
+  footer actions visible and the existing controls scrollable on short displays.
 - Add a separate sandboxed `ArrasAppStore` target alongside the free direct
   `Arras` target, sharing the widget/collage implementation and keeping build
   identities, entitlements, test hosts and output directories separate.
