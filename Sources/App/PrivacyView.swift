@@ -101,6 +101,9 @@ struct PrivacyView: View {
     }
 
     private var usageStatisticsDescription: String {
+        #if ARRAS_APP_STORE
+        return "This App Store build does not collect or send usage statistics. Photos, filenames, paths, captions and personal content stay local."
+        #else
         let localContent = " Photos, filenames, paths, captions and personal content stay local."
         guard let configuration = TelemetryConfiguration.current else {
             return "Usage statistics are disabled in this build." + localContent
@@ -113,16 +116,20 @@ struct PrivacyView: View {
         }
         let cadence = configuration.cadence == .weekly ? "weekly" : "daily"
         return "This build sends limited usage and \(cadence) configuration statistics linked by a random installation ID to improve Arras." + localContent
+        #endif
     }
 
     private var usageStatistics: some View {
         section("Usage statistics", icon: "chart.bar") {
             Text(usageStatisticsDescription)
+                .accessibilityIdentifier("privacy-usage-statistics")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            #if !ARRAS_APP_STORE
             Link("What is collected and how long it is kept →", destination: URL(string: "https://tryarras.tech/security")!)
                 .font(.caption)
+            #endif
             caption("Preferences can read the public GitHub star count. This request contains no photo library or installation ID.")
         }
     }

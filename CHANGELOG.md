@@ -1,8 +1,18 @@
 # Changelog
 
-## 2.5.1 — prepared for review
+## Unreleased
 
-Not published. Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping footer actions visible and the existing controls scrollable. Preserve preferred sizes on larger displays.
+- Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping
+  footer actions visible and the existing controls scrollable on short displays.
+- Add a separate sandboxed `ArrasAppStore` target alongside the free direct
+  `Arras` target, sharing the widget/collage implementation and keeping build
+  identities, entitlements, test hosts and output directories separate.
+- Merge explicit existing-library import with validation and rollback,
+  security-scoped media reads and native screen-region capture from the
+  verified sandbox work. Store updates open the Mac App Store; telemetry,
+  self-installation and direct update/migration code are excluded from that target.
+- Bind build provenance to the distribution and reject cross-distribution
+  packaging, Store telemetry pilots and release Debug exceptions.
 
 ## 2.5.0
 

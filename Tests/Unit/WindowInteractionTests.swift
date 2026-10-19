@@ -156,7 +156,11 @@ final class WindowInteractionTests: XCTestCase {
         let appURL = Bundle(for: type(of: self)).bundleURL
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let app = try XCTUnwrap(Bundle(url: appURL))
+        #if ARRAS_APP_STORE
+        XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String, "com.yashashwi.arras.appstore.development")
+        #else
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String, "com.yashashwi.tableau")
+        #endif
         XCTAssertEqual(app.object(forInfoDictionaryKey: "LSUIElement") as? Bool, true)
         XCTAssertFalse((app.object(forInfoDictionaryKey: "NSPhotoLibraryUsageDescription") as? String ?? "").isEmpty)
         XCTAssertNotNil(app.object(forInfoDictionaryKey: "CFBundleDocumentTypes"))

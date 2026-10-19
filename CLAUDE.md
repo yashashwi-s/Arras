@@ -1,7 +1,7 @@
 # Repository guidance for coding agents
 
 Use this file with [ARCHITECTURE.md](ARCHITECTURE.md), which owns subsystem
-boundaries, and [FEATURES.md](FEATURES.md), which separates the public contract from the next-release guide.
+boundaries, and [FEATURES.md](FEATURES.md), which describes the version prepared by this checkout and labels any unfinished work.
 Inspect source and tests before changing either contract.
 
 ## Working principles
@@ -53,10 +53,26 @@ Production storage is `~/Library/Application Support/PhotoWidget/`. Tests must
 inject `PhotoManager(storageDirectory:)` or set
 `ARRAS_UI_TEST_STORAGE_DIR`, and clean up only that scratch location.
 
-Do not change the historic bundle identifier or storage path for naming
-cleanliness. Do not enable App Sandbox: the updater replaces the bundle and
-starts a helper that outlives the process, and sandboxing would also move
-Application Support.
+The `Arras` target is the free direct-download edition. Keep its historic
+identifier and storage path and leave it unsandboxed: its updater replaces the
+bundle and starts a helper that outlives the process.
+
+`ArrasAppStore` is a separate sandboxed target sharing `Sources/App`. Its small
+`Sources/AppStore` directory owns Store updates, selected-library import, native
+region capture, entitlements and its privacy manifest. `ARRAS_APP_STORE` selects
+only distribution-specific behavior. Never include the direct updater,
+self-installer, telemetry or automatic legacy storage migration in that target.
+Its production ID is `com.yashashwi.arras.appstore`; Debug adds `.development`
+and displays as Arras App Store Dev. Storage stays in that app's container.
+Copy an existing library only after an explicit folder selection, into an empty
+Store library; use .arras backups to merge into existing content.
+
+`./build.sh --app-store` validates a local ad-hoc universal sandbox build under
+`build/app-store`. `--app-store-archive` creates a signed archive there for App
+Store Connect. Neither mode creates GitHub release artifacts. Keep credentials,
+archives and packages out of Git. TestFlight and App Review use the Store target;
+App Review must use manual release. The free direct download remains the
+website's main button. Add the Store badge only after the listing is live.
 
 ### Windows, menus, and animation
 
@@ -91,9 +107,14 @@ To prepare a release:
 3. after tests and explicit publishing authorization, create and push the
    matching `vX.Y.Z` tag.
 
-The release workflow owns the GitHub release body, artifacts, and generated
-`appcast.json` URL/checksum. Never insert a locally calculated artifact hash:
-the runner rebuilds the downloadable archive.
+The release workflow normally builds, notarizes and uploads the official artifacts,
+then generates the release body and `appcast.json` from those exact uploads.
+For an explicitly authorized publication of already verified local notarized
+packages, compare GitHub's uploaded asset digests with the notarization receipt
+before updating the feed. Its URL/checksum must identify the published ZIP;
+never use an ad-hoc build's checksum or let a duplicate workflow replace the
+verified uploads. Once published, keep release assets immutable and use a new
+version for fixes. See [CONTRIBUTING.md](CONTRIBUTING.md#build-and-test).
 
 Do not create tags, releases, or publish artifacts unless the user explicitly
 authorizes publication.
@@ -101,7 +122,7 @@ authorizes publication.
 ## Documentation ownership
 
 - `README.md`: concise GitHub front door, at most 200 lines.
-- `FEATURES.md`: reviewed shipped behavior and an explicitly labeled next-release guide;
+- `FEATURES.md`: reviewed behavior for the checkout's version and clearly labeled unfinished work;
   unfinished features must never be attributed to the public download.
 - `ARCHITECTURE.md`: durable ownership and engineering contracts.
 - `SECURITY.md`: distribution trust, data/network behavior, and reporting.

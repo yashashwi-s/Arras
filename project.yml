@@ -16,18 +16,15 @@ targetTemplates:
   ArrasApp:
     type: application
     platform: macOS
-    sources:
-      - path: Sources/App
-        excludes:
-          - "*.entitlements"
     settings:
       base:
         PRODUCT_NAME: "Arras"
+        PRODUCT_MODULE_NAME: Arras
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Arras"
         GENERATE_INFOPLIST_FILE: NO
-        CURRENT_PROJECT_VERSION: 2210
-        MARKETING_VERSION: 2.5.1
+        CURRENT_PROJECT_VERSION: 2209
+        MARKETING_VERSION: 2.5.0
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES
@@ -55,11 +52,6 @@ targetTemplates:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleDisplayName: Arras
         LSUIElement: true
-        # Enable only after the website route, retention and disclosures are live.
-        ArrasPrivateTelemetryPilot: false
-        ArrasTelemetryEnabled: true
-        ArrasTelemetryReportingDays: 7
-        ArrasTelemetryURL: https://tryarras.tech/api/telemetry/v1
         LSApplicationCategoryType: public.app-category.photography
         NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         CFBundleDocumentTypes:
@@ -84,6 +76,16 @@ targetTemplates:
 targets:
   Arras:
     templates: [ArrasApp]
+    sources:
+      - path: Sources/App
+        excludes: ["*.entitlements"]
+    info:
+      properties:
+        ArrasAppStoreBuild: false
+        ArrasPrivateTelemetryPilot: false
+        ArrasTelemetryEnabled: true
+        ArrasTelemetryReportingDays: 7
+        ArrasTelemetryURL: https://tryarras.tech/api/telemetry/v1
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.tableau
@@ -97,6 +99,86 @@ targets:
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
           CLANG_ENABLE_CODE_COVERAGE: NO
+
+  ArrasAppStore:
+    templates: [ArrasApp]
+    sources:
+      - path: Sources/App
+        excludes:
+          - "*.entitlements"
+          - Updater.swift
+          - DownloadTask.swift
+          - InstallLocation.swift
+          - StorageMigration.swift
+          - Telemetry.swift
+          - TelemetryRuntime.swift
+      - path: Sources/AppStore
+        excludes: ["*.entitlements", Info.plist]
+    info:
+      path: Sources/AppStore/Info.plist
+      properties:
+        ArrasAppStoreBuild: true
+        ArrasPrivateTelemetryPilot: false
+        ArrasTelemetryEnabled: false
+        NSScreenCaptureUsageDescription: "Arras captures only the screen region you select to create a desktop widget."
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore
+        CONFIGURATION_BUILD_DIR: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ARRAS_APP_STORE"
+        ENABLE_APP_SANDBOX: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: K28DKAV937
+        CODE_SIGN_ENTITLEMENTS: Sources/AppStore/ArrasAppStore.entitlements
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore.development
+          PRODUCT_NAME: "Arras App Store Dev"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG ARRAS_APP_STORE"
+          CODE_SIGN_ENTITLEMENTS: Sources/AppStore/ArrasAppStore.debug.entitlements
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          CLANG_ENABLE_CODE_COVERAGE: NO
+
+  ArrasAppStoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/Unit
+        excludes: [UpdaterTests.swift, TelemetryTests.swift]
+      - path: Tests/AppStore/SandboxMigrationTests.swift
+    dependencies:
+      - target: ArrasAppStore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore.tests
+        CONFIGURATION_BUILD_DIR: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ARRAS_APP_STORE"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)/Arras.app/Contents/MacOS/Arras"
+      configs:
+        Debug:
+          TEST_HOST: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)/Arras App Store Dev.app/Contents/MacOS/Arras App Store Dev"
+
+  ArrasAppStoreUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/UI
+        excludes: ["*.entitlements"]
+    dependencies:
+      - target: ArrasAppStore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore.uitests
+        CONFIGURATION_BUILD_DIR: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ARRAS_APP_STORE"
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: Tests/AppStore/UITests.entitlements
 
   ArrasTests:
     type: bundle.unit-test
@@ -147,3 +229,28 @@ schemes:
       targets:
         - ArrasTests
         - ArrasUITests
+
+  ArrasAppStore:
+    build:
+      targets:
+        ArrasAppStore: all
+        ArrasAppStoreTests: [test]
+        ArrasAppStoreUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      environmentVariables:
+        ARRAS_UNIT_TESTING: "1"
+      # Window fixtures must not inherit the user's live hiding preferences.
+      # These command-line defaults exist only in the test host process.
+      commandLineArguments:
+        "-presence.autoHideForConferencingApps NO": true
+        "-presence.hideWhenFullscreenActive NO": true
+        "-presence.excludeFromScreenCapture NO": true
+      # Opt in with -enableCodeCoverage YES when measuring tests. Xcode also
+      # instruments ordinary Release builds when the scheme enables coverage.
+      gatherCoverageData: false
+      targets:
+        - ArrasAppStoreTests
+        - ArrasAppStoreUITests

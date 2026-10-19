@@ -1,3 +1,25 @@
+#if ARRAS_APP_STORE
+import SwiftUI
+
+/// Library footer. Software updates belong in Preferences and the Mac App Store.
+struct UpdateStatusView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("v\(Constants.version)")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(.quaternary)
+            Link(destination: Constants.repositoryURL) {
+                Label("Star on GitHub", systemImage: "star")
+            }
+            .font(.system(size: 10))
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .accessibilityIdentifier("footer-star-on-github")
+            .accessibilityHint("Opens the Arras repository in your browser")
+        }
+    }
+}
+#else
 import SwiftUI
 
 /// Human phrasing for "when did we last look".
@@ -191,3 +213,5 @@ struct UpdateStatusView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }
 }
+
+#endif

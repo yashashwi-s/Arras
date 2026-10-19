@@ -80,8 +80,10 @@ class PhotoManager: ObservableObject {
     /// Bulk duplicate uses the existing single-item path, but turns its per-item saves into
     /// one transaction so a partial selection cannot leave a half-written layout on disk.
     var persistenceSuppressed = false
+#if !ARRAS_APP_STORE
     var onTelemetryFactsChanged: ((TelemetryFacts) -> Void)?
     var lastTelemetryFacts: TelemetryFacts?
+#endif
     private(set) var settingsWindowIsActive = false
 
     func setSettingsWindowActive(_ active: Bool) {
@@ -183,10 +185,12 @@ class PhotoManager: ObservableObject {
 
         // Must run before anything reads photos.json: dropping the sandbox moved
         // the Application Support directory, and this carries older installs across.
+#if !ARRAS_APP_STORE
         if storageDirectoryOverride == nil, !Self.didMigrateStorage {
             Self.didMigrateStorage = true
             StorageMigration.migrateIfNeeded(to: storageDir)
         }
+#endif
 
         launchAtLogin = SMAppService.mainApp.status == .enabled
         removedWidgetCount = (try? DesktopSetupLibrary.read(in: storageDir).removed?.photos.count) ?? 0
@@ -405,7 +409,9 @@ class PhotoManager: ObservableObject {
             )
     }
 
-    func storedFilenames(in item: PhotoItem) -> [String] {
+    func storedFilenames(in item: PhotoItem) -> [String] { Self.managedFilenames(in: item) }
+
+    nonisolated static func managedFilenames(in item: PhotoItem) -> [String] {
         var names: [String] = []
         if !item.filename.isEmpty { names.append(item.filename) }
         if let poster = item.media.posterFilename, !poster.isEmpty { names.append(poster) }
@@ -513,6 +519,7 @@ class PhotoManager: ObservableObject {
         do {
             try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
             try data.write(to: dataFile, options: .atomic)
+#if !ARRAS_APP_STORE
             if let onTelemetryFactsChanged {
                 let facts = telemetryFacts
                 if facts != lastTelemetryFacts {
@@ -520,6 +527,7 @@ class PhotoManager: ObservableObject {
                     onTelemetryFactsChanged(facts)
                 }
             }
+#endif
             return true
         } catch {
             // `.atomic` leaves the previous file in place when its replacement fails, so a

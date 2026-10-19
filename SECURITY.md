@@ -88,9 +88,33 @@ AirPlay and HDMI mirroring are not covered. Optional conferencing hiding watches
 for selected running applications, not for actual capture, and cannot detect
 browser calls.
 
-Arras is deliberately not App Sandbox-enabled. Its in-place updater must replace
-the app bundle and start a helper that survives the current process. The app
-does use the hardened runtime.
+The free direct-download `Arras` target is deliberately not App Sandbox-enabled:
+its in-place updater replaces its own bundle and starts a surviving helper.
+It uses the hardened runtime. The telemetry and updater details below describe
+that distribution.
+
+### App Store target (not yet released)
+
+`ArrasAppStore` is sandboxed and uses the separate identifier
+`com.yashashwi.arras.appstore`. It stores photos/layouts in its own container and
+requires explicit user selection to import a direct-download library. Existing
+content is not overwritten; old folder grants and telemetry state are not copied.
+Selected file reads and persistent folder bookmarks use security-scoped access.
+Photos access still requires macOS authorization. Region capture uses
+ScreenCaptureKit and captures the selected region after its selection UI closes.
+
+The Store target excludes telemetry, the direct updater, self-installer and
+legacy automatic migration from compilation. Its privacy manifest declares no
+tracking or collected data and identifies its UserDefaults/file-timestamp API
+reasons. The public GitHub star-count request remains available, without a
+library or installation identifier. Updates open the Mac App Store. Release
+entitlements reject temporary filesystem and Debug/runtime exceptions; the
+narrow UI-test fixture exception belongs only to Debug.
+
+The distribution-signed 2.5.0 beta was installed through TestFlight and submitted
+to App Review on 19 October 2026 with manual release selected. Apple has not yet
+approved or publicly released it. Its published App Privacy response is **Data
+Not Collected**; Apple separately manages TestFlight feedback and diagnostics.
 
 ## Network behavior
 
@@ -694,7 +718,7 @@ environment separation, emergency disabling and bounded retention. Quota
 exhaustion must stop collection without buying capacity or changing photo
 behavior. Reconcile privacy disclosures and monitoring with the verified design.
 
-### Distribution scope and future App Store review
+### Distribution scope and App Store review
 
 Release scope confirmed 7 October 2026: consent/withdrawal controls are not a
 blocker for the current direct-distribution release. The first telemetry version
@@ -705,10 +729,11 @@ No synthetic app batches were sent to production. Provider-scale quota behavior
 and capacity for 5,000 Macs remain unproven. A stable random UUID remains linkable within
 one installation.
 
-Before any future Mac App Store submission, re-evaluate telemetry controls,
-consent/withdrawal, disclosures and App Store privacy requirements against the
-then-current [App Review guidelines](https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage).
-This direct-distribution decision does not establish App Store readiness.
+The separate Store target excludes this telemetry engine and declares no data
+collection. Any future change must re-evaluate controls, consent/withdrawal,
+disclosures and privacy declarations against the then-current
+[App Review guidelines](https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage).
+The direct-distribution decision does not establish Store approval.
 The 2.5.0 Developer ID distribution is described above. Direct releases use
 unsandboxed self-updating.
 

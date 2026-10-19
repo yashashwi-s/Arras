@@ -126,6 +126,8 @@ enum PhotoIngest {
     }
 
     nonisolated static func prepare(contentsOf url: URL, in directory: URL) -> Prepared? {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
         if PhotoImportPolicy.isVideo(url) {
             return prepareVideo(contentsOf: url, in: directory)
         }
@@ -142,6 +144,8 @@ enum PhotoIngest {
         in directory: URL,
         originalName: String? = nil
     ) -> Prepared? {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
         let resourceSize: Int64? = {
             guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
                   let fileSize = values.fileSize else { return nil }

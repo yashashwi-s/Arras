@@ -8,6 +8,10 @@ from pathlib import Path
 import plistlib
 import subprocess
 
+DIRECT_ONLY_SOURCES = {'Updater.swift', 'DownloadTask.swift', 'InstallLocation.swift', 'StorageMigration.swift',
+                       'Telemetry.swift', 'TelemetryRuntime.swift'}
+APP_TARGETS = {'Arras': 'direct', 'ArrasAppStore': 'app-store'}
+
 BUILD_INPUTS = ('project.yml', 'build.sh', 'scripts/build_provenance.py', 'scripts/validate_app_bundle.py', 'scripts/verify_distribution.py', 'Arras.xcodeproj/project.pbxproj')
 
 
@@ -29,7 +33,7 @@ def snapshot(root: Path) -> dict:
             'dirty': bool(git(root, 'status', '--porcelain', '--untracked-files=normal'))}
 
 
-def compiled_sources(root: Path) -> set[str]:
+def compiled_sources(root: Path, target: str = "Arras") -> set[str]:
     path = root / 'Arras.xcodeproj/project.pbxproj'
     try:
         project = json.loads(path.read_text())
@@ -49,9 +53,9 @@ def compiled_sources(root: Path) -> set[str]:
         elif item['isa'] == 'PBXFileReference':
             paths[identifier] = path.resolve()
     visit(objects[project['rootObject']]['mainGroup'], root)
-    targets = [v for v in objects.values() if v.get('isa') == 'PBXNativeTarget' and v.get('name') == 'Arras']
+    targets = [v for v in objects.values() if v.get('isa') == 'PBXNativeTarget' and v.get('name') == target]
     if len(targets) != 1:
-        raise ValueError('Expected exactly one Arras application target; regenerate the project.')
+        raise ValueError(f'Expected exactly one {target} application target; regenerate the project.')
     compiled = []
     for phase_id in targets[0]['buildPhases']:
         phase = objects[phase_id]
@@ -66,11 +70,18 @@ def compiled_sources(root: Path) -> set[str]:
     return set(compiled)
 
 
-def prepare(root: Path, destination: Path) -> None:
+def prepare(root: Path, destination: Path, target: str = "Arras") -> None:
+    if target not in APP_TARGETS:
+        raise ValueError(f'Unsupported application target: {target}')
     data = snapshot(root)
-    expected = {p.relative_to(root).as_posix() for p in (root / 'Sources/App').rglob('*.swift')}
+    data['target'] = target
+    data['distribution'] = APP_TARGETS[target]
+    expected = {p.relative_to(root).as_posix() for p in (root / 'Sources/App').rglob('*.swift')
+                if target == 'Arras' or p.name not in DIRECT_ONLY_SOURCES}
+    if target == 'ArrasAppStore':
+        expected |= {p.relative_to(root).as_posix() for p in (root / 'Sources/AppStore').rglob('*.swift')}
     try:
-        actual = compiled_sources(root)
+        actual = compiled_sources(root, target)
     except (KeyError, ValueError, subprocess.CalledProcessError) as error:
         raise ValueError('Regenerate Arras.xcodeproj with XcodeGen: invalid source membership.') from error
     if not expected or expected != actual:
@@ -89,6 +100,13 @@ def stamp(root: Path, prepared: Path, bundle: Path, pilot_build: str = '0') -> N
         raise ValueError('Private pilot build numbers must be 2203 or newer.')
     info_path = bundle / 'Contents/Info.plist'
     info = plistlib.loads(info_path.read_bytes())
+    distribution = APP_TARGETS.get(data.get('target'))
+    if distribution is None or data.get('distribution') != distribution:
+        raise ValueError('Build provenance has an invalid distribution target.')
+    if bool(info.get('ArrasAppStoreBuild')) != (distribution == 'app-store'):
+        raise ValueError('Application metadata disagrees with its distribution target.')
+    if distribution == 'app-store' and pilot:
+        raise ValueError('App Store builds cannot enable a telemetry pilot.')
     # An explicit build option owns the private pilot; public source defaults remain off.
     info['ArrasPrivateTelemetryPilot'] = pilot != 0
     if pilot:
@@ -114,7 +132,7 @@ def main() -> None:
     prepared = Path(os.environ['DERIVED_FILE_DIR']) / 'ArrasSourceSnapshot.json'
     try:
         if args.mode == 'prepare':
-            prepare(root, prepared)
+            prepare(root, prepared, os.environ["TARGET_NAME"])
         else:
             stamp(root, prepared, Path(os.environ['TARGET_BUILD_DIR']) / os.environ['WRAPPER_NAME'],
                   os.environ.get('ARRAS_PRIVATE_PILOT_BUILD', '0'))

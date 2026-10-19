@@ -357,7 +357,30 @@ retain their explicit-click route.
 
 `project.yml` owns configuration; XcodeGen regenerates `Arras.xcodeproj`.
 The deployment target is macOS 14 and current Settings appearance needs the macOS
-27 SDK. Keep the app unsandboxed for its in-place updater and surviving helper.
+27 SDK. `Arras` remains unsandboxed for its in-place updater and surviving helper.
+`ArrasAppStore` shares the UI, models and rendering, but excludes `Updater`,
+`DownloadTask`, `InstallLocation`, `StorageMigration`, `Telemetry` and
+`TelemetryRuntime` from its source membership. Its `ARRAS_APP_STORE` condition
+selects the Store lifecycle, Preferences and privacy disclosure. Store-only code
+and resources live in `Sources/AppStore`; Store-specific tests in `Tests/AppStore`.
+The Release ID is `com.yashashwi.arras.appstore`; Debug adds `.development` and
+uses a separate visible app name. Both schemes retain the `Arras` Swift module.
+
+The Store library is container-local. `SandboxLibraryImport` stages only referenced
+media and fonts from a user-selected library, validates decoded models and files,
+strips old folder grants, then commits into an empty destination with rollback.
+It never automatically reads the direct edition's library or copies its telemetry.
+Photo/PDF reads balance security-scoped access; persistent folder grants are read-only.
+Store region capture uses ScreenCaptureKit after transient selection overlays close.
+`AppStoreUpdates` opens Apple's Updates page; no executable download helper is linked.
+
+Build provenance binds the selected target and distribution as well as source inputs.
+The bundle validator defaults to direct distribution, so the existing GitHub
+packager/notarizer rejects Store bundles. Store validation additionally checks both
+sandbox slices, API-reason privacy declarations, disabled telemetry and absence of
+Debug exceptions. Store builds/archives stay in `build/app-store`; only the direct
+scheme produces public GitHub ZIP/DMG artifacts. TestFlight must be tested before
+App Review, submission uses manual release, and the website badge waits for a live listing.
 
 Every app build snapshots application/build inputs before compilation and verifies
 that snapshot before stamping the signed bundle. `build.sh` anchors itself to its
@@ -405,14 +428,18 @@ ancestor. Its download scope starts with the selection and captures the desktop
 generation before the async transfer; results cannot enter a newly restored setup.
 
 Every release has reviewed `release-notes/<version>.json`. CI rejects missing,
-mismatched or placeholder copy. The release runner builds/uploads artifacts and
-writes its resulting URL/checksum and reviewed notes into `appcast.json`.
-Locally computed hashes must not be placed in that feed.
+mismatched or placeholder copy. The release runner normally builds, notarizes and
+uploads artifacts, then writes the published ZIP's URL/checksum and reviewed
+notes into `appcast.json`. An explicitly authorized publication of preverified
+local notarized output must first match GitHub's uploaded asset digests against
+the distribution receipt. The feed always describes those exact published bytes.
+Published assets are immutable; fixes receive a new version rather than replacing
+files already downloaded or referenced by a checksum.
 
 | Document | Maintained responsibility |
 | --- | --- |
 | README.md | Concise overview, official download and starting points |
-| FEATURES.md | Task-based next-release guide, separated from reviewed public behavior |
+| FEATURES.md | Task-based guide for the checkout's version, with unfinished work clearly labeled |
 | ARCHITECTURE.md | Ownership and engineering contracts |
 | SECURITY.md | Distribution trust, local data, networking and disclosure policy |
 | CONTRIBUTING.md / CLAUDE.md | Contributor/agent guidance and verification |

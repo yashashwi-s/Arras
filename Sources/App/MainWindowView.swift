@@ -6,8 +6,21 @@ import SwiftUI
 final class SettingsNavigation: ObservableObject {
     @Published var selection: MainWindowView.Tab = .photos
     @Published var updatesRequest: UUID?
+    private var selectionRequest = UUID()
+
+    /// The native tab control can call its binding while SwiftUI reconciles views.
+    /// Publish on the next main-queue turn, retaining only the latest request.
+    func selectFromTabControl(_ tab: MainWindowView.Tab) {
+        let request = UUID()
+        selectionRequest = request
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.selectionRequest == request else { return }
+            if self.selection != tab { self.selection = tab }
+        }
+    }
 
     func showUpdates() {
+        selectionRequest = UUID()
         selection = .preferences
         updatesRequest = UUID()
     }
@@ -30,7 +43,7 @@ struct MainWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TabView(selection: $navigation.selection) {
+            TabView(selection: Binding(get: { navigation.selection }, set: { navigation.selectFromTabControl($0) })) {
                 ContentView(manager: manager, onMenuUpdate: onMenuUpdate)
                     .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }
                     .tag(Tab.photos)

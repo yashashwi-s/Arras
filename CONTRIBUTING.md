@@ -32,6 +32,50 @@ or Space-switch acceptance.
 `./build.sh --release` packages locally. `./build.sh --pilot BUILD` builds a
 private telemetry pilot; replace BUILD with a new integer (greater than the last shared internal build identifier). Build only from the current source checkout.
 
+### App Store target
+
+Choose **Arras** for free direct-download development and **ArrasAppStore** for
+sandbox work. Both use shared `Sources/App`; Store-only code/resources and
+regressions live in `Sources/AppStore` and `Tests/AppStore`. Do not copy the app
+code into a second tree. `project.yml` generates both targets and schemes.
+
+| Distribution | Release ID | Local output | Updates / statistics |
+| --- | --- | --- | --- |
+| Direct (free) | `com.yashashwi.tableau` | `build/current`, `dist` | Verified GitHub updater; limited statistics |
+| App Store (planned $4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
+
+Store Debug uses `com.yashashwi.arras.appstore.development` and the name
+**Arras App Store Dev**. UI tests own UUID directories under
+`/private/tmp/ArrasAppStoreUITests/`; only Debug app/runner entitlements allow this
+fixture root. Unit tests inject scratch storage. Never test by replacing a user's
+library or launching the production Store identity against personal content.
+
+```sh
+./build.sh --app-store
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project Arras.xcodeproj -scheme ArrasAppStore \
+  -destination 'platform=macOS' test
+./build.sh --app-store-archive
+```
+
+The local build is ad-hoc signed and cannot be uploaded. Archiving requires the
+configured Apple team and signing access; export via **App Store Connect** with
+its distribution provisioning profile and Mac installer signing identity. Upload
+only to Apple, never GitHub Releases or generic public CI artifacts. Use the same
+processed build for TestFlight and review; do not use an internal-only export
+that cannot be submitted to review. Verify actual TestFlight installation,
+container permissions and library import before submitting with **manual release**.
+The website Store badge is gated on an approved, publicly live listing; free
+direct download stays the main button.
+
+The separate sandbox folder's 18 October verification recorded 399 native tests
+with one skip and 77 script checks passing. Its UI runs passed 14 distinct cases;
+three synthetic typing/drag cases remained red despite basic manual typing and
+dragging acceptance. Those results are historical evidence, not results for this
+merged target. Preserve the source folder until the merged build and needed
+recovery data are verified. The merged target's TestFlight and review status is
+recorded in [dual-target merge verification](#dual-target-merge-verification--18-october-2026).
+
 For Developer ID distribution, build first and run the separate postprocessor:
 
 ```sh
@@ -950,3 +994,65 @@ order while retaining native attach, equal-gap, group-move and detach assertions
 It does not establish inactive-app input acceptance or erase the earlier trace.
 The prepared 2.5.1 app/DMG passed Apple notarization and exact package checks;
 publication remains pending the owner’s separate choice.
+
+### Dual-target merge verification — 18 October 2026
+
+The sandbox implementation was merged into `ArrasAppStore` without replacing the
+free `Arras` target or the direct release workflow. The merged universal Store
+Release passed source, metadata, privacy and both-slice entitlement validation;
+its binary contains no updater, telemetry engine, self-installer or automatic
+legacy migration symbols. All 81 Python checks passed. The merged Store native
+suite ran 399 tests with zero failures and two environment skips (synthetic menu
+activation and WindowServer coverage); those skips remain physical acceptance
+limits. The direct universal Release also built and passed bundle validation.
+
+The direct native suite ran 433 tests with zero failures and one environment
+skip. Two focused Store UI checks passed after preserving its ungrouped Updates
+accessibility structure: footer/update/privacy controls and single-window tab
+navigation. These checks do not establish TestFlight delivery or permission
+recovery on an installed Store build.
+
+Apple registered the separate Store identifier and created app record
+`6824271927`, **Arras Widgets** (saved after Apple rejected the plain Arras name). Version
+2.5.0 customer-facing metadata is saved with manual release selected. The USD
+4.99 base-price schedule is configured. On 19 October, the owner added Apple
+Distribution and Mac Installer Distribution identities. Source commit
+`0dc5baad19c306c97b77fd6be2b3718f0a24c23e` was archived and exported with Apple's
+distribution provisioning profile. The expanded package passed both-architecture
+source, sandbox and signature validation without installing it. Apple accepted
+and processed the upload as 2.5.0; it is assigned to the private **Release
+Testing** group with only the owner's account. Automatic group distribution is
+disabled. The owner's TestFlight installation was verified at
+`/Applications/Arras 2.app`: Apple's TestFlight Beta Distribution signature,
+receipt, sandbox and both architectures match the uploaded source. The owner
+confirmed Settings opens. In that installed beta, the native example picker
+created a three-photo collage; native backup export produced a format-3 `.arras`
+with one collage, its three members and three media files. A normal quit/reopen
+restored all three photos and their collage. These smoke checks do not establish
+Photos/iCloud permission recovery or physical Space/display acceptance.
+
+Apple accepted three actual TestFlight window screenshots at 2560 × 1600. The
+owner-confirmed content-rights answer, 4+ age rating and published **Data Not
+Collected** privacy declaration are saved. Paid agreement, bank and tax statuses
+were verified Active without copying their private details into this repository.
+Version 2.5.0 is **Waiting for Review** after submission on 19 October 2026,
+submission ID `b5547666-6198-4b8e-a46e-ead4c67d0e04`. **Manual release** remains
+selected. Review submission is not approval or public availability. The website
+privacy clarification is deployed; its Store badge remains hidden until approval
+and a verified live listing. The free direct download stays primary.
+Local evidence:
+`/tmp/arras-store-submission-20261018/submission-evidence.json`, with archive/export/
+upload logs under `build/app-store` (ignored, never release artifacts).
+
+The initial dual-target CI run reproduced all four UI failures from main run
+`39103489942`: native drag attachment, two offscreen control checks and reference
+Apply persistence. All 433 direct unit checks passed in CI (five system-policy
+skips). PR #3 separately fixes the editor-height/reachability cases; its remaining
+native-input failure stays open. CI now validates each distribution in a separate
+matrix job with fail-fast disabled, so a direct UI failure does not prevent Store
+unit/build validation. Existing UI assertions and failure status are retained.
+Run `39185427005` passed the Store unit suite (399 tests, five system-policy skips,
+zero failures), universal Release validation and documentation checks. Its direct
+suite passed all 433 unit tests with five policy skips, then reproduced the same
+four UI failures; the overall workflow remains red. No failed assertion was
+disabled to obtain the Store result.

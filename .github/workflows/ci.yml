@@ -46,8 +46,12 @@ jobs:
 
 
   build:
-    # SwiftUI's native settings tabs are linked-SDK dependent. The reference UI
-    # is the macOS 27 presentation, so CI must exercise the same SDK as release.
+    name: ${{ matrix.distribution }} validation
+    # One target's UI failure must not suppress the other target's build evidence.
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [direct, app-store]
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
@@ -67,9 +71,11 @@ jobs:
         run: git diff --exit-code -- Arras.xcodeproj
 
       - name: Test updater replacement and rollback
+        if: matrix.distribution == 'direct'
         run: python3 -m unittest discover -s scripts -p 'test_updater_rollback.py'
 
-      - name: Test
+      - name: Test direct target
+        if: matrix.distribution == 'direct'
         run: |
           xcodebuild \
             -project Arras.xcodeproj \
@@ -79,8 +85,21 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/Arras-CI.xcresult" \
             test
 
-      - name: Preserve native test diagnostics
-        if: always()
+      - name: Test sandboxed App Store target
+        if: matrix.distribution == 'app-store'
+        run: |
+          xcodebuild \
+            -project Arras.xcodeproj \
+            -scheme ArrasAppStore \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:ArrasAppStoreTests \
+            -derivedDataPath "$RUNNER_TEMP/arras-app-store-tests" \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM='' \
+            test
+
+      - name: Preserve direct UI test diagnostics
+        if: always() && matrix.distribution == 'direct'
         uses: actions/upload-artifact@v4
         with:
           name: arras-native-results-${{ github.run_id }}
@@ -88,20 +107,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Build
+      - name: Build and validate direct target
+        if: matrix.distribution == 'direct'
         run: ./build.sh
 
-      - name: Validate Build
-        run: |
-          APP_PATH="build/current/Release/Arras.app"
-          python3 scripts/validate_app_bundle.py "$APP_PATH"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "❌ Arras.app not found"
-            exit 1
-          fi
-          SIZE=$(du -sm "$APP_PATH" | cut -f1)
-          echo "✅ Arras.app size: ${SIZE}MB"
-          if [ "$SIZE" -lt 1 ]; then
-            echo "❌ Build output too small (${SIZE}MB)"
-            exit 1
-          fi
+      - name: Build and validate sandboxed App Store target
+        if: matrix.distribution == 'app-store'
+        run: ./build.sh --app-store
+        # Never upload this target to GitHub Releases or public build artifacts.
