@@ -25,6 +25,10 @@ enum ArrasIntentError: Error, CustomLocalizedStringResourceConvertible {
     case appNotReady
     case invalidImage
     case photoNotFound(String)
+    case importFailed(String)
+    case couldNotSave
+    case notASlideshow(String)
+    case couldNotAdvance
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
@@ -34,6 +38,14 @@ enum ArrasIntentError: Error, CustomLocalizedStringResourceConvertible {
             return "That file isn't an image Arras can display."
         case .photoNotFound(let name):
             return "No photo named \"\(name)\" was found."
+        case .importFailed(let detail):
+            return "The photo could not be added. \(detail)"
+        case .couldNotSave:
+            return "The change could not be saved. Check the library and available disk space, then try again."
+        case .notASlideshow(let name):
+            return "\"\(name)\" is not a slideshow. Choose a Space with stored images."
+        case .couldNotAdvance:
+            return "The slideshow could not change images. Finish any active edit, show the widget, and check its media and available disk space."
         }
     }
 }
@@ -61,10 +73,10 @@ struct AddPhotoIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let manager = try ArrasIntentBridge.manager()
-        guard let image = NSImage(data: file.data) else {
-            throw ArrasIntentError.invalidImage
+        let result = await manager.importPhotos(data: [file.data], sourceNames: ["Shortcut image"])
+        guard result.acceptedCount == 1 else {
+            throw ArrasIntentError.importFailed(result.failed.first?.reason ?? "The image could not be imported into this desktop.")
         }
-        manager.addPhoto(image)
         return .result()
     }
 }
@@ -80,7 +92,9 @@ struct ToggleAllPhotosVisibilityIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
         let manager = try ArrasIntentBridge.manager()
+        let requestedVisibility = !manager.photos.contains { $0.isVisible }
         let visible = manager.toggleAllVisibility()
+        guard manager.photos.isEmpty || visible == requestedVisibility else { throw ArrasIntentError.couldNotSave }
         return .result(value: visible)
     }
 }
@@ -101,7 +115,7 @@ struct ShowPhotoIntent: AppIntent {
             throw ArrasIntentError.photoNotFound(name)
         }
         if !item.isVisible {
-            manager.toggleVisibility(item.id)
+            guard manager.toggleVisibility(item.id) else { throw ArrasIntentError.couldNotSave }
         }
         return .result()
     }
@@ -121,7 +135,7 @@ struct HidePhotoIntent: AppIntent {
             throw ArrasIntentError.photoNotFound(name)
         }
         if item.isVisible {
-            manager.toggleVisibility(item.id)
+            guard manager.toggleVisibility(item.id) else { throw ArrasIntentError.couldNotSave }
         }
         return .result()
     }
@@ -148,7 +162,7 @@ struct SetPhotoOpacityIntent: AppIntent {
         // setOpacity itself clamps to the app's normal 0.1...1.0 range, so an
         // out-of-range percent from Shortcuts can't produce an invisible or
         // over-driven widget.
-        manager.setOpacity(item.id, CGFloat(opacityPercent) / 100.0)
+        guard manager.setOpacity(item.id, CGFloat(opacityPercent) / 100.0) else { throw ArrasIntentError.couldNotSave }
         return .result()
     }
 }
@@ -168,7 +182,8 @@ struct NextSpaceImageIntent: AppIntent {
         guard let item = manager.photo(named: name) else {
             throw ArrasIntentError.photoNotFound(name)
         }
-        manager.nextFolderImage(item.id)
+        guard !item.spaceImageFilenames.isEmpty else { throw ArrasIntentError.notASlideshow(name) }
+        guard manager.nextFolderImage(item.id) else { throw ArrasIntentError.couldNotAdvance }
         return .result()
     }
 }
@@ -186,7 +201,8 @@ struct PreviousSpaceImageIntent: AppIntent {
         guard let item = manager.photo(named: name) else {
             throw ArrasIntentError.photoNotFound(name)
         }
-        manager.prevFolderImage(item.id)
+        guard !item.spaceImageFilenames.isEmpty else { throw ArrasIntentError.notASlideshow(name) }
+        guard manager.prevFolderImage(item.id) else { throw ArrasIntentError.couldNotAdvance }
         return .result()
     }
 }

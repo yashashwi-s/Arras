@@ -129,6 +129,7 @@
 		806384BED4AD9E641C3789D8 /* ImportPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0043F4193133BEB4210C9B0E /* ImportPipelineTests.swift */; };
 		80A7F1AEFA40999DDDAF19C8 /* RuntimeActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDE74481CDBE94DD92FEED9 /* RuntimeActivity.swift */; };
 		82A793B4D4932896ACEC0968 /* WidgetSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7895BB1C8ADE94F3AC49C67C /* WidgetSelectionTests.swift */; };
+		836B574E335E3A13F136296C /* ArrasIntentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FA89656EE5186D6B528EA9 /* ArrasIntentsTests.swift */; };
 		84611C5378D16F8B7F223AF5 /* CollageDesktopWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6433793E9E4C1398F0E090 /* CollageDesktopWindow.swift */; };
 		87163ED5C51E9FB1F2F5FA21 /* PhotoItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4EB926FBEE548482A8BA50 /* PhotoItemTests.swift */; };
 		872CBE66B97487C40BDA9D62 /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC56D3B15FF195A007DA0A /* LayoutArchive.swift */; };
@@ -193,6 +194,7 @@
 		C9A1E1949B6EC25D9F112996 /* PhotosLibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBC00937D63A1B449B8946F /* PhotosLibraryModels.swift */; };
 		C9E34F2EBC083E512A64FA8C /* CollageLabelWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215DE82048A01DBE01D81A25 /* CollageLabelWizard.swift */; };
 		CA67CB4E138EA996D4365D9C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6F41DC3A686149F1410799 /* AppDelegate.swift */; };
+		CB7909C92651A3F3849B0947 /* ArrasIntentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FA89656EE5186D6B528EA9 /* ArrasIntentsTests.swift */; };
 		CD5CD00AA871A926458B8213 /* LayoutArchiveImportFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541EDA4D5D763290D50816B7 /* LayoutArchiveImportFlow.swift */; };
 		CFCC24F262E924BE590994E2 /* VideoMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = D137206A8801F222C1322720 /* VideoMedia.swift */; };
 		D1131CCD132590F1C3741660 /* WindowCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA72F81E7944BACCA5BE863 /* WindowCoverageTests.swift */; };
@@ -294,6 +296,7 @@
 		3D2F553D5CE44A0C65253CBC /* UpdateStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatusView.swift; sourceTree = "<group>"; };
 		3F6433793E9E4C1398F0E090 /* CollageDesktopWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollageDesktopWindow.swift; sourceTree = "<group>"; };
 		42CAD2C8C55FD722093DCC66 /* ArchiveMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMedia.swift; sourceTree = "<group>"; };
+		43FA89656EE5186D6B528EA9 /* ArrasIntentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrasIntentsTests.swift; sourceTree = "<group>"; };
 		4660288750F783DECB67AD17 /* CollageResize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollageResize.swift; sourceTree = "<group>"; };
 		46E8F45F35D2CF900ADD6418 /* RepositoryStarsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositoryStarsTests.swift; sourceTree = "<group>"; };
 		478E2B29EDCF355E5F63451A /* PhotoIngestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoIngestTests.swift; sourceTree = "<group>"; };
@@ -431,6 +434,7 @@
 			children = (
 				BA01BD3EE9298D19AF8C6EF9 /* AppDialogTests.swift */,
 				B21EC15B78CBA23C3EF9F7D9 /* ArrangementHistoryTests.swift */,
+				43FA89656EE5186D6B528EA9 /* ArrasIntentsTests.swift */,
 				4E90E0E0458229B1213C2311 /* AuditRegressionTests.swift */,
 				B4404696069D16CF80560C07 /* CollageEditorTests.swift */,
 				F95528E791FFAAC86881BB16 /* CollageLabelTests.swift */,
@@ -871,6 +875,7 @@
 			files = (
 				073DF8F4485D7BB0BF0E4FF7 /* AppDialogTests.swift in Sources */,
 				B0754B23EF099C5367F19CAD /* ArrangementHistoryTests.swift in Sources */,
+				CB7909C92651A3F3849B0947 /* ArrasIntentsTests.swift in Sources */,
 				BC456C827D6BA6B9878F7DF3 /* AuditRegressionTests.swift in Sources */,
 				E94447FF5DE0CD9EC94EBB10 /* CollageEditorTests.swift in Sources */,
 				9E9E349CEEE81CC088FE7479 /* CollageLabelTests.swift in Sources */,
@@ -1074,6 +1079,7 @@
 			files = (
 				4D4334245BC8AFC9F61B4B2A /* AppDialogTests.swift in Sources */,
 				509D3EB1A1C8B69D91BD997B /* ArrangementHistoryTests.swift in Sources */,
+				836B574E335E3A13F136296C /* ArrasIntentsTests.swift in Sources */,
 				26ADB1F412161EFF81721669 /* AuditRegressionTests.swift in Sources */,
 				5673EEB46F0C4D015C06251C /* CollageEditorTests.swift in Sources */,
 				28FD8DE9FB42DCD1FDFE9ED8 /* CollageLabelTests.swift in Sources */,

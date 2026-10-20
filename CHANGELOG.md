@@ -14,6 +14,9 @@
 - Bind build provenance to the distribution and reject cross-distribution
   packaging, Store telemetry pilots and release Debug exceptions.
 
+- Report failed imports, saves and slideshow advances to Shortcuts rather than
+  returning success. Use the shared byte importer for Add Photo.
+
 ## 2.5.0
 
 Released 18 October 2026. Developer ID signed and notarized for Apple Silicon and Intel.
