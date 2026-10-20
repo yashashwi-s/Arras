@@ -335,15 +335,15 @@ struct PreferencesView: View {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        do {
-            let report = try manager.exportLayout(
-                to: url,
-                preferenceGroups: groups,
-                archivalQuality: archivalQuality
-            )
-            LayoutArchiveExportFlow.present(report)
-        } catch {
-            LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Backup")
+        let quality = archivalQuality
+        Task { @MainActor in
+            do {
+                let report = try await manager.exportLayoutInBackground(to: url, preferenceGroups: groups,
+                                                                        archivalQuality: quality)
+                LayoutArchiveExportFlow.present(report)
+            } catch {
+                LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Backup")
+            }
         }
     }
 
