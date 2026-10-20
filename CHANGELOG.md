@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep visible slideshows, GIFs and videos playing when macOS reports a
+  display-sized Dock helper above them. Preserve pausing for actual app-window
+  coverage and the visible Dock strip. Fixes the playback blocker reported in #6.
 - Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping
   footer actions visible and the existing controls scrollable on short displays.
 - Add a separate sandboxed `ArrasAppStore` target alongside the free direct

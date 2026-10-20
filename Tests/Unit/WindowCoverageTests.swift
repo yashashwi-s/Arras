@@ -91,6 +91,91 @@ final class WindowCoverageTests: XCTestCase {
         XCTAssertEqual(bounds, CGRect(x: -1300, y: 150, width: 120, height: 70))
     }
 
+    func testDockDesktopSurfaceAllowsPlaybackAtEveryWidgetDepth() {
+        // Issue #6: this display-sized Dock entry precedes every uncovered widget.
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let dock = CoverageWindow(id: 17, bounds: display, layer: 20, alpha: 1, ownerPID: 500)
+        let photo = CGRect(x: 400, y: 300, width: 240, height: 160)
+
+        for depth in WidgetDepth.allCases {
+            let target = CoverageWindow(id: 100, bounds: photo, layer: depth.windowLevel.rawValue, alpha: 1)
+            let covered = WindowCoveragePolicy.isCovered(
+                windowID: target.id, contentBounds: photo, windows: [dock, target],
+                dockPIDs: [500], displayBounds: [display]
+            )
+            XCTAssertFalse(covered, "The Dock helper must not cover a \(depth) widget")
+            let decision = RuntimeActivityPolicy.decision(for: RuntimeActivityInput(isOccluded: covered))
+            XCTAssertTrue(decision.allowsRotation)
+            XCTAssertTrue(decision.allowsExpensiveAnimation)
+        }
+    }
+
+    func testDockDesktopSurfaceUsesTheCoveredDisplayIncludingNegativeCoordinates() {
+        let primary = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let displays = [
+            CGRect(x: -1920, y: 0, width: 1920, height: 1080),
+            CGRect(x: 0, y: -1080, width: 1920, height: 1080)
+        ]
+        for display in displays {
+            let photo = CGRect(x: display.minX + 100, y: display.minY + 100, width: 240, height: 160)
+            let target = CoverageWindow(id: 100, bounds: photo, layer: 4, alpha: 1)
+            let dock = CoverageWindow(id: 17, bounds: display, layer: 20, alpha: 1, ownerPID: 500)
+            XCTAssertFalse(WindowCoveragePolicy.isCovered(
+                windowID: target.id, contentBounds: photo, windows: [dock, target],
+                dockPIDs: [500], displayBounds: [primary, display]
+            ))
+            XCTAssertTrue(WindowCoveragePolicy.isCovered(
+                windowID: target.id, contentBounds: photo, windows: [dock, target],
+                dockPIDs: [500], displayBounds: [primary]
+            ), "A rectangle that does not span a known display must not get the exception")
+        }
+    }
+
+    func testDockExceptionKeepsRealAppPanelsAndUnknownOwnersAsCovers() {
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let photo = CGRect(x: 400, y: 300, width: 240, height: 160)
+        let target = CoverageWindow(id: 100, bounds: photo, layer: 0, alpha: 1)
+        let dock = CoverageWindow(id: 17, bounds: display, layer: 20, alpha: 1, ownerPID: 500)
+        let covers = [
+            CoverageWindow(id: 20, bounds: display, layer: 20, alpha: 1, ownerPID: 600),
+            CoverageWindow(id: 21, bounds: display, layer: 20, alpha: 1),
+            CoverageWindow(id: 22, bounds: photo, layer: 0, alpha: 1, ownerPID: 600),
+            CoverageWindow(id: 23, bounds: photo, layer: 3, alpha: 1, ownerPID: 600)
+        ]
+        for cover in covers {
+            let covered = WindowCoveragePolicy.isCovered(
+                windowID: target.id, contentBounds: photo, windows: [dock, cover, target],
+                dockPIDs: [500], displayBounds: [display]
+            )
+            XCTAssertTrue(covered, "Ignoring the Dock helper must retain actual cover \(cover.id)")
+            let decision = RuntimeActivityPolicy.decision(for: RuntimeActivityInput(isOccluded: covered))
+            XCTAssertFalse(decision.allowsRotation)
+            XCTAssertFalse(decision.allowsExpensiveAnimation)
+        }
+        XCTAssertTrue(WindowCoveragePolicy.isCovered(
+            windowID: target.id, contentBounds: photo, windows: [dock, target],
+            dockPIDs: [], displayBounds: [display]
+        ), "An unrecognized owner must not be assumed to be the Dock")
+    }
+
+    func testDockExceptionDoesNotIgnoreDockStripOrOtherWindowLevels() {
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let photo = CGRect(x: 400, y: 880, width: 240, height: 90)
+        let target = CoverageWindow(id: 100, bounds: photo, layer: 0, alpha: 1)
+        let covers = [
+            CoverageWindow(id: 20, bounds: CGRect(x: 300, y: 900, width: 900, height: 82),
+                           layer: 20, alpha: 1, ownerPID: 500),
+            CoverageWindow(id: 21, bounds: display, layer: 0, alpha: 1, ownerPID: 500),
+            CoverageWindow(id: 22, bounds: display, layer: 21, alpha: 1, ownerPID: 500)
+        ]
+        for cover in covers {
+            XCTAssertTrue(WindowCoveragePolicy.isCovered(
+                windowID: target.id, contentBounds: photo, windows: [cover, target],
+                dockPIDs: [500], displayBounds: [display]
+            ), "The exception must remain limited to the display-sized Dock-level helper")
+        }
+    }
+
     @MainActor
     func testLiveWindowServerCoveragePausesSlideshowAndRemovalResumesIt() throws {
         let widget = DesktopPhotoWindow()
