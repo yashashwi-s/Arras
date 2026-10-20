@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Explain unreadable libraries in Settings and allow an explicitly confirmed
+  backup restore, preserving the latest damaged bytes before replacement.
+
 - Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping
   footer actions visible and the existing controls scrollable on short displays.
 - Add a separate sandboxed `ArrasAppStore` target alongside the free direct

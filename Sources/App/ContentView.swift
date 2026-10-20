@@ -21,7 +21,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            headerBar
+            headerBar.disabled(manager.libraryRecoveryRequired)
             if let example = addedExample {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -70,7 +70,23 @@ struct ContentView: View {
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
 
-            if manager.photos.isEmpty {
+            if manager.libraryRecoveryRequired {
+                VStack(spacing: 14) {
+                    Image(systemName: "exclamationmark.triangle").font(.system(size: 28))
+                        .foregroundStyle(.orange)
+                    Text("Your library couldn’t be opened").font(.headline)
+                    Text("Your existing files have not been overwritten. Restore a valid Arras backup, or open the library folder for help repairing it. Changes are paused until the library is recovered.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).frame(maxWidth: 420)
+                    Button("Restore Backup…") {
+                        LayoutArchiveImportFlow.chooseBackup(manager: manager, onMenuUpdate: onMenuUpdate)
+                    }
+                    .accessibilityIdentifier("restore-damaged-library")
+                    Button("Show Library Folder") { NSWorkspace.shared.open(manager.storageDir) }
+                }
+                .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .contain)
+            } else if manager.photos.isEmpty {
                 emptyView
             } else {
                 HStack {

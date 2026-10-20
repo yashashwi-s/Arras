@@ -284,6 +284,11 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 
 ### Persistence and portability
 
+- **In development:** unreadable libraries show a recovery explanation in Photos
+  Settings. Restore Backup validates the selected archive and asks before replacing
+  the library, preserving its damaged bytes. Ordinary edits remain blocked;
+  failed preservation or saving keeps the current library unchanged.
+
 - Widget state is atomically written to `photos.json`. Older schemas decode
   through explicit defaults. If the store cannot be decoded, Arras preserves a
   bounded diagnostic copy and blocks overwriting the unread state.

@@ -28,6 +28,25 @@ final class SettingsUITests: XCTestCase {
         try? FileManager.default.removeItem(at: storageDirectory)
     }
 
+    func testDamagedLibraryShowsRecoveryInsteadOfEmptyLibrary() throws {
+        let damaged = Data("damaged library fixture".utf8)
+        try damaged.write(to: storageDirectory.appendingPathComponent("photos.json"))
+        app.launch()
+        app.activate()
+        let window = app.windows["Arras"]
+        XCTAssertTrue(window.waitForExistence(timeout: 8))
+        XCTAssertTrue(window.staticTexts["Your library couldn’t be opened"].waitForExistence(timeout: 5))
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = "Damaged library recovery"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let restore = window.buttons["restore-damaged-library"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 5), window.debugDescription)
+        XCTAssertTrue(restore.isEnabled)
+        XCTAssertTrue(window.buttons["Show Library Folder"].exists)
+        XCTAssertEqual(try Data(contentsOf: storageDirectory.appendingPathComponent("photos.json")), damaged)
+    }
+
     #if ARRAS_APP_STORE
     func testAppStoreFooterUpdatesAndPrivacyDisclosure() throws {
         _ = try seedPhoto()

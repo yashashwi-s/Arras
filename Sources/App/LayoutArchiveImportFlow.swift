@@ -130,6 +130,15 @@ private final class ArchiveImportSelectionView: NSView {
 /// archive API, not an NSDocument subclass or a document window lifecycle.
 @MainActor
 enum LayoutArchiveImportFlow {
+    static func chooseBackup(manager: PhotoManager, onMenuUpdate: (() -> Void)? = nil) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = BackupFormat.importTypes
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose Backup"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        present(url: url, manager: manager, onMenuUpdate: onMenuUpdate)
+    }
+
     static func present(
         url: URL,
         manager: PhotoManager,
@@ -186,19 +195,24 @@ enum LayoutArchiveImportFlow {
 
         let selectedCount = preflight.candidates.filter { selection.selectedIDs.contains($0.id) }.count
         let widgetWord = selectedCount == 1 ? "widget" : "widgets"
-        let message = manager.photos.isEmpty
+        let recovering = manager.libraryRecoveryRequired
+        let message = recovering
+            ? "Restore the selected widgets from this backup? Arras will preserve a copy of the damaged library before replacing it. Any currently loaded widgets will be replaced."
+            : manager.photos.isEmpty
             ? "Add \(selectedCount) \(widgetWord) to your desktop?"
             : "Add \(selectedCount) \(widgetWord) to your current layout, or replace your existing widgets. Replacing cannot be undone."
-        let canReplace = !manager.photos.isEmpty
-        var actions = [AppDialog.Action(title: "Add Widgets")]
+        let canReplace = !recovering && !manager.photos.isEmpty
+        var actions = [AppDialog.Action(title: recovering ? "Restore Backup" : "Add Widgets",
+                                       role: recovering ? .destructive : .normal)]
         if canReplace { actions.append(.init(title: "Replace Everything", role: .destructive)) }
         actions.append(.init(title: "Cancel", role: .cancel))
-        let confirmation = AppDialog.make(title: "Import Widgets?", message: message, actions: actions)
+        let confirmation = AppDialog.make(title: recovering ? "Restore Damaged Library?" : "Import Widgets?",
+                                         message: message, actions: actions)
         NSApp.activate(ignoringOtherApps: true)
 
         let mode: PhotoManager.LayoutImportMode
         switch confirmation.runModal() {
-        case .alertFirstButtonReturn: mode = .merge
+        case .alertFirstButtonReturn: mode = recovering ? .recoverDamagedLibrary : .merge
         case .alertSecondButtonReturn where canReplace: mode = .replace
         default:
             preflight.cleanup()
