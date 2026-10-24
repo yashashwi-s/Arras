@@ -54,6 +54,14 @@ struct PreferencesView: View {
                     #endif
                     backup
                     menuBarSection
+                    VStack(alignment: .leading, spacing: 14) {
+                        Button("Take a Quick Tour…") { AppDelegate.current?.showOnboarding() }
+                            .accessibilityIdentifier("show-onboarding")
+                        #if !ARRAS_APP_STORE
+                        SupportArrasView()
+                        #endif
+                    }
+                    .padding(14).settingsSectionSurface()
                     HStack {
                         Text("\(Constants.appName) \(Constants.version)").foregroundStyle(.secondary)
                         Spacer()

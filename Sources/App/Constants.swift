@@ -3,6 +3,9 @@ import AppKit
 struct Constants {
     static let appName = "Arras"
     static let repositoryURL = URL(string: "https://github.com/yashashwi-s/Arras")!
+    #if !ARRAS_APP_STORE
+    static let supportPurchaseURL = URL(string: "https://apps.apple.com/app/id6824271927")!
+    #endif
 
     /// Keep the SwiftUI root, its tab content, and the AppKit window constraint aligned so the
     /// window cannot be resized below the layout's actual minimum.

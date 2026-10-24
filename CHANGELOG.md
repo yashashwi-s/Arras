@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Introduce a skippable, replayable five-page welcome tour with local photo
+  previews, explicit sample creation and practical guidance for collages, layers,
+  slideshows, saved setups and privacy. Existing libraries are not interrupted.
+- Add an optional Support Arras purchase link to the free edition's tour and
+  Preferences. Exclude it from Store builds; keep every free feature available.
+
 - Keep visible slideshows, GIFs and videos playing when macOS reports a
   display-sized Dock helper above them. Preserve pausing for actual app-window
   coverage and the visible Dock strip. Fixes the playback blocker reported in #6.

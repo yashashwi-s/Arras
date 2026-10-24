@@ -27,6 +27,21 @@ Source files below live in `Sources/App/`.
 | Updates | `Updater.swift` owns checks, notifications, download validation, installation and rollback. `UpdateStatusView.swift` presents live status. |
 | Telemetry | `TelemetryRuntime.swift` copies only broad type counts after durable saves. `Telemetry.swift` owns actor-isolated identity, queue and transport. The API/storage live in the website repository; [the telemetry reference](SECURITY.md#telemetry-protocol-and-activation) owns their protocol. |
 
+## Onboarding ownership
+
+`OnboardingProgress` owns an installation-local completion choice in UserDefaults.
+`AppDelegate` decides initial presentation after normal startup and owns one
+`OnboardingController`. A populated or damaged library bypasses the automatic tour;
+update-result and archive-import flows keep priority. Closing, skipping or finishing
+marks the tour complete, then reuses the existing Settings window. Explicit replay
+never resets that choice. UI tests inject their own suite through isolated storage.
+
+`OnboardingView` previews bundled sample assets without touching PhotoManager,
+requesting permissions or starting network work. Only its explicit sample action
+uses the existing transactional starter path, and failure keeps the tour open.
+`SupportArrasView` and its destination compile only in the direct target. No
+purchase state, tracking, nag scheduling or feature restrictions are introduced.
+
 ## Persistence and compatibility
 
 - Production storage remains `~/Library/Application Support/PhotoWidget/` with
