@@ -302,6 +302,11 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   before a replacement commits; damaged or unsavable input cannot erase the
   working layout. Imported widgets receive fresh identifiers and filenames, and
   machine-specific display bindings are discarded.
+- **In development:** backup file processing runs in the background. Media is
+  streamed during export and staged one file at a time during import. ZIP32
+  backups must be smaller than 4 GiB, with at most 512 MiB per media file;
+  oversized backups return an error so you can export fewer widgets. A failed
+  export leaves any existing destination backup intact.
 
 ### Accessibility and verification
 

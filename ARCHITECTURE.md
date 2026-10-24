@@ -22,7 +22,7 @@ Source files below live in `Sources/App/`.
 | Desktop collages | `DesktopCollage.swift`, `CollageManagement.swift`, `CollageDesktopWindow.swift` and `CollageResize.swift` own grouped photo windows, membership, geometry and scale. `CollageSettingsView.swift` and `CollageAppearancePreview.swift` own drafts and Apply/Discard. `CollageLabels.swift`, `CollageLabelWindow.swift`, `CollageLabelControls.swift`, `CollageLabelWizard.swift` and `CollageFontLibrary.swift` own text, placement and local fonts. |
 | Linked sources | `LiveFolderSpace.swift` and `PhotosLibraryCollection.swift` reconcile bounded managed snapshots. `PhotosLibraryModels.swift` retains compatible metadata and snapshot policy independently of PhotoKit acquisition and observers. |
 | Placement and runtime | `WidgetSelection.swift`, `WidgetInteraction.swift`, `SnapEngine.swift`, `SnapGuideOverlay.swift` and `DisplayManager.swift` own selection, layout and display placement. `RuntimeActivity.swift`, `WindowCoverage.swift` and `PresenceManager.swift` own energy, occlusion and presence policy. |
-| Archives and removal | `LayoutArchive.swift`, `LayoutArchiveImportFlow.swift`, `ArchiveMedia.swift` and `BackupFormat.swift` own manifests, integrity, staging and portable import/export. `RemovalConfirmation.swift` owns removal confirmation. |
+| Archives and removal | `LayoutArchive.swift`, `LayoutArchiveImportFlow.swift`, `ArchiveMedia.swift`, `ArchiveZip.swift` and `BackupFormat.swift` own manifests, integrity, staging and portable import/export. `RemovalConfirmation.swift` owns removal confirmation. |
 | Settings and commands | `MainWindowView.swift`, `ContentView.swift`, `PhotoRowView.swift`, `PhotoToolsView.swift`, `FrameInspector.swift`, `PreferencesView.swift` and `PrivacyView.swift` compose views. `HotKeyManager.swift`, `ArrasIntents.swift` and `MenuBarCustomization.swift` expose external commands. |
 | Updates | `Updater.swift` owns checks, notifications, download validation, installation and rollback. `UpdateStatusView.swift` presents live status. |
 | Telemetry | `TelemetryRuntime.swift` copies only broad type counts after durable saves. `Telemetry.swift` owns actor-isolated identity, queue and transport. The API/storage live in the website repository; [the telemetry reference](SECURITY.md#telemetry-protocol-and-activation) owns their protocol. |
@@ -329,6 +329,17 @@ conferencing/fullscreen detection remains a separate heuristic.
   require hardware measurement and visual review.
 
 ## Import, archive and UI boundaries
+
+- UI backup export captures model, preferences and display geometry on the main
+  actor, then hashes and streams managed files on a cancellable worker. ZIP32
+  arithmetic is checked before writes; same-volume replacement preserves an
+  existing backup on failure. Trailing data descriptors retain compatibility with
+  2.5's central-directory reader. Import reads a bounded directory and one payload
+  at a time through a retained file handle, so truncation fails without mapping a
+  mutable source. Media files are capped at 512 MiB, total ZIP/staging bytes at
+  UInt32.max, manifests/directories at 16 MiB and fonts at 20 MB. Preflight I/O and
+  decoding run in a worker; display adaptation and the durable model commit stay
+  on the manager's actor. Finder-opened archives retain sequential confirmations.
 
 - Prepare media off the main actor, then validate/stage all resources before one
   durable merge/replace. Reject malformed, empty or unsavable replacement input

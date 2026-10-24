@@ -146,9 +146,26 @@ enum LayoutArchiveImportFlow {
         onMenuUpdate: (() -> Void)? = nil,
         onPreferencesApplied: (() -> Void)? = nil
     ) {
+        // Finder can open several archives at once. Retain the original sequential
+        // confirmation flow while each archive's file processing runs in a worker.
+        pending.append {
+            await presentPrepared(url: url, manager: manager, applySettings: applySettings,
+                                  onMenuUpdate: onMenuUpdate, onPreferencesApplied: onPreferencesApplied)
+        }
+        guard presenter == nil else { return }
+        presenter = Task {
+            while !pending.isEmpty { await pending.removeFirst()() }
+            presenter = nil
+        }
+    }
+
+    private static func presentPrepared(url: URL, manager: PhotoManager, applySettings: Bool,
+                                        onMenuUpdate: (() -> Void)?, onPreferencesApplied: (() -> Void)?) async {
+        manager.beginMediaImport()
+        defer { manager.endMediaImport() }
         let preflight: LayoutImportPreflight
         do {
-            preflight = try manager.preflightImportLayout(from: url)
+            preflight = try await manager.preflightImportLayoutInBackground(from: url)
         } catch {
             presentAlert(
                 title: "Couldn't Import Backup",
@@ -243,6 +260,9 @@ enum LayoutArchiveImportFlow {
             )
         }
     }
+
+    private static var pending: [@MainActor () async -> Void] = []
+    private static var presenter: Task<Void, Never>?
 
     private static func presentAlert(title: String, message: String, style: NSAlert.Style) {
         AppDialog.inform(title: title, message: message, style: style)

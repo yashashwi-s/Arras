@@ -13,6 +13,9 @@
 - Add a separate sandboxed `ArrasAppStore` target alongside the free direct
   `Arras` target, sharing the widget/collage implementation and keeping build
   identities, entitlements, test hosts and output directories separate.
+- Prepare backups in the background, stream exported media, and bound imported
+  payloads and ZIP32 sizes. Reject unsupported sizes without trapping, and retain
+  the previous destination when a file changes or export fails.
 - Merge explicit existing-library import with validation and rollback,
   security-scoped media reads and native screen-region capture from the
   verified sandbox work. Store updates open the Mac App Store; telemetry,
