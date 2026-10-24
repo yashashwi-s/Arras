@@ -299,6 +299,10 @@ conferencing/fullscreen detection remains a separate heuristic.
   Known caption and alignment panels are excluded from covering-window
   candidates, including brief ordered-out metadata lag, because their transparent
   canvases span the media they annotate.
+  Display-sized Dock-level surfaces are also excluded only after their owner PID
+  matches the running `com.apple.dock` application and their bounds span a Quartz
+  display rectangle. Ordinary app panels, unknown owners and the actual Dock strip
+  remain covering candidates; AppKit's full-occlusion signal remains independent.
   Other overlapping windows continue to pause decorative playback.
 - Hidden/presence-suppressed widgets release windows and rotation timers. Fullscreen
   exit restoration waits for a stable observation; its transition guard is separate
