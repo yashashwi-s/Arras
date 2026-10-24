@@ -1141,13 +1141,17 @@ class PhotoManager: ObservableObject {
         windows[id]?.setRevealOnHover(enabled)
     }
 
-    func setOpacity(_ id: UUID, _ value: CGFloat) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func setOpacity(_ id: UUID, _ value: CGFloat) -> Bool {
+        guard let index = photos.firstIndex(where: { $0.id == id }), value.isFinite else { return false }
         let before = photos[index].opacity
-        photos[index].opacity = max(0.1, min(1.0, value))
-        guard persist() else { photos[index].opacity = before; return }
+        let requested = max(0.1, min(1.0, value))
+        guard before != requested else { return true }
+        photos[index].opacity = requested
+        guard persist() else { photos[index].opacity = before; return false }
         windows[id]?.setPhotoOpacity(photos[index].opacity)
         updateCollageLabels(id)
+        return true
     }
 
     func toggleLock(_ id: UUID) {
@@ -1171,16 +1175,18 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    func toggleVisibility(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        setVisibility([id], to: !photos[index].isVisible)
+    @discardableResult
+    func toggleVisibility(_ id: UUID) -> Bool {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return false }
+        return setVisibility([id], to: !photos[index].isVisible)
     }
 
     /// Global visibility commits once so a partial save cannot split a collage
     /// or make Shortcuts report the requested state instead of the actual state.
-    private func setVisibility(_ ids: Set<UUID>, to visible: Bool) {
+    @discardableResult
+    private func setVisibility(_ ids: Set<UUID>, to visible: Bool) -> Bool {
         let changedIDs = Set(photos.filter { ids.contains($0.id) && $0.isVisible != visible }.map(\.id))
-        guard !changedIDs.isEmpty else { return }
+        guard !changedIDs.isEmpty else { return true }
         cancelCollageInteractions()
         let before = photos
         var parents = Set<UUID>()
@@ -1197,7 +1203,7 @@ class PhotoManager: ObservableObject {
         for parent in parents { fitCollageModel(parent) }
         // Commit visibility and fitted bounds before closing or rebuilding any
         // windows. A failed write must leave the displayed composition intact.
-        guard persist() else { photos = before; return }
+        guard persist() else { photos = before; return false }
 
         // Create parents first so members inherit the collage's placement as
         // they appear. Creating a parent may already restore its members.
@@ -1222,6 +1228,7 @@ class PhotoManager: ObservableObject {
         }
         for parent in parents { fitCollageWindow(parent) }
         syncCollages()
+        return true
     }
 
     // MARK: - Widget click action
@@ -1765,14 +1772,15 @@ class PhotoManager: ObservableObject {
 
     // MARK: - Smart Canvas
 
-    func nextFolderImage(_ id: UUID) {
+    @discardableResult
+    func nextFolderImage(_ id: UUID) -> Bool {
         guard let index = photos.firstIndex(where: { $0.id == id }),
               photos[index].isVisible,
-              let images = spaceImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return false }
 
         let item = photos[index]
 
-        if replacementConflictsWithArrangement(item) { return }
+        if replacementConflictsWithArrangement(item) { return false }
 
         let selection = SpacePlaybackSelector.nextSelection(
             filenames: item.spaceImageFilenames,
@@ -1782,7 +1790,7 @@ class PhotoManager: ObservableObject {
             step: item.playbackStep,
             history: item.playbackHistory
         )
-        guard let selection else { return }
+        guard let selection else { return false }
 
         if item.folderSizeMode == "dynamic" { saveFolderImageConfig(for: id) }
         photos[index].folderImageIndex = selection.index
@@ -1794,20 +1802,22 @@ class PhotoManager: ObservableObject {
         guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
             photos[index] = item
             recordMediaImportFailure("The next slideshow image could not be decoded. The current image has been kept.")
-            return
+            return false
         }
-        guard persist() else { photos[index] = item; return }
+        guard persist() else { photos[index] = item; return false }
         let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
         windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
+        return true
     }
 
-    func prevFolderImage(_ id: UUID) {
+    @discardableResult
+    func prevFolderImage(_ id: UUID) -> Bool {
         guard let index = photos.firstIndex(where: { $0.id == id }),
-              let images = spaceImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return false }
 
         let item = photos[index]
 
-        if replacementConflictsWithArrangement(item) { return }
+        if replacementConflictsWithArrangement(item) { return false }
 
         if item.folderSizeMode == "dynamic" {
             saveFolderImageConfig(for: id)
@@ -1834,11 +1844,12 @@ class PhotoManager: ObservableObject {
         guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
             photos[index] = item
             recordMediaImportFailure("The previous slideshow image could not be decoded. The current image has been kept.")
-            return
+            return false
         }
-        guard persist() else { photos[index] = item; return }
+        guard persist() else { photos[index] = item; return false }
         let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
         windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
+        return true
     }
 
     func setPlaybackOrder(_ id: UUID, _ order: SpacePlaybackOrder) {

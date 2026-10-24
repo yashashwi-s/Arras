@@ -220,6 +220,8 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   show/hide shortcut are available. The shortcut does not require Accessibility.
 - Seven App Intents add a photo, toggle global visibility, show or hide a named
   widget, change named-widget opacity, and navigate a named Space.
+  **In development:** failed imports, writes and slideshow advances return errors
+  to Shortcuts. Already-satisfied visibility and opacity requests still succeed.
 
 ### Updates
 
