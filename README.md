@@ -16,12 +16,17 @@ arrange a desktop that feels like yours.
 
 ## Distribution
 
-The free direct download below remains available. This repository also contains
-a sandboxed **ArrasAppStore** target for a planned $4.99 Mac App Store edition.
-It is not yet available on the App Store. Its signed 2.5.0 beta was installed
-through TestFlight and is **Waiting for Review**, with manual release selected. Both targets
-share the widget and collage code; Store updates come through Apple and that
-build excludes app telemetry. See [build guidance](CONTRIBUTING.md#app-store-target).
+[Arras Widgets is available on the Mac App Store](https://apps.apple.com/app/id6824271927)
+as a one-time US$4.99 purchase. Local prices may vary. Buying it supports independent
+development of Arras. Apple manages installation and updates; this sandboxed edition
+sends no Arras usage statistics. The listing supports Family Sharing for up to six
+family members when enabled.
+
+The free, MIT-licensed direct download remains available below. Both editions share
+the core photo widgets, editable collages and slideshows. The Store edition keeps a
+separate local library; import an existing library explicitly in Preferences and
+keep a backup before switching. [Support and edition details](https://tryarras.tech/support).
+See [build guidance](CONTRIBUTING.md#app-store-target) for the separate targets.
 
 ## Download Arras 2.5.0
 

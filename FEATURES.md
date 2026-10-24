@@ -1,16 +1,18 @@
 # Arras feature guide
 
-## App Store target — waiting for review
+## Arras Widgets on the Mac App Store
 
-The shared source also builds a sandboxed Mac App Store edition, planned at $4.99.
-The free direct download remains available and primary on the website. The Store
-edition uses Apple's updates, container-local storage, explicit existing-library
-import and native region capture; it excludes app telemetry and the direct updater.
-Its separate target, identity and output directory prevent mixing distribution
-packages. Version 2.5.0 was installed through TestFlight and submitted to App Review
-on 19 October 2026 with manual release selected. No App Store badge or availability
-claim should appear until the listing is live. The released 2.5.0 behavior below
-continues to describe the direct-download edition unless stated otherwise.
+[Arras Widgets is publicly available](https://apps.apple.com/app/id6824271927)
+for a one-time US$4.99 purchase; local prices may vary. Buying it supports independent
+development. The free, open-source direct download remains available.
+
+The Store edition uses Apple's updates, container-local storage, explicit
+existing-library import and native region capture; it excludes Arras usage
+statistics and the direct updater. Its separate target, identity and output
+directory prevent mixing distribution packages. The listing supports Family Sharing
+for up to six family members when enabled. See [support and edition details](https://tryarras.tech/support).
+The released 2.5.0 behavior below continues to describe the direct-download edition
+unless stated otherwise.
 
 [View the Store update preferences](assets/app-store-preferences.png) — a native
 render from the sandbox target, with updates managed by Apple.
