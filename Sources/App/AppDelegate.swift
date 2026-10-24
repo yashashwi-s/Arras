@@ -12,11 +12,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     let settingsNavigation = SettingsNavigation()
     var collageEditor: CollageEditorWindowController?
     let manager: PhotoManager
+    private let onboardingProgress: OnboardingProgress
+    private(set) var onboardingController: OnboardingController?
 
     override convenience init() { self.init(manager: PhotoManager()) }
 
-    init(manager: PhotoManager) {
+    init(manager: PhotoManager, onboardingDefaults: UserDefaults? = nil) {
         self.manager = manager
+        let defaults = onboardingDefaults ?? ProcessInfo.processInfo.environment["ARRAS_UI_TEST_STORAGE_DIR"].flatMap {
+            UserDefaults(suiteName: "arras.onboarding-tests." + URL(fileURLWithPath: $0).lastPathComponent)
+        } ?? .standard
+        onboardingProgress = OnboardingProgress(defaults: defaults)
         super.init()
     }
 
@@ -75,28 +81,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
         #if ARRAS_APP_STORE
         if isUITesting {
-            showSettingsWindow()
-            presentUITestPreflightIfRequested()
-        } else if manager.photos.isEmpty {
-            showSettingsWindow()
+            if ProcessInfo.processInfo.arguments.contains("--show-onboarding") {
+                showInitialContent()
+            } else {
+                showSettingsWindow()
+                presentUITestPreflightIfRequested()
+            }
+        } else {
+            showInitialContent()
         }
         #else
         // Show settings after an update attempt, so success or rollback is visible rather
         // than the app appearing to have closed and reopened for no reason.
         if isUITesting {
-            showSettingsWindow()
-            presentUITestPreflightIfRequested()
+            if ProcessInfo.processInfo.arguments.contains("--show-onboarding") {
+                showInitialContent()
+            } else {
+                showSettingsWindow()
+                presentUITestPreflightIfRequested()
+            }
         } else if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
             // The swap helper is launched before this process exits, so a failed helper can
             // leave the breadcrumb behind while the old bundle is opened again. Consume it in
             // both cases and let Updater distinguish a real install from a rollback.
             UserDefaults.standard.removeObject(forKey: Updater.justUpdatedKey)
             UserDefaults.standard.removeObject(forKey: Updater.updateHealthMarkerKey)
+            onboardingProgress.complete()
             showUpdateSettings()
             Updater.shared.announceInstallResult(expectedVersion: installed)
-        } else if manager.photos.isEmpty {
-            // First launch — there is nothing on the desktop yet to explain the app.
-            showSettingsWindow()
+        } else {
+            showInitialContent()
         }
 
         // Polls the appcast on launch and at the configured cadence. Notification
@@ -149,6 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let archives = urls.filter(BackupFormat.isArchiveURL)
         guard !archives.isEmpty else { return }
 
+        onboardingController?.window?.close()
         showSettingsWindow()
         for archive in archives {
             LayoutArchiveImportFlow.present(
@@ -656,6 +671,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         optionsRoot.submenu = optionsMenu
         menu.addItem(optionsRoot)
 
+        let tourItem = NSMenuItem(title: "Welcome to Arras…", action: #selector(showOnboarding), keyEquivalent: "")
+        tourItem.target = self
+        optionsMenu.addItem(tourItem)
+        optionsMenu.addItem(.separator())
+
         // Launch at Login
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
         loginItem.target = self
@@ -726,6 +746,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         showSettingsWindow()
     }
 
+    // MARK: - Welcome
+
+    func showInitialContent() {
+        if onboardingProgress.shouldPresent(hasLibrary: !manager.photos.isEmpty,
+                                            needsRecovery: manager.libraryRecoveryRequired) {
+            showOnboarding()
+        } else if manager.photos.isEmpty {
+            showSettingsWindow()
+        }
+    }
+
+    @objc func showOnboarding() {
+        if let onboardingController {
+            onboardingController.show()
+            return
+        }
+        let controller = OnboardingController(progress: onboardingProgress, manager: manager) { [weak self] in
+            self?.onboardingController = nil
+            self?.settingsNavigation.selection = .photos
+            self?.syncStatusItemVisibility()
+            self?.showSettingsWindow()
+        }
+        onboardingController = controller
+        controller.show()
+    }
+
     // MARK: - Settings Window
 
     @objc func showSettingsFromMenu() {
@@ -773,6 +819,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     }
 
     func showSettingsWindow() {
+        if let welcome = onboardingController?.window {
+            // An explicit Settings command leaves the tour, rather than stacking
+            // another window in front of a first-run introduction.
+            welcome.close()
+            return
+        }
         if let window = settingsWindow {
             Self.configureSettingsWindow(window)
             manager.setSettingsWindowActive(true)
@@ -973,15 +1025,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        do {
-            let report = try manager.exportWidget(
-                item.id,
-                to: url,
-                archivalQuality: UserDefaults.standard.bool(forKey: "backup.archivalQuality")
-            )
-            LayoutArchiveExportFlow.present(report, title: "Widget Export Complete")
-        } catch {
-            LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Widget")
+        let quality = UserDefaults.standard.bool(forKey: "backup.archivalQuality")
+        Task { @MainActor in
+            do {
+                let report = try await manager.exportWidgetInBackground(item.id, to: url, archivalQuality: quality)
+                LayoutArchiveExportFlow.present(report, title: "Widget Export Complete")
+            } catch {
+                LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Widget")
+            }
         }
     }
 

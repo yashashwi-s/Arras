@@ -134,7 +134,7 @@ class PhotoManager: ObservableObject {
     private let presence = PresenceMonitor()
     private let runtimeActivity = RuntimeActivityCenter.shared
     private let storageDirectoryOverride: URL?
-    private var storeLoadBlocked = false
+    @Published private(set) var libraryRecoveryRequired = false
     private var didPreserveCorruptStore = false
     private static let maxCorruptStoreCopies = 5
 
@@ -270,10 +270,10 @@ class PhotoManager: ObservableObject {
                 guard Set(items.map(\.id)).count == items.count else {
                     throw NSError(domain: "ArrasPersistence", code: 1, userInfo: [NSLocalizedDescriptionKey: "Duplicate widget IDs in the saved layout."])
                 }
-                storeLoadBlocked = false
+                libraryRecoveryRequired = false
                 installLoadedItems(items)
             } catch {
-                storeLoadBlocked = true
+                libraryRecoveryRequired = true
                 let preserved = preserveCorruptStore(data: data)
                 var detail = "The existing photos.json could not be decoded: \(error.localizedDescription)."
                 if let preserved {
@@ -282,7 +282,7 @@ class PhotoManager: ObservableObject {
                 logPersistenceFailure(detail)
             }
         } catch {
-            storeLoadBlocked = true
+            libraryRecoveryRequired = true
             let preserved = preserveCorruptStore()
             var detail = "The existing photos.json could not be read: \(error.localizedDescription)."
             if let preserved {
@@ -465,6 +465,11 @@ class PhotoManager: ObservableObject {
     /// file and a lost-update waiting to happen.
     @discardableResult
     func persist() -> Bool {
+        persist(recoveringDamagedLibrary: false)
+    }
+
+    /// Only the explicitly confirmed backup-recovery path may replace an unreadable store.
+    private func persist(recoveringDamagedLibrary: Bool) -> Bool {
         if persistenceSuppressed { return true }
         guard Set(photos.map(\.id)).count == photos.count else {
             logPersistenceFailure("The current layout contains duplicate widget IDs; it was not saved.")
@@ -480,9 +485,9 @@ class PhotoManager: ObservableObject {
             return false
         }
 
-        // A corrupt existing store must stay available for diagnosis. Refusing another write
-        // until the file is repaired externally prevents a later edit from erasing the evidence.
-        if storeLoadBlocked {
+        // Ordinary edits cannot erase an unreadable store. Explicit backup recovery
+        // preserves its latest bytes before the atomic replacement below.
+        if libraryRecoveryRequired && !recoveringDamagedLibrary {
             logPersistenceFailure("The existing photos.json was not overwritten because it is unreadable.")
             return false
         }
@@ -494,7 +499,7 @@ class PhotoManager: ObservableObject {
             do {
                 current = try Data(contentsOf: dataFile)
             } catch {
-                storeLoadBlocked = true
+                libraryRecoveryRequired = true
                 let preserved = preserveCorruptStore()
                 var detail = "The existing photos.json could not be read before saving: \(error.localizedDescription)."
                 if let preserved { detail += " A copy was preserved at \(preserved.path)." }
@@ -505,9 +510,23 @@ class PhotoManager: ObservableObject {
             // Validate the previous bytes before replacing them. If another process or a manual
             // edit damaged the file, preserve it and refuse to overwrite it.
             do {
-                _ = try JSONDecoder().decode([PhotoItem].self, from: current)
+                if recoveringDamagedLibrary {
+                    if let repaired = try? JSONDecoder().decode([PhotoItem].self, from: current),
+                       Set(repaired.map(\.id)).count == repaired.count {
+                        logPersistenceFailure("The library was repaired after recovery began. Reopen Arras before replacing it.")
+                        return false
+                    }
+                    // Preserve the bytes present at commit time, even if another process
+                    // changed the damaged file after startup or archive preflight.
+                    guard preserveCorruptStore(data: current, force: true) != nil else {
+                        logPersistenceFailure("The damaged library could not be preserved; recovery was not applied.")
+                        return false
+                    }
+                } else {
+                    _ = try JSONDecoder().decode([PhotoItem].self, from: current)
+                }
             } catch {
-                storeLoadBlocked = true
+                libraryRecoveryRequired = true
                 let preserved = preserveCorruptStore(data: current)
                 var detail = "The existing photos.json could not be decoded before saving: \(error.localizedDescription)."
                 if let preserved { detail += " A copy was preserved at \(preserved.path)." }
@@ -519,6 +538,7 @@ class PhotoManager: ObservableObject {
         do {
             try fileManager.createDirectory(at: storageDir, withIntermediateDirectories: true)
             try data.write(to: dataFile, options: .atomic)
+            libraryRecoveryRequired = false
 #if !ARRAS_APP_STORE
             if let onTelemetryFactsChanged {
                 let facts = telemetryFacts
@@ -543,8 +563,8 @@ class PhotoManager: ObservableObject {
 
     /// Keeps the damaged bytes under a unique name. Copying the original file is preferred so
     /// even a decode/read failure that is not representable as `Data` can be diagnosed later.
-    private func preserveCorruptStore(data: Data? = nil) -> URL? {
-        if didPreserveCorruptStore {
+    private func preserveCorruptStore(data: Data? = nil, force: Bool = false) -> URL? {
+        if didPreserveCorruptStore && !force {
             return (try? FileManager.default.contentsOfDirectory(at: corruptStoreDirectory, includingPropertiesForKeys: nil))?
                 .filter { $0.pathExtension == "json" }
                 .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -912,14 +932,16 @@ class PhotoManager: ObservableObject {
     /// additive imports leave existing windows and interactions intact. A failed save restores
     /// the in-memory layout without touching any windows.
     @discardableResult
-    func commitImportedItems(_ importedItems: [PhotoItem], replacing: Bool) -> Bool {
+    func commitImportedItems(_ importedItems: [PhotoItem], replacing: Bool,
+                             recoveringDamagedLibrary: Bool = false) -> Bool {
         guard !importedItems.isEmpty else { return false }
+        guard !recoveringDamagedLibrary || (replacing && libraryRecoveryRequired) else { return false }
 
         let previousPhotos = photos
         let committedPhotos = replacing ? importedItems : previousPhotos + importedItems
         photos = committedPhotos
 
-        guard persist() else {
+        guard persist(recoveringDamagedLibrary: recoveringDamagedLibrary) else {
             photos = previousPhotos
             return false
         }
@@ -929,7 +951,11 @@ class PhotoManager: ObservableObject {
 
         // A replacement may orphan the previous library's media. Do this last: until the model
         // commit succeeds, the old JSON is still the source of truth and must remain loadable.
-        removeStoredFilesNoLongerReferenced(from: previousPhotos, after: committedPhotos)
+        // A damaged library's retained copy can still be repaired manually. Keep
+        // its media too, including files known to a model loaded before corruption.
+        if !recoveringDamagedLibrary {
+            removeStoredFilesNoLongerReferenced(from: previousPhotos, after: committedPhotos)
+        }
         return true
     }
 
@@ -1115,13 +1141,17 @@ class PhotoManager: ObservableObject {
         windows[id]?.setRevealOnHover(enabled)
     }
 
-    func setOpacity(_ id: UUID, _ value: CGFloat) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func setOpacity(_ id: UUID, _ value: CGFloat) -> Bool {
+        guard let index = photos.firstIndex(where: { $0.id == id }), value.isFinite else { return false }
         let before = photos[index].opacity
-        photos[index].opacity = max(0.1, min(1.0, value))
-        guard persist() else { photos[index].opacity = before; return }
+        let requested = max(0.1, min(1.0, value))
+        guard before != requested else { return true }
+        photos[index].opacity = requested
+        guard persist() else { photos[index].opacity = before; return false }
         windows[id]?.setPhotoOpacity(photos[index].opacity)
         updateCollageLabels(id)
+        return true
     }
 
     func toggleLock(_ id: UUID) {
@@ -1145,16 +1175,18 @@ class PhotoManager: ObservableObject {
         }
     }
 
-    func toggleVisibility(_ id: UUID) {
-        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        setVisibility([id], to: !photos[index].isVisible)
+    @discardableResult
+    func toggleVisibility(_ id: UUID) -> Bool {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return false }
+        return setVisibility([id], to: !photos[index].isVisible)
     }
 
     /// Global visibility commits once so a partial save cannot split a collage
     /// or make Shortcuts report the requested state instead of the actual state.
-    private func setVisibility(_ ids: Set<UUID>, to visible: Bool) {
+    @discardableResult
+    private func setVisibility(_ ids: Set<UUID>, to visible: Bool) -> Bool {
         let changedIDs = Set(photos.filter { ids.contains($0.id) && $0.isVisible != visible }.map(\.id))
-        guard !changedIDs.isEmpty else { return }
+        guard !changedIDs.isEmpty else { return true }
         cancelCollageInteractions()
         let before = photos
         var parents = Set<UUID>()
@@ -1171,7 +1203,7 @@ class PhotoManager: ObservableObject {
         for parent in parents { fitCollageModel(parent) }
         // Commit visibility and fitted bounds before closing or rebuilding any
         // windows. A failed write must leave the displayed composition intact.
-        guard persist() else { photos = before; return }
+        guard persist() else { photos = before; return false }
 
         // Create parents first so members inherit the collage's placement as
         // they appear. Creating a parent may already restore its members.
@@ -1196,6 +1228,7 @@ class PhotoManager: ObservableObject {
         }
         for parent in parents { fitCollageWindow(parent) }
         syncCollages()
+        return true
     }
 
     // MARK: - Widget click action
@@ -1739,14 +1772,15 @@ class PhotoManager: ObservableObject {
 
     // MARK: - Smart Canvas
 
-    func nextFolderImage(_ id: UUID) {
+    @discardableResult
+    func nextFolderImage(_ id: UUID) -> Bool {
         guard let index = photos.firstIndex(where: { $0.id == id }),
               photos[index].isVisible,
-              let images = spaceImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return false }
 
         let item = photos[index]
 
-        if replacementConflictsWithArrangement(item) { return }
+        if replacementConflictsWithArrangement(item) { return false }
 
         let selection = SpacePlaybackSelector.nextSelection(
             filenames: item.spaceImageFilenames,
@@ -1756,7 +1790,7 @@ class PhotoManager: ObservableObject {
             step: item.playbackStep,
             history: item.playbackHistory
         )
-        guard let selection else { return }
+        guard let selection else { return false }
 
         if item.folderSizeMode == "dynamic" { saveFolderImageConfig(for: id) }
         photos[index].folderImageIndex = selection.index
@@ -1768,20 +1802,22 @@ class PhotoManager: ObservableObject {
         guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
             photos[index] = item
             recordMediaImportFailure("The next slideshow image could not be decoded. The current image has been kept.")
-            return
+            return false
         }
-        guard persist() else { photos[index] = item; return }
+        guard persist() else { photos[index] = item; return false }
         let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
         windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
+        return true
     }
 
-    func prevFolderImage(_ id: UUID) {
+    @discardableResult
+    func prevFolderImage(_ id: UUID) -> Bool {
         guard let index = photos.firstIndex(where: { $0.id == id }),
-              let images = spaceImages[id], !images.isEmpty else { return }
+              let images = spaceImages[id], !images.isEmpty else { return false }
 
         let item = photos[index]
 
-        if replacementConflictsWithArrangement(item) { return }
+        if replacementConflictsWithArrangement(item) { return false }
 
         if item.folderSizeMode == "dynamic" {
             saveFolderImageConfig(for: id)
@@ -1808,11 +1844,12 @@ class PhotoManager: ObservableObject {
         guard let content = loadMediaContent(for: currentItem, filename: imageURL.lastPathComponent, primaryURL: imageURL) else {
             photos[index] = item
             recordMediaImportFailure("The previous slideshow image could not be decoded. The current image has been kept.")
-            return
+            return false
         }
-        guard persist() else { photos[index] = item; return }
+        guard persist() else { photos[index] = item; return false }
         let targetFrame = currentItem.folderImageConfigs[imageURL.lastPathComponent].map { NSRectFromString($0.frameString) }
         windows[id]?.swapImage(content, targetFrame: targetFrame, mode: currentItem.folderSizeMode, animate: true)
+        return true
     }
 
     func setPlaybackOrder(_ id: UUID, _ order: SpacePlaybackOrder) {

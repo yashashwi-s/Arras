@@ -1099,3 +1099,36 @@ checks. Existing environment-dependent unit skips remain separate from passes.
 The final scope guard was also exercised in temporary Git repositories: docs-only,
 Store source, source renamed into documentation and deleted source all selected
 the expected checks. Main's post-merge workflow verifies the combined result.
+
+
+## Onboarding integration verification — 24 October 2026
+
+`codex/onboarding-and-support` starts at the current main and retains all four
+open PR heads as merge ancestors: #7 (Dock playback), #11 (damaged-library
+recovery), #12 (Shortcuts failures) and #13 (streamed backups). The independent
+clock checkout and its uncommitted changes are preserved; clocks are not part of
+this integration. No version, tag, release asset or TestFlight upload changed.
+
+Focused native tests passed: 48 in the direct target and 47 in the Store target,
+covering onboarding lifecycle plus persistence, Shortcuts, archive ZIP handling,
+Dock coverage and starter creation. All 81 Python checks, product metadata and
+2.5.0 release-note validation passed. Two distinct new native UI checks passed in
+each target: skip/relaunch/replay with Settings reuse, and the complete preview
+flow followed by explicit sample creation and durable reload. The existing
+Settings-tab navigation check also passed in the direct target.
+
+The window captures were reviewed at the normal desktop size in dark appearance.
+The initial harness used the wrong accessibility type/value for macOS's depth
+radio group; it now uses the observed RadioGroup and numeric RadioButton value.
+A local Store unit launch initially mixed developer and ad-hoc test signatures;
+rerunning with the existing CI signing arguments succeeded. These were test
+invocation/harness repairs, not relaxed Store entitlements or skipped failures.
+Use CI's `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=''` for
+local sandbox test runs too.
+
+Scratch build/results and real native-window captures are under
+`/private/tmp/arras-onboarding-validation/`. The tour never requests access or
+creates widgets during its previews. Store UI checks verify that Support Arras
+is absent from both the final tour page and Preferences. Manual aesthetic review,
+small-window and light-appearance review remain separate from these passing
+interaction checks. The next release remains unpublished.

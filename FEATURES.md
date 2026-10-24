@@ -17,6 +17,27 @@ unless stated otherwise.
 [View the Store update preferences](assets/app-store-preferences.png) — a native
 render from the sandbox target, with updates managed by Apple.
 
+## In development: a welcome tour and optional support
+
+The next release branch adds a five-page welcome tour with bundled-photo previews
+for photo appearance, independent collage editing, stacking depth and slideshows.
+A new empty installation sees it once. Skip or close it to go straight to Settings;
+existing libraries and recovery screens are not interrupted. Replay it from
+Options → Welcome to Arras or Preferences → Take a Quick Tour.
+
+Preview controls change only the illustration. **Try a sample collage** explicitly
+adds the ordinary editable starter; no personal photos or permissions are required
+to take the tour. Setups, backup and screen-sharing limits are explained before
+finishing. Reduced Motion is respected and there are no repeating animations.
+
+The free direct edition has a quiet **Support Arras** link at the end of the tour
+and near the bottom of Preferences. It opens the optional App Store purchase,
+which supports development. The free edition retains its features and shows no
+purchase reminders. The Store target compiles without this support link.
+This behavior is not part of the published 2.5.0 packages.
+
+[View the native welcome window](assets/onboarding-unreleased.png).
+
 ## Find your next step
 
 This guide describes **Arras 2.5.0**. Start with an example or your own photos,
@@ -220,6 +241,8 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   show/hide shortcut are available. The shortcut does not require Accessibility.
 - Seven App Intents add a photo, toggle global visibility, show or hide a named
   widget, change named-widget opacity, and navigate a named Space.
+  **In development:** failed imports, writes and slideshow advances return errors
+  to Shortcuts. Already-satisfied visibility and opacity requests still succeed.
 
 ### Updates
 
@@ -286,6 +309,11 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 
 ### Persistence and portability
 
+- **In development:** unreadable libraries show a recovery explanation in Photos
+  Settings. Restore Backup validates the selected archive and asks before replacing
+  the library, preserving its damaged bytes. Ordinary edits remain blocked;
+  failed preservation or saving keeps the current library unchanged.
+
 - Widget state is atomically written to `photos.json`. Older schemas decode
   through explicit defaults. If the store cannot be decoded, Arras preserves a
   bounded diagnostic copy and blocks overwriting the unread state.
@@ -295,6 +323,11 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   before a replacement commits; damaged or unsavable input cannot erase the
   working layout. Imported widgets receive fresh identifiers and filenames, and
   machine-specific display bindings are discarded.
+- **In development:** backup file processing runs in the background. Media is
+  streamed during export and staged one file at a time during import. ZIP32
+  backups must be smaller than 4 GiB, with at most 512 MiB per media file;
+  oversized backups return an error so you can export fewer widgets. A failed
+  export leaves any existing destination backup intact.
 
 ### Accessibility and verification
 

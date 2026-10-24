@@ -2,17 +2,35 @@
 
 ## Unreleased
 
+- Introduce a skippable, replayable five-page welcome tour with local photo
+  previews, explicit sample creation and practical guidance for collages, layers,
+  slideshows, saved setups and privacy. Existing libraries are not interrupted.
+- Add an optional Support Arras purchase link to the free edition's tour and
+  Preferences. Exclude it from Store builds; keep every free feature available.
+
+- Keep visible slideshows, GIFs and videos playing when macOS reports a
+  display-sized Dock helper above them. Preserve pausing for actual app-window
+  coverage and the visible Dock strip. Fixes the playback blocker reported in #6.
+- Explain unreadable libraries in Settings and allow an explicitly confirmed
+  backup restore, preserving the latest damaged bytes before replacement.
+
 - Fit Appearance, Reference Tools and Photo Tools to the parent display, keeping
   footer actions visible and the existing controls scrollable on short displays.
 - Add a separate sandboxed `ArrasAppStore` target alongside the free direct
   `Arras` target, sharing the widget/collage implementation and keeping build
   identities, entitlements, test hosts and output directories separate.
+- Prepare backups in the background, stream exported media, and bound imported
+  payloads and ZIP32 sizes. Reject unsupported sizes without trapping, and retain
+  the previous destination when a file changes or export fails.
 - Merge explicit existing-library import with validation and rollback,
   security-scoped media reads and native screen-region capture from the
   verified sandbox work. Store updates open the Mac App Store; telemetry,
   self-installation and direct update/migration code are excluded from that target.
 - Bind build provenance to the distribution and reject cross-distribution
   packaging, Store telemetry pilots and release Debug exceptions.
+
+- Report failed imports, saves and slideshow advances to Shortcuts rather than
+  returning success. Use the shared byte importer for Add Photo.
 
 ## 2.5.0
 

@@ -22,10 +22,25 @@ Source files below live in `Sources/App/`.
 | Desktop collages | `DesktopCollage.swift`, `CollageManagement.swift`, `CollageDesktopWindow.swift` and `CollageResize.swift` own grouped photo windows, membership, geometry and scale. `CollageSettingsView.swift` and `CollageAppearancePreview.swift` own drafts and Apply/Discard. `CollageLabels.swift`, `CollageLabelWindow.swift`, `CollageLabelControls.swift`, `CollageLabelWizard.swift` and `CollageFontLibrary.swift` own text, placement and local fonts. |
 | Linked sources | `LiveFolderSpace.swift` and `PhotosLibraryCollection.swift` reconcile bounded managed snapshots. `PhotosLibraryModels.swift` retains compatible metadata and snapshot policy independently of PhotoKit acquisition and observers. |
 | Placement and runtime | `WidgetSelection.swift`, `WidgetInteraction.swift`, `SnapEngine.swift`, `SnapGuideOverlay.swift` and `DisplayManager.swift` own selection, layout and display placement. `RuntimeActivity.swift`, `WindowCoverage.swift` and `PresenceManager.swift` own energy, occlusion and presence policy. |
-| Archives and removal | `LayoutArchive.swift`, `LayoutArchiveImportFlow.swift`, `ArchiveMedia.swift` and `BackupFormat.swift` own manifests, integrity, staging and portable import/export. `RemovalConfirmation.swift` owns removal confirmation. |
+| Archives and removal | `LayoutArchive.swift`, `LayoutArchiveImportFlow.swift`, `ArchiveMedia.swift`, `ArchiveZip.swift` and `BackupFormat.swift` own manifests, integrity, staging and portable import/export. `RemovalConfirmation.swift` owns removal confirmation. |
 | Settings and commands | `MainWindowView.swift`, `ContentView.swift`, `PhotoRowView.swift`, `PhotoToolsView.swift`, `FrameInspector.swift`, `PreferencesView.swift` and `PrivacyView.swift` compose views. `HotKeyManager.swift`, `ArrasIntents.swift` and `MenuBarCustomization.swift` expose external commands. |
 | Updates | `Updater.swift` owns checks, notifications, download validation, installation and rollback. `UpdateStatusView.swift` presents live status. |
 | Telemetry | `TelemetryRuntime.swift` copies only broad type counts after durable saves. `Telemetry.swift` owns actor-isolated identity, queue and transport. The API/storage live in the website repository; [the telemetry reference](SECURITY.md#telemetry-protocol-and-activation) owns their protocol. |
+
+## Onboarding ownership
+
+`OnboardingProgress` owns an installation-local completion choice in UserDefaults.
+`AppDelegate` decides initial presentation after normal startup and owns one
+`OnboardingController`. A populated or damaged library bypasses the automatic tour;
+update-result and archive-import flows keep priority. Closing, skipping or finishing
+marks the tour complete, then reuses the existing Settings window. Explicit replay
+never resets that choice. UI tests inject their own suite through isolated storage.
+
+`OnboardingView` previews bundled sample assets without touching PhotoManager,
+requesting permissions or starting network work. Only its explicit sample action
+uses the existing transactional starter path, and failure keeps the tour open.
+`SupportArrasView` and its destination compile only in the direct target. No
+purchase state, tracking, nag scheduling or feature restrictions are introduced.
 
 ## Persistence and compatibility
 
@@ -34,6 +49,10 @@ Source files below live in `Sources/App/`.
 - `photos.json` is an atomic array of `PhotoItem`. New fields require explicit
   backwards-compatible defaults. Duplicate IDs and corrupt existing data are
   rejected before building dictionaries; failed saves preserve the last valid store.
+  An unreadable store publishes a recovery state to Settings. Only explicitly
+  confirmed backup recovery may replace it, after preserving its current bytes;
+  failed preservation or saving retains the blocked state. A store repaired by
+  another writer during recovery is not overwritten.
   Names and double-click actions roll back their model change on failure so later
   setup snapshots and live action dispatch retain the saved behavior.
 - Opacity and hover-reveal changes save before altering native appearance or
@@ -299,6 +318,10 @@ conferencing/fullscreen detection remains a separate heuristic.
   Known caption and alignment panels are excluded from covering-window
   candidates, including brief ordered-out metadata lag, because their transparent
   canvases span the media they annotate.
+  Display-sized Dock-level surfaces are also excluded only after their owner PID
+  matches the running `com.apple.dock` application and their bounds span a Quartz
+  display rectangle. Ordinary app panels, unknown owners and the actual Dock strip
+  remain covering candidates; AppKit's full-occlusion signal remains independent.
   Other overlapping windows continue to pause decorative playback.
 - Hidden/presence-suppressed widgets release windows and rotation timers. Fullscreen
   exit restoration waits for a stable observation; its transition guard is separate
@@ -321,6 +344,17 @@ conferencing/fullscreen detection remains a separate heuristic.
   require hardware measurement and visual review.
 
 ## Import, archive and UI boundaries
+
+- UI backup export captures model, preferences and display geometry on the main
+  actor, then hashes and streams managed files on a cancellable worker. ZIP32
+  arithmetic is checked before writes; same-volume replacement preserves an
+  existing backup on failure. Trailing data descriptors retain compatibility with
+  2.5's central-directory reader. Import reads a bounded directory and one payload
+  at a time through a retained file handle, so truncation fails without mapping a
+  mutable source. Media files are capped at 512 MiB, total ZIP/staging bytes at
+  UInt32.max, manifests/directories at 16 MiB and fonts at 20 MB. Preflight I/O and
+  decoding run in a worker; display adaptation and the durable model commit stay
+  on the manager's actor. Finder-opened archives retain sequential confirmations.
 
 - Prepare media off the main actor, then validate/stage all resources before one
   durable merge/replace. Reject malformed, empty or unsavable replacement input
