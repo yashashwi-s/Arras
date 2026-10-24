@@ -34,6 +34,10 @@ Source files below live in `Sources/App/`.
 - `photos.json` is an atomic array of `PhotoItem`. New fields require explicit
   backwards-compatible defaults. Duplicate IDs and corrupt existing data are
   rejected before building dictionaries; failed saves preserve the last valid store.
+  An unreadable store publishes a recovery state to Settings. Only explicitly
+  confirmed backup recovery may replace it, after preserving its current bytes;
+  failed preservation or saving retains the blocked state. A store repaired by
+  another writer during recovery is not overwritten.
   Names and double-click actions roll back their model change on failure so later
   setup snapshots and live action dispatch retain the saved behavior.
 - Opacity and hover-reveal changes save before altering native appearance or

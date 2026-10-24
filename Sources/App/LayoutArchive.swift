@@ -273,6 +273,8 @@ extension PhotoManager {
     enum LayoutImportMode {
         case replace
         case merge
+        /// Requires the recovery-specific destructive confirmation in the import flow.
+        case recoverDamagedLibrary
     }
 
     /// Writes every current widget (photos, slideshows, and desktop collages) plus its
@@ -723,7 +725,8 @@ extension PhotoManager {
                 if let parentID = item.collageParentID, !selectedItemIDs.contains(parentID) { item.collageParentID = nil }
                 return item
             }
-            guard commitImportedItems(items, replacing: mode == .replace) else {
+            guard commitImportedItems(items, replacing: mode != .merge,
+                                      recoveringDamagedLibrary: mode == .recoverDamagedLibrary) else {
                 throw LayoutArchiveError.couldNotCommit
             }
             return items.count
