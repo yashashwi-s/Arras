@@ -174,6 +174,11 @@ final class StarterExamplesTests: XCTestCase {
             XCTAssertTrue(manager.addStarterExample(.minimal, makeVisible: false))
             XCTAssertTrue(manager.addStarterExample(.galleryWall, makeVisible: false))
             attachView(ContentView(manager: manager).frame(width: 520, height: 760), name: "Photos library with collage")
+            for appearance in [ColorScheme.light, .dark] {
+                attachView(ContentView(manager: manager).frame(width: 460, height: 640).environment(\.colorScheme, appearance),
+                           name: "Release footer at minimum width - \(appearance)",
+                           appearance: NSAppearance(named: appearance == .dark ? .darkAqua : .aqua))
+            }
             if let collage = manager.photos.first(where: { $0.desktopCollage != nil }) {
                 attachView(DesktopCollageRow(item: collage, manager: manager).frame(width: 480), name: "Compact collage group")
             }
@@ -206,8 +211,9 @@ final class StarterExamplesTests: XCTestCase {
     }
 
     @MainActor
-    private func attachView<V: View>(_ view: V, name: String) {
+    private func attachView<V: View>(_ view: V, name: String, appearance: NSAppearance? = nil) {
         let host = NSHostingView(rootView: view.padding(12).background(Color(nsColor: .windowBackgroundColor)))
+        host.appearance = appearance
         host.setFrameSize(host.fittingSize)
         host.layoutSubtreeIfNeeded()
         guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {

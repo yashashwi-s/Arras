@@ -685,14 +685,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         }
         #endif
 
-        #if !ARRAS_APP_STORE
-        optionsMenu.addItem(.separator())
-        let support = NSMenuItem(title: "Support Arras…", action: #selector(supportArras), keyEquivalent: "")
-        support.target = self
-        support.identifier = NSUserInterfaceItemIdentifier("support-arras")
-        optionsMenu.addItem(support)
-        #endif
-
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit \(Constants.appName)", action: #selector(quitApp), keyEquivalent: "q")
@@ -739,12 +731,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     @objc func showSettingsFromMenu() {
         showSettingsWindow()
     }
-
-    #if !ARRAS_APP_STORE
-    @objc func supportArras() {
-        NSWorkspace.shared.open(Constants.supportPurchaseURL)
-    }
-    #endif
 
     @objc func starOnGitHub() {
         NSWorkspace.shared.open(Constants.repositoryURL)

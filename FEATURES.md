@@ -19,11 +19,12 @@ render from the sandbox target, with updates managed by Apple.
 
 ## Support independent development
 
-The free edition has an optional **Support Arras** link in Preferences and
-Options. It opens the App Store edition's purchase page; the free edition keeps
-all its features and shows no purchase reminders. Store purchasers see a
-personal thank-you in Preferences instead. Neither edition adds an onboarding
-tour in 2.5.1.
+The free edition's Photos footer groups **Update**, **Star** and **Support**.
+Support opens the App Store edition's purchase page; the free edition keeps all
+its features and shows no purchase reminders. Store purchasers see only Star
+and a warm gold **Made possible by you** thank-you badge beside the version.
+Its help and accessible label include the developer's personal thanks; Store
+updates remain in Preferences. Neither edition adds an onboarding tour in 2.5.1.
 
 ## Find your next step
 

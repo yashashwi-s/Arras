@@ -35,34 +35,6 @@ struct PreferencesView: View {
     @AppStorage("backup.archivalQuality") private var archivalQuality = false
     @AppStorage("backup.applySettingsOnImport") private var applySettingsOnImport = false
 
-    private var developmentSupport: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            #if ARRAS_APP_STORE
-            Label("Made possible by you", systemImage: "heart.fill")
-                .font(.callout.weight(.semibold)).foregroundStyle(.tint)
-                .accessibilityIdentifier("supporter-thanks")
-            Text("Thank you for supporting Arras. Your purchase helps me keep building it and sharing the free, open-source edition.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Yashashwi · Arras developer")
-                .font(.caption2).foregroundStyle(.secondary)
-            #else
-            Text("Help Arras keep growing").font(.callout.weight(.semibold))
-            Text("Arras is free and open source. Buying the App Store edition supports its development. Every feature stays available here.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Link(destination: Constants.supportPurchaseURL) {
-                Label("Support Arras", systemImage: "heart")
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-            .accessibilityIdentifier("support-arras")
-            .accessibilityHint("Opens the optional App Store purchase")
-            #endif
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14).settingsSectionSurface()
-    }
-
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -82,7 +54,6 @@ struct PreferencesView: View {
                     #endif
                     backup
                     menuBarSection
-                    developmentSupport
                     HStack {
                         Text("\(Constants.appName) \(Constants.version)").foregroundStyle(.secondary)
                         Spacer()

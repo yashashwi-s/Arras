@@ -1106,8 +1106,9 @@ the expected checks. Main's post-merge workflow verifies the combined result.
 The owner requested 2.5.1 for both distributions, including the four maintenance
 PR heads (#7, #11, #12, #13). They remain merge ancestors of the maintenance
 branch. Onboarding and the separate clock checkout are excluded. The free
-edition adds an optional Store purchase link; Store purchasers get a thank-you
-with no purchase action. No app installation or personal-library test is required.
+edition groups Update, Star and an optional Store purchase link in its Photos
+footer; Store purchasers get Star and a gold thank-you badge with no purchase
+action. No app installation or personal-library test is required.
 
 Both local focused suites ran 48 checks: 47 passed and one existing native
 WindowServer test skipped because another window covered its elevated fixture.
@@ -1119,3 +1120,12 @@ product metadata and 2.5.1 release notes passed. The first local UI attempt time
 out enabling macOS automation before app interaction; it is not a passing UI
 check. Current logs/results are under `/private/tmp/arras-251-*`; CI and signed
 package validation provide the remaining release gates.
+
+The complete CI run [41291345761](https://github.com/yashashwi-s/Arras/actions/runs/41291345761)
+passed both editions on the initial maintenance commit. The owner then requested
+Update/Star/Support in the free Photos footer and Star/a gold thank-you in the
+Store footer. The revised footer and actual-player regression passed four local
+checks per edition. Native hosted-view captures were reviewed at 460-point width
+in light and dark appearances; these are real SwiftUI renders, not physical mouse
+acceptance. This footer revision still needs its final CI run. Main merge,
+publication and Store submission are held for the owner's preview approval.

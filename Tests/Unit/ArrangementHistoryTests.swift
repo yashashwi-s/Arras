@@ -47,15 +47,6 @@ final class ArrangementHistoryTests: XCTestCase {
             let settings = try XCTUnwrap(top.firstIndex { $0.keyEquivalent == "," })
             XCTAssertLessThan(row, settings)
             XCTAssertEqual(top[settings + 1].title, "Options")
-            let options = try XCTUnwrap(top[settings + 1].submenu)
-            let support = options.items.first { $0.identifier?.rawValue == "support-arras" }
-            #if ARRAS_APP_STORE
-            XCTAssertNil(support, "Store purchasers must not receive another purchase action")
-            #else
-            XCTAssertEqual(support?.action, #selector(AppDelegate.supportArras))
-            XCTAssertTrue(support?.target as? AppDelegate === delegate)
-            XCTAssertEqual(Constants.supportPurchaseURL.absoluteString, "https://apps.apple.com/app/id6824271927")
-            #endif
             XCTAssertEqual(top.last?.title, "Quit Arras")
             XCTAssertFalse(menu.items.contains { $0.keyEquivalent == "z" }, "History commands belong inside the icon row")
         }

@@ -32,27 +32,25 @@ final class SettingsUITests: XCTestCase {
         app.launch(); app.activate()
         let window = app.windows["Arras"]
         XCTAssertTrue(window.waitForExistence(timeout: 8))
-        clickWhenHittable(window.descendants(matching: .any)["Preferences"])
-        let scroll = window.scrollViews.firstMatch
+        let star = window.links["footer-star-on-github"]
+        XCTAssertTrue(star.waitForExistence(timeout: 5))
+        XCTAssertTrue(star.isHittable)
         #if ARRAS_APP_STORE
-        let destination = window.staticTexts["supporter-thanks"]
+        let thanks = window.descendants(matching: .any)["footer-supporter-thanks"]
+        XCTAssertTrue(thanks.exists)
+        XCTAssertFalse(window.links["footer-support-arras"].exists)
+        XCTAssertFalse(window.buttons["footer-check-for-updates"].exists)
         #else
-        let destination = window.links["support-arras"]
-        #endif
-        for _ in 0..<10 {
-            if destination.exists && destination.isHittable { break }
-            scroll.scroll(byDeltaX: 0, deltaY: -220)
-        }
-        XCTAssertTrue(destination.waitForExistence(timeout: 5))
-        XCTAssertTrue(destination.isHittable, window.debugDescription)
-        #if ARRAS_APP_STORE
-        XCTAssertFalse(window.links["support-arras"].exists)
-        #else
-        XCTAssertFalse(window.staticTexts["supporter-thanks"].exists)
+        let support = window.links["footer-support-arras"]
+        XCTAssertTrue(support.exists)
+        XCTAssertTrue(support.isHittable)
+        XCTAssertLessThan(star.frame.maxX, support.frame.minX)
+        XCTAssertTrue(window.buttons["footer-check-for-updates"].exists || window.descendants(matching: .any)["footer-update-paused"].exists)
+        XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-thanks"].exists)
         #endif
         XCTAssertFalse(app.windows["Welcome to Arras"].exists)
         let screenshot = XCTAttachment(screenshot: window.screenshot())
-        screenshot.name = "Distribution support footer"
+        screenshot.name = "Distribution footer"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
