@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.5.0",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.5.0/Arras.app.zip?source=arras-updater&version=2.5.0",
-  "sha256": "92394a2da94e9058afbe74aa2b7e7b08b35fdbb3aee6acefd91e0a1f2683171a",
-  "releaseNotes": "A desktop made of your photos: Arrange photos into desktop collages, save favorite setups, and reuse a look across widgets. Reference tools and arrangement undo make it easier to experiment while keeping your original photos.",
+  "latestVersion": "2.5.1",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.5.1/Arras.app.zip?source=arras-updater&version=2.5.1",
+  "sha256": "886d30ee5f99b9ac5e38dcca675ce40711c11feeb44ee279bae24cdf5ce50d65",
+  "releaseNotes": "Keep your desktop moving: Fix visible video widgets and slideshows being paused by a macOS desktop helper, with safer backups, library recovery and clearer Shortcuts errors.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }

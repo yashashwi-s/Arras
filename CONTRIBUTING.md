@@ -1120,7 +1120,7 @@ Store checks. The direct updater check held a private request and rendered its
 idle, checking and available states without production traffic. Native renders
 were inspected at minimum width in light and dark appearance. The first local
 UI-runner attempt timed out enabling macOS automation before app interaction;
-final native UI CI is still required before merging.
+final native UI CI subsequently passed before merging.
 
 Photos keeps its original footer margins. The free footer has Update, Star and
 Support; Store has Star and a non-interactive Supported label with a red heart.
@@ -1130,10 +1130,23 @@ and the contact is yashashwisinghania@gmail.com. No telemetry protocol or
 reporting preference is changed by that link.
 
 Review copies use bundled samples and isolated temporary libraries. Installed
-apps and the personal library are not replaced. The owner authorized final
-publication on 1 November; final CI, exact-package validation and Apple processing
-remain publication gates. Packages signed from the
-superseded UI were discarded, with Apple receipts retained under
-`/private/tmp/arras-251-superseded-signing-aa35fcc`; rebuild and validate final
-release packages from the approved source. Current logs and previews use
-`/private/tmp/arras-251-*`.
+apps and the personal library are not replaced. The owner authorized publication
+on 1 November. Final [CI 41297138691](https://github.com/yashashwi-s/Arras/actions/runs/41297138691)
+passed 450 direct and 416 Store unit checks (five existing skips each), 18 direct
+and 19 Store native UI checks, both universal builds and documentation checks.
+
+[Arras 2.5.1](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.1) is tagged at
+`c3491a52970e07fd072b30368c5874b2242dfc2e`, the exact source built and tested before
+merging in #17. Both final packages passed Apple notarization, ticket, Gatekeeper
+and exact ZIP/DMG checks. GitHub's uploaded digests match the notarization receipt;
+the feed uses that published ZIP digest. The tag workflow was briefly paused for
+this authorized local-package publication and immediately restored, preventing a
+second build from replacing the verified uploads.
+
+The Store archive and exported package passed distribution/provenance validation
+and uploaded through Xcode. App Store Connect accepted 2.5.1 for review, with
+manual release selected. Apple approval and public Store availability remain
+separate from this GitHub release. Onboarding and clocks were closed as deferred,
+with their work retained. Superseded UI packages were discarded; current signing
+receipts and checks remain under `/private/tmp/arras-251-*` and the ignored local
+notarization directory.
