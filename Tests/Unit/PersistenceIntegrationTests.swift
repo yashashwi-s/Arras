@@ -469,6 +469,71 @@ final class PersistenceIntegrationTests: XCTestCase {
 
 
     @MainActor
+    func testBackupRecoveryRequiresExplicitModeAndPreservesLatestDamagedBytesAndMedia() throws {
+        try withTestLibrary { source in
+            XCTAssertTrue(source.addStarterExample(.minimal, makeVisible: false))
+            let archive = source.storageDir.appendingPathComponent("recovery.arras")
+            try source.exportLayout(to: archive)
+            try withTestLibrary { target in
+                XCTAssertTrue(target.addStarterExample(.minimal, makeVisible: false))
+                let originalMedia = target.photos.flatMap { target.storedFilenames(in: $0) }
+                let manifest = target.storageDir.appendingPathComponent("photos.json")
+                try Data("damaged at startup".utf8).write(to: manifest)
+                target.loadSaved()
+                XCTAssertTrue(target.libraryRecoveryRequired)
+                for mode in [PhotoManager.LayoutImportMode.merge, .replace] {
+                    XCTAssertThrowsError(try target.importLayout(from: archive, mode: mode))
+                    XCTAssertEqual(try Data(contentsOf: manifest), Data("damaged at startup".utf8))
+                    XCTAssertTrue(target.libraryRecoveryRequired)
+                }
+                let latest = Data("damaged again before recovery commits".utf8)
+                try latest.write(to: manifest)
+                XCTAssertGreaterThan(try target.importLayout(from: archive, mode: .recoverDamagedLibrary), 0)
+                XCTAssertFalse(target.libraryRecoveryRequired)
+                let saved = try JSONDecoder().decode([PhotoItem].self, from: Data(contentsOf: manifest))
+                XCTAssertEqual(saved.map(\.id), target.photos.map(\.id))
+                let copies = try FileManager.default.contentsOfDirectory(
+                    at: target.storageDir.appendingPathComponent("photos-corrupt"), includingPropertiesForKeys: nil)
+                XCTAssertTrue(try copies.contains { try Data(contentsOf: $0) == latest })
+                for name in originalMedia {
+                    XCTAssertTrue(FileManager.default.fileExists(atPath: target.storageDir.appendingPathComponent(name).path))
+                }
+                XCTAssertTrue(target.persist())
+            }
+        }
+    }
+
+    @MainActor
+    func testRecoveryFailurePreservesBlockedStateAndDoesNotOverwriteARepairedLibrary() throws {
+        try withTestLibrary { source in
+            XCTAssertTrue(source.addStarterExample(.minimal, makeVisible: false))
+            let archive = source.storageDir.appendingPathComponent("recovery.arras")
+            try source.exportLayout(to: archive)
+            try withTestLibrary { target in
+                let manifest = target.storageDir.appendingPathComponent("photos.json")
+                let damaged = Data("damaged".utf8)
+                try damaged.write(to: manifest)
+                target.loadSaved()
+                let copies = target.storageDir.appendingPathComponent("photos-corrupt")
+                try FileManager.default.removeItem(at: copies)
+                try Data("block preservation".utf8).write(to: copies)
+                XCTAssertThrowsError(try target.importLayout(from: archive, mode: .recoverDamagedLibrary))
+                XCTAssertEqual(try Data(contentsOf: manifest), damaged)
+                XCTAssertTrue(target.libraryRecoveryRequired)
+                XCTAssertTrue(target.photos.isEmpty)
+                try FileManager.default.removeItem(at: copies)
+                let repaired = try JSONEncoder().encode([PhotoItem]())
+                try repaired.write(to: manifest)
+                XCTAssertThrowsError(try target.importLayout(from: archive, mode: .recoverDamagedLibrary))
+                XCTAssertEqual(try Data(contentsOf: manifest), repaired)
+                XCTAssertTrue(target.libraryRecoveryRequired)
+                target.loadSaved()
+                XCTAssertFalse(target.libraryRecoveryRequired)
+            }
+        }
+    }
+
+    @MainActor
     func testCorruptStoreIsPreservedWithoutOverwritingIt() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -489,6 +554,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         let corrupted = PhotoManager(storageDirectory: directory)
         XCTAssertTrue(corrupted.photos.isEmpty)
+        XCTAssertTrue(corrupted.libraryRecoveryRequired)
 
         let corruptDirectory = directory.appendingPathComponent("photos-corrupt", isDirectory: true)
         let copies = try FileManager.default.contentsOfDirectory(

@@ -18,8 +18,10 @@ struct PrivacyView: View {
                 usageStatistics
                 HStack(spacing: 16) {
                     Link("Security & Privacy", destination: URL(string: "https://tryarras.tech/security")!)
-                    Link("Contact & Support", destination: URL(string: "mailto:yashashwi.singhania.bce23@itbhu.ac.in")!)
-                        .help("Email yashashwi.singhania.bce23@itbhu.ac.in")
+                    Link("Website", destination: Constants.websiteURL)
+                        .accessibilityIdentifier("privacy-website")
+                    Link("Contact & Support", destination: URL(string: "mailto:yashashwisinghania@gmail.com")!)
+                        .help("Email yashashwisinghania@gmail.com")
                         .accessibilityHint("Opens your email app to contact support")
                 }
                 .font(.system(size: 11))
@@ -129,6 +131,13 @@ struct PrivacyView: View {
             #if !ARRAS_APP_STORE
             Link("What is collected and how long it is kept →", destination: URL(string: "https://tryarras.tech/security")!)
                 .font(.caption)
+            Text("To use Arras without usage statistics, switch to the paid App Store edition. This link opens its purchase page; it does not change reporting in this copy.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Link("Use without usage statistics", destination: Constants.supportPurchaseURL)
+                .buttonStyle(.bordered).controlSize(.small)
+                .accessibilityIdentifier("privacy-app-store-no-statistics")
+                .accessibilityHint("Opens the paid App Store edition, which does not send Arras usage statistics")
             #endif
             caption("Preferences can read the public GitHub star count. This request contains no photo library or installation ID.")
         }

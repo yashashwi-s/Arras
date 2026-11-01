@@ -5,18 +5,35 @@ struct CoverageWindow {
     let bounds: CGRect
     let layer: Int
     let alpha: Double
+    var ownerPID: pid_t? = nil
 }
 
-/// WindowServer lists windows front to back. Geometry is sufficient for this energy policy;
+/// WindowServer lists windows front to back. Only geometry and process identity are used;
 /// no window titles, screenshots, Accessibility access, or pixel contents are read.
 enum WindowCoveragePolicy {
-    static func isCovered(windowID: Int, contentBounds: CGRect, windows: [CoverageWindow]) -> Bool {
+    static func isCovered(
+        windowID: Int,
+        contentBounds: CGRect,
+        windows: [CoverageWindow],
+        dockPIDs: Set<pid_t> = [],
+        displayBounds: [CGRect] = []
+    ) -> Bool {
         guard !contentBounds.isEmpty,
               let target = windows.firstIndex(where: { $0.id == windowID }) else { return false }
         return windows[..<target].contains { candidate in
             // Desktop backgrounds/icon surfaces are not app content. Ignore invisible helper
             // windows, and mere edge contact, but pause for any actual app-window overlap.
             guard candidate.layer >= 0, candidate.alpha > 0.05 else { return false }
+            // macOS can report an opaque, display-sized Dock helper above every widget even
+            // when the desktop is visible. Exclude only that shell surface, not app panels
+            // at the same level or the actual Dock strip. AppKit's occlusion signal still
+            // pauses playback when the system genuinely hides the widget.
+            if let ownerPID = candidate.ownerPID,
+               dockPIDs.contains(ownerPID),
+               candidate.layer == Int(CGWindowLevelForKey(.dockWindow)),
+               displayBounds.contains(where: { !$0.isEmpty && candidate.bounds.contains($0) }) {
+                return false
+            }
             let overlap = contentBounds.intersection(candidate.bounds)
             return !overlap.isNull && overlap.width > 0 && overlap.height > 0
         }
@@ -81,6 +98,17 @@ final class WindowCoverageMonitor {
         let chromeIDs = Set(NSApp.windows.filter {
             $0 is CollageLabelWindow || $0 is SnapGuideOverlay
         }.map(\.windowNumber))
+        let dockPIDs = Set(NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.dock"
+        ).map(\.processIdentifier))
+        // Use Quartz display coordinates, matching kCGWindowBounds on Retina and on displays
+        // above or left of the primary display. AppKit's screen rectangles have a flipped Y.
+        let displayBounds = NSScreen.screens.compactMap { screen -> CGRect? in
+            guard let number = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")
+            ] as? NSNumber else { return nil }
+            return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+        }
         let snapshot = info.compactMap { entry -> CoverageWindow? in
             guard let id = entry[kCGWindowNumber as String] as? Int,
                   !chromeIDs.contains(id),
@@ -88,7 +116,8 @@ final class WindowCoverageMonitor {
                   let rect = CGRect(dictionaryRepresentation: bounds),
                   let layer = entry[kCGWindowLayer as String] as? Int else { return nil }
             return CoverageWindow(id: id, bounds: rect, layer: layer,
-                                  alpha: entry[kCGWindowAlpha as String] as? Double ?? 1)
+                                  alpha: entry[kCGWindowAlpha as String] as? Double ?? 1,
+                                  ownerPID: entry[kCGWindowOwnerPID as String] as? pid_t)
         }
         for window in targets {
             guard let record = snapshot.first(where: { $0.id == window.windowNumber }) else {
@@ -99,7 +128,8 @@ final class WindowCoverageMonitor {
                 photo: window.visualFrame, appKitWindow: window.frame, serverWindow: record.bounds
             )
             window.setCoveredByApp(WindowCoveragePolicy.isCovered(
-                windowID: window.windowNumber, contentBounds: bounds, windows: snapshot
+                windowID: window.windowNumber, contentBounds: bounds, windows: snapshot,
+                dockPIDs: dockPIDs, displayBounds: displayBounds
             ))
         }
     }

@@ -57,6 +57,30 @@ struct ArchiveMediaRecord: Codable, Equatable, Sendable {
         self.fidelity = fidelity
     }
 
+    /// Hash managed files in bounded chunks; exports never need a payload-sized Data buffer.
+    init(filename: String, url: URL, fidelity: ArchiveMediaFidelity) throws {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true,
+              let size = values.fileSize, size >= 0, UInt64(size) <= ArchiveResourceLimits.entryBytes else {
+            throw ArchiveIOError.tooLarge
+        }
+        let input = try FileHandle(forReadingFrom: url)
+        defer { try? input.close() }
+        var hash = SHA256()
+        var count = 0
+        while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+            try Task.checkCancellation()
+            guard chunk.count <= size - count else { throw ArchiveIOError.sourceChanged }
+            count += chunk.count
+            hash.update(data: chunk)
+        }
+        guard count == size else { throw ArchiveIOError.sourceChanged }
+        self.filename = filename
+        byteCount = count
+        sha256 = hash.finalize().map { String(format: "%02x", $0) }.joined()
+        self.fidelity = fidelity
+    }
+
     func matches(_ data: Data) -> Bool {
         data.count == byteCount && Self.sha256(data) == sha256
     }

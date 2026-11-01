@@ -1,26 +1,36 @@
-#if ARRAS_APP_STORE
 import SwiftUI
+
+/// The existing Store link style is shared by both editions.
+private struct FooterStarLink: View {
+    var body: some View {
+        Link(destination: Constants.repositoryURL) {
+            Label("Star", systemImage: "star")
+        }
+        .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
+        .accessibilityIdentifier("footer-star-on-github")
+        .accessibilityHint("Opens the Arras repository in your browser")
+    }
+}
+
+#if ARRAS_APP_STORE
 
 /// Library footer. Software updates belong in Preferences and the Mac App Store.
 struct UpdateStatusView: View {
     var body: some View {
         HStack(spacing: 8) {
-            Text("v\(Constants.version)")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.quaternary)
-            Link(destination: Constants.repositoryURL) {
-                Label("Star on GitHub", systemImage: "star")
+            FooterStarLink()
+            Label {
+                Text("Supported").foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "heart.fill").foregroundStyle(.red)
             }
             .font(.system(size: 10))
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .accessibilityIdentifier("footer-star-on-github")
-            .accessibilityHint("Opens the Arras repository in your browser")
+            .accessibilityIdentifier("footer-supported")
+            .help("Thank you for supporting Arras.")
         }
     }
 }
 #else
-import SwiftUI
 
 /// Human phrasing for "when did we last look".
 ///
@@ -152,18 +162,13 @@ struct UpdateStatusLine: View {
     }
 }
 
-/// The compact version label and update control in the settings footer.
+/// Compact footer actions. Version information remains in Preferences.
 struct UpdateStatusView: View {
-    @ObservedObject private var updater = Updater.shared
+    @ObservedObject var updater: Updater = Updater.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(updater.updatesAllowed ? "v\(Constants.version)" : "v\(Constants.version) · Test \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.quaternary)
-                .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
-
             if updater.updatesAllowed {
                 switch updater.phase {
                 case .available(let version, _):
@@ -174,11 +179,15 @@ struct UpdateStatusView: View {
                     .controlSize(.small)
 
                 case .checking:
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
-                        .scaleEffect(0.6)
-                        .frame(width: 14, height: 14)
+                    HStack(spacing: 5) {
+                        ProgressView().progressViewStyle(.circular).controlSize(.mini)
+                            .frame(width: 12, height: 12)
+                        Text("Checking…").font(.system(size: 10))
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Checking for updates")
+                    .accessibilityIdentifier("footer-update-status")
 
                 case .upToDate:
                     Text("up to date")
@@ -199,16 +208,27 @@ struct UpdateStatusView: View {
                 case .idle, .installed, .failed:
                     // The cadence setting lives in Preferences; burying a picker in a footer menu
                     // made a one-click action into a two-level decision for no benefit.
-                    Button("Check for Updates") {
+                    Button {
                         Task { await updater.check(userInitiated: true) }
+                    } label: {
+                        Label("Update", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .font(.system(size: 10))
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel("Check for Updates")
+                    .accessibilityIdentifier("footer-check-for-updates")
                     .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
                 }
             }
+            FooterStarLink()
+            Link(destination: Constants.supportPurchaseURL) {
+                Label("Support", systemImage: "heart")
+            }
+            .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
+            .accessibilityIdentifier("footer-support-arras")
+            .accessibilityHint("Opens the optional App Store purchase to support development. All free features remain available.")
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }

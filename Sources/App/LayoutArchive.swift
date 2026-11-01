@@ -273,6 +273,8 @@ extension PhotoManager {
     enum LayoutImportMode {
         case replace
         case merge
+        /// Requires the recovery-specific destructive confirmation in the import flow.
+        case recoverDamagedLibrary
     }
 
     /// Writes every current widget (photos, slideshows, and desktop collages) plus its
@@ -324,78 +326,59 @@ extension PhotoManager {
     /// archive always contains the exact bytes currently in the photo store. Archival mode is an
     /// explicit audit guarantee (hashes plus provenance wording), not a promise to recreate
     /// camera originals that were downsampled or re-encoded before Arras stored them.
-    private func exportArchive(
-        items: [PhotoItem],
-        to url: URL,
-        preferenceGroups: Set<ExportedPreferences.Group>,
-        archivalQuality: Bool,
-        scope: LayoutArchiveScope
-    ) throws -> ArchiveExportReport {
-        guard !items.isEmpty else { throw LayoutArchiveError.emptyLayout }
+    private struct ExportPlan {
+        let items: [PhotoItem]
+        let storageDirectory: URL
+        let destination: URL
+        let preferences: ExportedPreferences?
+        let relativeFrames: [String: RelativeFrame]
+        let relativeImageFrames: [String: [String: RelativeFrame]]
+        let archivalQuality: Bool
+        let scope: LayoutArchiveScope
+        let version: String
+    }
 
-        // A live folder's managed media is portable; its security-scoped bookmark, absolute
-        // path, and resource fingerprint are machine-local and must never enter an archive.
+    func exportLayoutInBackground(to url: URL, preferenceGroups: Set<ExportedPreferences.Group> = [],
+                                  archivalQuality: Bool = false) async throws -> ArchiveExportReport {
+        let plan = try exportPlan(items: photos, to: url, preferenceGroups: preferenceGroups,
+                                  archivalQuality: archivalQuality, scope: .wholeLayout)
+        return try await runExport(plan)
+    }
+
+    func exportWidgetInBackground(_ id: UUID, to url: URL, archivalQuality: Bool = false) async throws -> ArchiveExportReport {
+        guard let item = photos.first(where: { $0.id == id }) else { throw LayoutArchiveError.widgetNotFound(id) }
+        let items = item.desktopCollage == nil ? [item] : [item] + photos.filter { $0.collageParentID == id }
+        return try await runExport(exportPlan(items: items, to: url, preferenceGroups: [],
+                                              archivalQuality: archivalQuality, scope: .widget))
+    }
+
+    private func runExport(_ plan: ExportPlan) async throws -> ArchiveExportReport {
+        try Task.checkCancellation()
+        let access = plan.destination.startAccessingSecurityScopedResource()
+        defer { if access { plan.destination.stopAccessingSecurityScopedResource() } }
+        beginMediaImport()
+        defer { endMediaImport() }
+        let worker = Task.detached(priority: .userInitiated) { try Self.writeExport(plan) }
+        return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+    }
+
+    private func exportArchive(items: [PhotoItem], to url: URL, preferenceGroups: Set<ExportedPreferences.Group>,
+                               archivalQuality: Bool, scope: LayoutArchiveScope) throws -> ArchiveExportReport {
+        try Self.writeExport(exportPlan(items: items, to: url, preferenceGroups: preferenceGroups,
+                                        archivalQuality: archivalQuality, scope: scope))
+    }
+
+    /// Capture model, preferences and display geometry on their owning actor. Only value
+    /// snapshots and managed-file URLs cross to the I/O worker.
+    private func exportPlan(items: [PhotoItem], to url: URL, preferenceGroups: Set<ExportedPreferences.Group>,
+                            archivalQuality: Bool, scope: LayoutArchiveScope) throws -> ExportPlan {
+        guard !items.isEmpty else { throw LayoutArchiveError.emptyLayout }
         let includedIDs = Set(items.map(\.id))
         let sanitizedItems = items.map { source -> PhotoItem in
             var snapshot = archiveSafeSnapshot(of: source)
-            if let parentID = snapshot.collageParentID, !includedIDs.contains(parentID) { snapshot.collageParentID = nil }
+            if let parent = snapshot.collageParentID, !includedIDs.contains(parent) { snapshot.collageParentID = nil }
             return snapshot
         }
-
-        var writer = SimpleZipWriter()
-        var writtenImages = Set<String>()
-        var mediaRecords: [ArchiveMediaRecord] = []
-        var fidelityByFilename: [String: ArchiveMediaFidelity] = [:]
-        var payloadsByFilename: [String: Data] = [:]
-        var orderedFilenames: [String] = []
-
-        for item in sanitizedItems {
-            if referencedFilenames(of: item).allSatisfy(\.isEmpty), item.desktopCollage == nil {
-                throw LayoutArchiveError.missingStoredMedia(item.filename)
-            }
-            for name in referencedFilenames(of: item) where !name.isEmpty && !writtenImages.contains(name) {
-                writtenImages.insert(name)
-                // Stored references must be leaf filenames. Refuse a corrupt model value such
-                // as `../secret` rather than allowing an export to read outside the media store.
-                guard (name as NSString).lastPathComponent == name,
-                      name != ".", name != ".." else {
-                    throw LayoutArchiveError.missingStoredMedia(name)
-                }
-                let source = storageDir.appendingPathComponent(name)
-                guard let data = try? Data(contentsOf: source) else {
-                    throw LayoutArchiveError.missingStoredMedia(name)
-                }
-                writer.addEntry(name: "images/\(name)", data: data)
-                payloadsByFilename[name] = data
-                orderedFilenames.append(name)
-            }
-            for name in referencedFilenames(of: item) where !name.isEmpty {
-                let fidelity = item.mediaFidelity[name] ?? .unknown
-                if let existing = fidelityByFilename[name] {
-                    fidelityByFilename[name] = existing.merged(with: fidelity)
-                } else {
-                    fidelityByFilename[name] = fidelity
-                }
-            }
-        }
-        mediaRecords = orderedFilenames.compactMap { filename in
-            guard let data = payloadsByFilename[filename] else { return nil }
-            return ArchiveMediaRecord(
-                filename: filename,
-                data: data,
-                fidelity: fidelityByFilename[filename] ?? .unknown
-            )
-        }
-
-        let fontNames = Set(sanitizedItems.flatMap { $0.desktopCollage?.fontFileNames ?? [] })
-        for name in fontNames {
-            guard CollageFontLibrary.isManagedFilename(name),
-                  let data = try? Data(contentsOf: CollageFontLibrary.directory(in: storageDir).appendingPathComponent(name)) else {
-                throw LayoutArchiveError.missingStoredFont(name)
-            }
-            writer.addEntry(name: "fonts/\(name)", data: data)
-        }
-
         // Record every frame as a fraction of the screen it currently sits on, so the
         // layout can be rebuilt in proportion on a Mac with different displays.
         var relativeFrames: [String: RelativeFrame] = [:]
@@ -414,41 +397,67 @@ extension PhotoManager {
             if !perImage.isEmpty { relativeImageFrames[key] = perImage }
         }
 
-        let sourceStatus = ArchiveSourceStatus(media: mediaRecords)
-        let exportMetadata = ArchiveExportMetadata(
-            scope: scope,
-            archivalQuality: archivalQuality,
-            media: mediaRecords,
-            statement: ArchiveExportMetadata.statement(
-                archivalQuality: archivalQuality,
-                sourceStatus: sourceStatus
-            )
-        )
-        let manifest = LayoutManifest(
-            formatVersion: LayoutManifest.currentFormatVersion,
-            appVersion: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown",
-            exportedAt: Date(),
-            photos: sanitizedItems,
-            itemCount: sanitizedItems.count,
-            preferences: preferenceGroups.isEmpty ? nil : .current(launchAtLogin: launchAtLogin, groups: preferenceGroups),
-            relativeFrames: relativeFrames.isEmpty ? nil : relativeFrames,
-            relativeImageFrames: relativeImageFrames.isEmpty ? nil : relativeImageFrames,
-            exportMetadata: exportMetadata
-        )
+        return ExportPlan(items: sanitizedItems, storageDirectory: storageDir, destination: url,
+                          preferences: preferenceGroups.isEmpty ? nil : .current(launchAtLogin: launchAtLogin, groups: preferenceGroups),
+                          relativeFrames: relativeFrames, relativeImageFrames: relativeImageFrames,
+                          archivalQuality: archivalQuality, scope: scope, version: Constants.version)
+    }
+
+    nonisolated private static func writeExport(_ plan: ExportPlan) throws -> ArchiveExportReport {
+        var writer = SimpleZipWriter()
+        var orderedNames: [String] = []
+        var fidelity: [String: ArchiveMediaFidelity] = [:]
+        for item in plan.items {
+            let names = managedFilenames(in: item).filter { !$0.isEmpty }
+            guard !names.isEmpty || item.desktopCollage != nil else { throw LayoutArchiveError.missingStoredMedia(item.filename) }
+            for name in names {
+                guard name == (name as NSString).lastPathComponent, name != ".", name != ".." else {
+                    throw LayoutArchiveError.missingStoredMedia(name)
+                }
+                let value = item.mediaFidelity[name] ?? .unknown
+                if let previous = fidelity[name] { fidelity[name] = previous.merged(with: value) }
+                else { orderedNames.append(name); fidelity[name] = value }
+            }
+        }
+        var records: [ArchiveMediaRecord] = []
+        for name in orderedNames {
+            try Task.checkCancellation()
+            let source = plan.storageDirectory.appendingPathComponent(name)
+            let record: ArchiveMediaRecord
+            do { record = try ArchiveMediaRecord(filename: name, url: source, fidelity: fidelity[name] ?? .unknown) }
+            catch let error as ArchiveIOError { throw error }
+            catch { throw LayoutArchiveError.missingStoredMedia(name) }
+            records.append(record)
+            writer.addFile(name: "images/\(name)", url: source, expectedSHA256: record.sha256)
+        }
+        for name in Set(plan.items.flatMap { $0.desktopCollage?.fontFileNames ?? [] }) {
+            guard CollageFontLibrary.isManagedFilename(name) else { throw LayoutArchiveError.missingStoredFont(name) }
+            let source = CollageFontLibrary.directory(in: plan.storageDirectory).appendingPathComponent(name)
+            let record: ArchiveMediaRecord
+            do { record = try ArchiveMediaRecord(filename: name, url: source, fidelity: .sourceBytes) }
+            catch let error as ArchiveIOError { throw error }
+            catch { throw LayoutArchiveError.missingStoredFont(name) }
+            guard record.byteCount <= ArchiveResourceLimits.fontBytes else { throw ArchiveIOError.tooLarge }
+            writer.addFile(name: "fonts/\(name)", url: source, expectedSHA256: record.sha256)
+        }
+        let status = ArchiveSourceStatus(media: records)
+        let metadata = ArchiveExportMetadata(scope: plan.scope, archivalQuality: plan.archivalQuality, media: records,
+                                             statement: ArchiveExportMetadata.statement(archivalQuality: plan.archivalQuality, sourceStatus: status))
+        let manifest = LayoutManifest(formatVersion: LayoutManifest.currentFormatVersion, appVersion: plan.version,
+                                      exportedAt: Date(), photos: plan.items, itemCount: plan.items.count,
+                                      preferences: plan.preferences,
+                                      relativeFrames: plan.relativeFrames.isEmpty ? nil : plan.relativeFrames,
+                                      relativeImageFrames: plan.relativeImageFrames.isEmpty ? nil : plan.relativeImageFrames,
+                                      exportMetadata: metadata)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        writer.addEntry(name: "manifest.json", data: try encoder.encode(manifest))
-
-        try writer.write(to: url)
-        return ArchiveExportReport(
-            scope: scope,
-            widgetCount: sanitizedItems.count,
-            mediaCount: mediaRecords.count,
-            archivalQuality: archivalQuality,
-            sourceStatus: sourceStatus,
-            statement: exportMetadata.statement
-        )
+        let data = try encoder.encode(manifest)
+        guard data.count <= ArchiveResourceLimits.manifestBytes else { throw ArchiveIOError.tooLarge }
+        writer.addEntry(name: "manifest.json", data: data)
+        try writer.write(to: plan.destination)
+        return ArchiveExportReport(scope: plan.scope, widgetCount: plan.items.count, mediaCount: records.count,
+                                   archivalQuality: plan.archivalQuality, sourceStatus: status, statement: metadata.statement)
     }
 
     /// Imports an `.arras` bundle. In `.replace` mode the current layout is replaced in one
@@ -476,10 +485,26 @@ extension PhotoManager {
     /// resulting candidates are safe to show in a selection UI; only `commitImport` moves the
     /// selected files into the library and changes `photos.json`.
     func preflightImportLayout(from url: URL) throws -> LayoutImportPreflight {
+        adaptPreparedImport(try Self.prepareImport(from: url, storageDir: storageDir))
+    }
+
+    func preflightImportLayoutInBackground(from url: URL) async throws -> LayoutImportPreflight {
+        try Task.checkCancellation()
+        beginMediaImport()
+        defer { endMediaImport() }
+        let directory = storageDir
+        let worker = Task.detached(priority: .userInitiated) { try Self.prepareImport(from: url, storageDir: directory) }
+        let prepared = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        guard !Task.isCancelled else { prepared.cleanup(); throw CancellationError() }
+        return adaptPreparedImport(prepared)
+    }
+
+    nonisolated private static func prepareImport(from url: URL, storageDir: URL) throws -> LayoutImportPreflight {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
-        let reader = try SimpleZipReader(data: try Data(contentsOf: url))
+        let reader = try SimpleZipReader.read(from: url)
+        guard (reader.entrySize(named: "manifest.json") ?? 0) <= ArchiveResourceLimits.manifestBytes else { throw ArchiveIOError.tooLarge }
         guard let manifestData = reader.entryData(named: "manifest.json") else {
             throw LayoutArchiveError.missingManifest
         }
@@ -510,16 +535,24 @@ extension PhotoManager {
         for record in manifest.exportMetadata?.media ?? [] {
             integrityRecords[record.filename] = record
         }
+        var stagedBytes: UInt64 = 0
+        var stagedFiles = 0
         var fontMap: [String: URL] = [:]
         let fontDirectory = CollageFontLibrary.directory(in: stagingDirectory)
         for name in Set(manifest.photos.flatMap { $0.desktopCollage?.fontFileNames ?? [] }) {
+            try Task.checkCancellation()
             guard CollageFontLibrary.isManagedFilename(name),
-                  let payload = reader.entryData(named: "fonts/\(name)"), payload.count <= 20_000_000 else {
+                  (reader.entrySize(named: "fonts/\(name)") ?? Int.max) <= ArchiveResourceLimits.fontBytes,
+                  let payload = reader.entryData(named: "fonts/\(name)") else {
                 throw LayoutArchiveError.missingStoredFont(name)
             }
+            guard UInt64(payload.count) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
+                  stagedFiles < Int(UInt16.max) else { throw ArchiveIOError.tooLarge }
             try FileManager.default.createDirectory(at: fontDirectory, withIntermediateDirectories: true)
             let newName = UUID().uuidString + "." + (name as NSString).pathExtension.lowercased()
             let stagedURL = fontDirectory.appendingPathComponent(newName)
+            stagedBytes += UInt64(payload.count)
+            stagedFiles += 1
             try payload.write(to: stagedURL, options: .atomic)
             guard !CollageFontLibrary.names(at: stagedURL).isEmpty else { throw LayoutArchiveError.missingStoredFont(name) }
             fontMap[name] = stagedURL
@@ -528,8 +561,9 @@ extension PhotoManager {
         var skippedReasons: [String] = []
 
         for (index, sourceItem) in manifest.photos.enumerated() where !sourceItem.isRetiredCompositionContainer {
+            try Task.checkCancellation()
             var names: [String] = []
-            for name in referencedFilenames(of: sourceItem) where !name.isEmpty && !names.contains(name) {
+            for name in managedFilenames(in: sourceItem) where !name.isEmpty && !names.contains(name) {
                 names.append(name)
             }
             let sourceLabel = sourceItem.customName?.isEmpty == false
@@ -540,44 +574,32 @@ extension PhotoManager {
                 continue
             }
 
-            var payloads: [String: Data] = [:]
-            var validationFailure: String?
-            for name in names {
-                guard let payload = reader.entryData(named: "images/\(name)") else {
-                    validationFailure = "missing media \(name)"
-                    break
-                }
-                if manifest.exportMetadata != nil {
-                    guard let record = integrityRecords[name], record.matches(payload) else {
-                        validationFailure = "media integrity check failed for \(name)"
-                        break
-                    }
-                }
-                payloads[name] = payload
-            }
-            guard validationFailure == nil else {
-                skippedReasons.append("\(sourceLabel): \(validationFailure!)")
-                continue
-            }
-
             var filenameMap: [String: String] = [:]
             for name in names {
                 let ext = (name as NSString).pathExtension
                 filenameMap[name] = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
             }
-
             var stagedURLs: [URL] = []
             var stageError: String?
             for name in names {
-                guard let payload = payloads[name], let newName = filenameMap[name] else { continue }
+                try Task.checkCancellation()
+                guard let payload = reader.entryData(named: "images/\(name)"), let newName = filenameMap[name] else {
+                    stageError = "missing media \(name)"; break
+                }
+                if manifest.exportMetadata != nil {
+                    guard let record = integrityRecords[name], record.matches(payload) else {
+                        stageError = "media integrity check failed for \(name)"; break
+                    }
+                }
+                guard UInt64(payload.count) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
+                      stagedFiles < Int(UInt16.max) else { throw ArchiveIOError.tooLarge }
                 let stagedURL = stagingDirectory.appendingPathComponent(newName)
                 do {
                     try payload.write(to: stagedURL, options: .atomic)
                     stagedURLs.append(stagedURL)
-                } catch {
-                    stageError = newName
-                    break
-                }
+                    stagedBytes += UInt64(payload.count)
+                    stagedFiles += 1
+                } catch { stageError = newName; break }
             }
             func stagedURL(for originalName: String) -> URL? {
                 guard let mappedName = filenameMap[originalName] else { return nil }
@@ -612,7 +634,7 @@ extension PhotoManager {
                 continue
             }
 
-            var item = remapped(sourceItem, filenameMap: filenameMap)
+            var item = Self.remapped(sourceItem, filenameMap: filenameMap)
             if var settings = item.desktopCollage {
                 if let file = settings.captionStyle.fontFileName { settings.captionStyle.fontFileName = fontMap[file]?.lastPathComponent }
                 for i in settings.labels.indices {
@@ -655,6 +677,14 @@ extension PhotoManager {
             )
         }
 
+        shouldKeepStaging = true
+        return LayoutImportPreflight(manifest: manifest, candidates: candidates, skippedReasons: skippedReasons,
+                                     stagingDirectory: stagingDirectory)
+    }
+
+    private func adaptPreparedImport(_ prepared: LayoutImportPreflight) -> LayoutImportPreflight {
+        var candidates = prepared.candidates
+        let manifest = prepared.manifest
         let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1280, height: 800)
         var transformedByID: [UUID: PhotoItem] = [:]
         for parent in candidates.map(\.item) where parent.desktopCollage != nil {
@@ -670,12 +700,11 @@ extension PhotoManager {
                                   stagedURLs: candidate.stagedURLs, mediaCount: candidate.mediaCount,
                                   stagedFontURLs: candidate.stagedFontURLs)
         }
-        shouldKeepStaging = true
         return LayoutImportPreflight(
             manifest: manifest,
             candidates: candidates,
-            skippedReasons: skippedReasons,
-            stagingDirectory: stagingDirectory
+            skippedReasons: prepared.skippedReasons,
+            stagingDirectory: prepared.stagingDirectory
         )
     }
 
@@ -723,7 +752,8 @@ extension PhotoManager {
                 if let parentID = item.collageParentID, !selectedItemIDs.contains(parentID) { item.collageParentID = nil }
                 return item
             }
-            guard commitImportedItems(items, replacing: mode == .replace) else {
+            guard commitImportedItems(items, replacing: mode != .merge,
+                                      recoveringDamagedLibrary: mode == .recoverDamagedLibrary) else {
                 throw LayoutArchiveError.couldNotCommit
             }
             return items.count
@@ -805,7 +835,7 @@ extension PhotoManager {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
-        let reader = try SimpleZipReader(data: try Data(contentsOf: url))
+        let reader = try SimpleZipReader.read(from: url)
         guard let manifestData = reader.entryData(named: "manifest.json") else {
             throw LayoutArchiveError.missingManifest
         }
@@ -821,22 +851,11 @@ extension PhotoManager {
 
     // MARK: - Helpers
 
-    private func referencedFilenames(of item: PhotoItem) -> [String] {
-        var names: [String] = []
-        if !item.filename.isEmpty { names.append(item.filename) }
-        if let poster = item.media.posterFilename, !poster.isEmpty { names.append(poster) }
-        if let paired = item.media.pairedVideoFilename, !paired.isEmpty { names.append(paired) }
-        names.append(contentsOf: item.spaceImageFilenames)
-        names.append(contentsOf: item.liveFolderEntries.map(\.managedFilename))
-        names.append(contentsOf: item.photosLibraryAssets.flatMap(\.managedFilenames))
-        return names
-    }
-
     /// Rebuilds `source` with fresh filenames (and, via `PhotoItem(filename:)`, a fresh
     /// id) while preserving every other saved setting, including per-image position/size
     /// entries in `folderImageConfigs` — those are keyed by filename, so their keys need
     /// remapping too.
-    private func remapped(_ source: PhotoItem, filenameMap: [String: String]) -> PhotoItem {
+    nonisolated private static func remapped(_ source: PhotoItem, filenameMap: [String: String]) -> PhotoItem {
         let newPrimaryFilename = source.filename.isEmpty ? "" : (filenameMap[source.filename] ?? source.filename)
         var item = PhotoItem(filename: newPrimaryFilename, width: source.widgetWidth)
 
@@ -1015,205 +1034,5 @@ extension PhotoManager {
             rect.origin = NSPoint(x: visibleFrame.midX - rect.width / 2, y: visibleFrame.midY - rect.height / 2)
         }
         return NSStringFromRect(rect)
-    }
-}
-
-// MARK: - Minimal ZIP writer (STORE only)
-
-struct SimpleZipWriter {
-    private struct Entry {
-        let name: String
-        let data: Data
-        let crc32: UInt32
-    }
-
-    private var entries: [Entry] = []
-
-    mutating func addEntry(name: String, data: Data) {
-        entries.append(Entry(name: name, data: data, crc32: ZipCRC32.checksum(data)))
-    }
-
-    func write(to url: URL) throws {
-        var body = Data()
-        var centralDirectory = Data()
-        var localHeaderOffsets: [UInt32] = []
-
-        for entry in entries {
-            localHeaderOffsets.append(UInt32(body.count))
-            let nameBytes = Array(entry.name.utf8)
-
-            body.appendUInt32LE(0x0403_4b50)
-            body.appendUInt16LE(20)        // version needed to extract
-            body.appendUInt16LE(0x0800)    // language encoding flag: filename is UTF-8
-            body.appendUInt16LE(0)         // compression method: stored
-            body.appendUInt16LE(0)         // mod time (unused)
-            body.appendUInt16LE(0x21)      // mod date: Jan 1 1980, a fixed placeholder
-            body.appendUInt32LE(entry.crc32)
-            body.appendUInt32LE(UInt32(entry.data.count))
-            body.appendUInt32LE(UInt32(entry.data.count))
-            body.appendUInt16LE(UInt16(nameBytes.count))
-            body.appendUInt16LE(0)         // extra field length
-            body.append(contentsOf: nameBytes)
-            body.append(entry.data)
-        }
-
-        for (index, entry) in entries.enumerated() {
-            let nameBytes = Array(entry.name.utf8)
-
-            centralDirectory.appendUInt32LE(0x0201_4b50)
-            centralDirectory.appendUInt16LE(20)     // version made by
-            centralDirectory.appendUInt16LE(20)     // version needed to extract
-            centralDirectory.appendUInt16LE(0x0800)
-            centralDirectory.appendUInt16LE(0)
-            centralDirectory.appendUInt16LE(0)
-            centralDirectory.appendUInt16LE(0x21)
-            centralDirectory.appendUInt32LE(entry.crc32)
-            centralDirectory.appendUInt32LE(UInt32(entry.data.count))
-            centralDirectory.appendUInt32LE(UInt32(entry.data.count))
-            centralDirectory.appendUInt16LE(UInt16(nameBytes.count))
-            centralDirectory.appendUInt16LE(0)      // extra field length
-            centralDirectory.appendUInt16LE(0)      // file comment length
-            centralDirectory.appendUInt16LE(0)      // disk number start
-            centralDirectory.appendUInt16LE(0)      // internal file attributes
-            centralDirectory.appendUInt32LE(0)      // external file attributes
-            centralDirectory.appendUInt32LE(localHeaderOffsets[index])
-            centralDirectory.append(contentsOf: nameBytes)
-        }
-
-        var end = Data()
-        end.appendUInt32LE(0x0605_4b50)
-        end.appendUInt16LE(0)   // this disk
-        end.appendUInt16LE(0)   // disk with central directory start
-        end.appendUInt16LE(UInt16(entries.count))
-        end.appendUInt16LE(UInt16(entries.count))
-        end.appendUInt32LE(UInt32(centralDirectory.count))
-        end.appendUInt32LE(UInt32(body.count))
-        end.appendUInt16LE(0)   // comment length
-
-        var full = Data(capacity: body.count + centralDirectory.count + end.count)
-        full.append(body)
-        full.append(centralDirectory)
-        full.append(end)
-        try full.write(to: url, options: .atomic)
-    }
-}
-
-// MARK: - Minimal ZIP reader (STORE only)
-
-struct SimpleZipReader {
-    private struct IndexedEntry {
-        let localHeaderOffset: Int
-        let compressedSize: Int
-        let method: UInt16
-    }
-
-    private let bytes: [UInt8]
-    private var index: [String: IndexedEntry] = [:]
-
-    init(data: Data) throws {
-        bytes = [UInt8](data)
-        guard let eocdOffset = Self.findEndOfCentralDirectory(in: bytes) else {
-            throw LayoutArchiveError.notAZipFile
-        }
-
-        let centralDirCount = Int(bytes.readUInt16LE(at: eocdOffset + 10))
-        var offset = Int(bytes.readUInt32LE(at: eocdOffset + 16))
-
-        for _ in 0..<centralDirCount {
-            guard offset + 46 <= bytes.count, bytes.readUInt32LE(at: offset) == 0x0201_4b50 else { break }
-
-            let method = bytes.readUInt16LE(at: offset + 10)
-            let compressedSize = Int(bytes.readUInt32LE(at: offset + 20))
-            let nameLength = Int(bytes.readUInt16LE(at: offset + 28))
-            let extraLength = Int(bytes.readUInt16LE(at: offset + 30))
-            let commentLength = Int(bytes.readUInt16LE(at: offset + 32))
-            let localHeaderOffset = Int(bytes.readUInt32LE(at: offset + 42))
-
-            let nameStart = offset + 46
-            guard nameStart + nameLength <= bytes.count else { break }
-            let name = String(decoding: bytes[nameStart..<(nameStart + nameLength)], as: UTF8.self)
-
-            index[name] = IndexedEntry(localHeaderOffset: localHeaderOffset, compressedSize: compressedSize, method: method)
-            offset = nameStart + nameLength + extraLength + commentLength
-        }
-    }
-
-    /// Only the STORE (uncompressed) method is supported, since that's all this app's
-    /// own writer ever produces. A bundle re-compressed by an outside tool would fail
-    /// this check and the caller reports it as an invalid bundle.
-    func entryData(named name: String) -> Data? {
-        guard let entry = index[name], entry.method == 0 else { return nil }
-        let header = entry.localHeaderOffset
-        guard header + 30 <= bytes.count, bytes.readUInt32LE(at: header) == 0x0403_4b50 else { return nil }
-
-        let nameLength = Int(bytes.readUInt16LE(at: header + 26))
-        let extraLength = Int(bytes.readUInt16LE(at: header + 28))
-        let dataStart = header + 30 + nameLength + extraLength
-        guard dataStart <= bytes.count,
-              entry.compressedSize <= bytes.count - dataStart else { return nil }
-        let dataEnd = dataStart + entry.compressedSize
-
-        return Data(bytes[dataStart..<dataEnd])
-    }
-
-    private static func findEndOfCentralDirectory(in bytes: [UInt8]) -> Int? {
-        guard bytes.count >= 22 else { return nil }
-        let searchFloor = max(0, bytes.count - 22 - 65536)
-        var i = bytes.count - 22
-        while i >= searchFloor {
-            if bytes.readUInt32LE(at: i) == 0x0605_4b50 { return i }
-            i -= 1
-        }
-        return nil
-    }
-}
-
-// MARK: - Byte helpers
-
-private extension Data {
-    mutating func appendUInt16LE(_ value: UInt16) {
-        append(UInt8(value & 0xFF))
-        append(UInt8((value >> 8) & 0xFF))
-    }
-
-    mutating func appendUInt32LE(_ value: UInt32) {
-        append(UInt8(value & 0xFF))
-        append(UInt8((value >> 8) & 0xFF))
-        append(UInt8((value >> 16) & 0xFF))
-        append(UInt8((value >> 24) & 0xFF))
-    }
-}
-
-private extension Array where Element == UInt8 {
-    func readUInt16LE(at offset: Int) -> UInt16 {
-        UInt16(self[offset]) | (UInt16(self[offset + 1]) << 8)
-    }
-
-    func readUInt32LE(at offset: Int) -> UInt32 {
-        UInt32(self[offset])
-            | (UInt32(self[offset + 1]) << 8)
-            | (UInt32(self[offset + 2]) << 16)
-            | (UInt32(self[offset + 3]) << 24)
-    }
-}
-
-// MARK: - CRC32
-
-private enum ZipCRC32 {
-    private static let table: [UInt32] = (0...255).map { i -> UInt32 in
-        var c = UInt32(i)
-        for _ in 0..<8 {
-            c = (c & 1 != 0) ? (0xEDB8_8320 ^ (c >> 1)) : (c >> 1)
-        }
-        return c
-    }
-
-    static func checksum(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data {
-            let tableIndex = Int((crc ^ UInt32(byte)) & 0xFF)
-            crc = table[tableIndex] ^ (crc >> 8)
-        }
-        return crc ^ 0xFFFF_FFFF
     }
 }

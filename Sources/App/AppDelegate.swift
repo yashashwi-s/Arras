@@ -973,15 +973,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        do {
-            let report = try manager.exportWidget(
-                item.id,
-                to: url,
-                archivalQuality: UserDefaults.standard.bool(forKey: "backup.archivalQuality")
-            )
-            LayoutArchiveExportFlow.present(report, title: "Widget Export Complete")
-        } catch {
-            LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Widget")
+        let quality = UserDefaults.standard.bool(forKey: "backup.archivalQuality")
+        Task { @MainActor in
+            do {
+                let report = try await manager.exportWidgetInBackground(item.id, to: url, archivalQuality: quality)
+                LayoutArchiveExportFlow.present(report, title: "Widget Export Complete")
+            } catch {
+                LayoutArchiveExportFlow.present(error: error, title: "Couldn't Export Widget")
+            }
         }
     }
 

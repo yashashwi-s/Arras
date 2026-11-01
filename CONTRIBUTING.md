@@ -55,7 +55,7 @@ code into a second tree. `project.yml` generates both targets and schemes.
 | Distribution | Release ID | Local output | Updates / statistics |
 | --- | --- | --- | --- |
 | Direct (free) | `com.yashashwi.tableau` | `build/current`, `dist` | Verified GitHub updater; limited statistics |
-| App Store (planned $4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
+| App Store ($4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
 
 Store Debug uses `com.yashashwi.arras.appstore.development` and the name
 **Arras App Store Dev**. UI tests own UUID directories under
@@ -1099,3 +1099,41 @@ checks. Existing environment-dependent unit skips remain separate from passes.
 The final scope guard was also exercised in temporary Git repositories: docs-only,
 Store source, source renamed into documentation and deleted source all selected
 the expected checks. Main's post-merge workflow verifies the combined result.
+
+
+## Maintenance release verification — 1 November 2026
+
+The 2.5.1 branch preserves the exact maintenance heads from #7, #11, #12 and #13.
+Onboarding and the separate uncommitted clock work are excluded. Initial full
+[CI 41291345761](https://github.com/yashashwi-s/Arras/actions/runs/41291345761)
+passed both distributions before the final footer revisions.
+
+Both original focused suites ran 48 checks: 47 passed and one live-window check
+skipped because its fixture was covered. The new video regression verifies actual
+AVPlayer time advancement with the reported Dock-helper metadata, pause/resume
+for real covering metadata and retained Low Power Mode behavior. It does not
+establish reporter-device foreground or physical Space acceptance. All 81 script
+checks, product metadata and release-note validation passed.
+
+The final footer/Privacy renders and video checks passed five direct and four
+Store checks. The direct updater check held a private request and rendered its
+idle, checking and available states without production traffic. Native renders
+were inspected at minimum width in light and dark appearance. The first local
+UI-runner attempt timed out enabling macOS automation before app interaction;
+final native UI CI is still required before merging.
+
+Photos keeps its original footer margins. The free footer has Update, Star and
+Support; Store has Star and a non-interactive Supported label with a red heart.
+Version remains in Preferences. Website follows Security & Privacy in Privacy;
+the free-only statistics-free option clearly opens a separate paid Store edition,
+and the contact is yashashwisinghania@gmail.com. No telemetry protocol or
+reporting preference is changed by that link.
+
+Review copies use bundled samples and isolated temporary libraries. Installed
+apps and the personal library are not replaced. The owner authorized final
+publication on 1 November; final CI, exact-package validation and Apple processing
+remain publication gates. Packages signed from the
+superseded UI were discarded, with Apple receipts retained under
+`/private/tmp/arras-251-superseded-signing-aa35fcc`; rebuild and validate final
+release packages from the approved source. Current logs and previews use
+`/private/tmp/arras-251-*`.

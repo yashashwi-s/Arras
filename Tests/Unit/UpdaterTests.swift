@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import UserNotifications
 import XCTest
+import SwiftUI
 @testable import Arras
 
 private final class HeldUpdaterFeed: @unchecked Sendable {
@@ -358,13 +359,34 @@ final class UpdaterTests: XCTestCase {
         let (updater, _, feed) = try scheduledFixture()
         updater.checkFrequency = .never
         updater.automaticUpdatesEnabled = false
+        attachFooter(updater, name: "Update control - idle")
         let check = Task { await updater.check(userInitiated: true) }
         await fulfillment(of: [feed.started], timeout: 3)
+        XCTAssertEqual(updater.phase, .checking)
+        attachFooter(updater, name: "Update control - checking")
         try feed.release()
         await check.value
+        attachFooter(updater, name: "Update control - available")
         XCTAssertEqual(updater.phase, .available(version: "99.0.0", notes: nil))
         XCTAssertEqual(updater.latestKnownVersion, "99.0.0")
         XCTAssertNotNil(updater.lastChecked)
+    }
+
+    @MainActor
+    private func attachFooter(_ updater: Updater, name: String) {
+        let host = NSHostingView(rootView: UpdateStatusView(updater: updater).padding(8))
+        host.setFrameSize(host.fittingSize)
+        host.layoutSubtreeIfNeeded()
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            XCTFail("Could not render update status"); return
+        }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let image = NSImage(size: host.bounds.size)
+        image.addRepresentation(bitmap)
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor
