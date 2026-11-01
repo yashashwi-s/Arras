@@ -11,7 +11,7 @@ existing-library import and native region capture; it excludes Arras usage
 statistics and the direct updater. Its separate target, identity and output
 directory prevent mixing distribution packages. The listing supports Family Sharing
 for up to six family members when enabled. See [support and edition details](https://tryarras.tech/support).
-The released 2.5.0 behavior below continues to describe the direct-download edition
+The 2.5.1 behavior below describes the direct-download edition
 unless stated otherwise.
 
 [View the Store update preferences](assets/app-store-preferences.png) — a native
@@ -32,7 +32,7 @@ purchase with no Arras usage statistics. The support contact is
 
 ## Find your next step
 
-This guide describes **Arras 2.5.1**, prepared for release. Start with an example or your own photos,
+This guide describes **Arras 2.5.1**. Start with an example or your own photos,
 then use the controls below to make the desktop yours.
 
 | What you want to do | Where to start | What you can do |
@@ -91,7 +91,7 @@ so you can finish it and retry.
 
 For a first session, add a **Glass Photo Collage** example, change one photo’s
 appearance, then copy that look to another. Save a setup before experimenting
-with a different arrangement. The Tools button remains available after onboarding.
+with a different arrangement. The Tools button remains available while arranging your desktop.
 
 Reference Tools does not provide drawing, a color picker, an infinite canvas or
 collaborative boards. Arras does not yet provide a general clock/weather/system
@@ -301,7 +301,7 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 
 ### Persistence and portability
 
-- **In development:** unreadable libraries show a recovery explanation in Photos
+- Unreadable libraries show a recovery explanation in Photos
   Settings. Restore Backup validates the selected archive and asks before replacing
   the library, preserving its damaged bytes. Ordinary edits remain blocked;
   failed preservation or saving keeps the current library unchanged.
@@ -315,7 +315,7 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
   before a replacement commits; damaged or unsavable input cannot erase the
   working layout. Imported widgets receive fresh identifiers and filenames, and
   machine-specific display bindings are discarded.
-- **In development:** backup file processing runs in the background. Media is
+- Backup file processing runs in the background. Media is
   streamed during export and staged one file at a time during import. ZIP32
   backups must be smaller than 4 GiB, with at most 512 MiB per media file;
   oversized backups return an error so you can export fewer widgets. A failed
@@ -346,14 +346,12 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 - The official macOS 14-or-later DMG and ZIP contain a universal executable with
   both Apple Silicon (`arm64`) and Intel (`x86_64`) slices. Source builds support
   the same architectures when built with an appropriate macOS toolchain.
-- The 2.5.0 app and DMG are Developer ID signed and notarized by Apple, with
+- The 2.5.1 app and DMG are Developer ID signed and notarized by Apple, with
   verified app/DMG tickets. macOS may ask to confirm opening an internet download.
   Older 2.4.9 artifacts were ad-hoc signed and not notarized; their first-launch
   warning does not describe the current release.
-- On a short display, 2.5.0’s fixed-height Appearance and Reference Tools sheets
-  can place footer actions below the visible desktop. A separate
-  [editor-height fix is under review](https://github.com/yashashwi-s/Arras/pull/3);
-  it is not included in the published 2.5.0 packages.
+- Appearance, Reference Tools and Photo Tools fit the parent display, keeping
+  footer actions visible and their controls scrollable on short displays.
 - The app is intentionally not sandboxed because its in-place updater replaces
   its bundle and launches a helper that outlives the running process.
 - Arras stores media locally but is not an original-photo archive. Export
@@ -361,11 +359,6 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 - Per-widget time/weekday visibility schedules are unavailable. Legacy schedule
   values remain readable for compatibility and do not affect visibility.
 
-Release history is recorded in [CHANGELOG.md](CHANGELOG.md#250).
+Release history is recorded in [CHANGELOG.md](CHANGELOG.md#251).
 [SECURITY.md](SECURITY.md) documents limited statistics;
 the [protocol reference](SECURITY.md#telemetry-protocol-and-activation) owns its schema and operating controls.
-
-A follow-up under review makes Appearance, Reference Tools and Photo Tools fit
-short displays so their footer actions remain visible. The published 2.5.0
-package retains fixed editor heights; its 1024×768 CI desktop exposed clipped
-footer actions. This follow-up is not included in the published artifacts.

@@ -1130,8 +1130,9 @@ and the contact is yashashwisinghania@gmail.com. No telemetry protocol or
 reporting preference is changed by that link.
 
 Review copies use bundled samples and isolated temporary libraries. Installed
-apps and the personal library are not replaced. Final merge, publication and
-Store submission remain held for the owner's review. Packages signed from the
+apps and the personal library are not replaced. The owner authorized final
+publication on 1 November; final CI, exact-package validation and Apple processing
+remain publication gates. Packages signed from the
 superseded UI were discarded, with Apple receipts retained under
 `/private/tmp/arras-251-superseded-signing-aa35fcc`; rebuild and validate final
 release packages from the approved source. Current logs and previews use

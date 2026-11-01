@@ -4,7 +4,7 @@
 
 ## 2.5.1
 
-Prepared for release. Shared fixes apply to both editions.
+Released 1 November 2026. Shared fixes apply to both editions.
 
 - Add Update, Star and Support actions to the free Photos footer using existing
   native styling and original margins. Keep version information in Preferences.
