@@ -17,9 +17,17 @@ unless stated otherwise.
 [View the Store update preferences](assets/app-store-preferences.png) — a native
 render from the sandbox target, with updates managed by Apple.
 
+## Support independent development
+
+The free edition has an optional **Support Arras** link in Preferences and
+Options. It opens the App Store edition's purchase page; the free edition keeps
+all its features and shows no purchase reminders. Store purchasers see a
+personal thank-you in Preferences instead. Neither edition adds an onboarding
+tour in 2.5.1.
+
 ## Find your next step
 
-This guide describes **Arras 2.5.0**. Start with an example or your own photos,
+This guide describes **Arras 2.5.1**, prepared for release. Start with an example or your own photos,
 then use the controls below to make the desktop yours.
 
 | What you want to do | Where to start | What you can do |

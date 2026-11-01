@@ -55,7 +55,7 @@ code into a second tree. `project.yml` generates both targets and schemes.
 | Distribution | Release ID | Local output | Updates / statistics |
 | --- | --- | --- | --- |
 | Direct (free) | `com.yashashwi.tableau` | `build/current`, `dist` | Verified GitHub updater; limited statistics |
-| App Store (planned $4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
+| App Store ($4.99) | `com.yashashwi.arras.appstore` | `build/app-store` | Apple updates; app telemetry excluded |
 
 Store Debug uses `com.yashashwi.arras.appstore.development` and the name
 **Arras App Store Dev**. UI tests own UUID directories under
@@ -1099,3 +1099,23 @@ checks. Existing environment-dependent unit skips remain separate from passes.
 The final scope guard was also exercised in temporary Git repositories: docs-only,
 Store source, source renamed into documentation and deleted source all selected
 the expected checks. Main's post-merge workflow verifies the combined result.
+
+
+## Maintenance release verification — 1 November 2026
+
+The owner requested 2.5.1 for both distributions, including the four maintenance
+PR heads (#7, #11, #12, #13). They remain merge ancestors of the maintenance
+branch. Onboarding and the separate clock checkout are excluded. The free
+edition adds an optional Store purchase link; Store purchasers get a thank-you
+with no purchase action. No app installation or personal-library test is required.
+
+Both local focused suites ran 48 checks: 47 passed and one existing native
+WindowServer test skipped because another window covered its elevated fixture.
+The new video regression checks actual AVPlayer time advancement through the
+Dock-helper exclusion, real covering metadata and recovery, retaining the
+Low Power Mode pause. Its window metadata is a controlled fixture, not proof
+of the reporter's physical foreground/Space behavior. All 81 script checks,
+product metadata and 2.5.1 release notes passed. The first local UI attempt timed
+out enabling macOS automation before app interaction; it is not a passing UI
+check. Current logs/results are under `/private/tmp/arras-251-*`; CI and signed
+package validation provide the remaining release gates.

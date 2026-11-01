@@ -338,8 +338,14 @@ final class WindowCoverageTests: XCTestCase {
         let content = WindowCoveragePolicy.contentBounds(
             photo: widget.visualFrame, appKitWindow: widget.frame, serverWindow: target.bounds
         )
+        let dockPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").map(\.processIdentifier))
+        let displays = NSScreen.screens.compactMap { screen -> CGRect? in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
+            return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+        }
         return (
-            WindowCoveragePolicy.isCovered(windowID: widget.windowNumber, contentBounds: content, windows: windows),
+            WindowCoveragePolicy.isCovered(windowID: widget.windowNumber, contentBounds: content, windows: windows,
+                                           dockPIDs: dockPIDs, displayBounds: displays),
             true,
             windows.contains(where: { $0.id == cover.windowNumber })
         )
@@ -354,7 +360,8 @@ final class WindowCoverageTests: XCTestCase {
             id: id,
             bounds: rect,
             layer: layer,
-            alpha: entry[kCGWindowAlpha as String] as? Double ?? 1
+            alpha: entry[kCGWindowAlpha as String] as? Double ?? 1,
+            ownerPID: entry[kCGWindowOwnerPID as String] as? pid_t
         )
     }
 

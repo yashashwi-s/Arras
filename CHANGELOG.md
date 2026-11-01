@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.5.1
+
+Prepared for release. Shared fixes apply to both editions.
+
+- Add a quiet App Store support link in the free edition's Preferences and
+  Options menu, with no reminders or feature limits. Store purchasers instead
+  see a personal thank-you in Preferences, with no purchase link.
+
 - Keep visible slideshows, GIFs and videos playing when macOS reports a
   display-sized Dock helper above them. Preserve pausing for actual app-window
   coverage and the visible Dock strip. Fixes the playback blocker reported in #6.

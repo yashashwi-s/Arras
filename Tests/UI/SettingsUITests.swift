@@ -28,6 +28,35 @@ final class SettingsUITests: XCTestCase {
         try? FileManager.default.removeItem(at: storageDirectory)
     }
 
+    func testSupportAndThanksMatchTheInstalledEdition() throws {
+        app.launch(); app.activate()
+        let window = app.windows["Arras"]
+        XCTAssertTrue(window.waitForExistence(timeout: 8))
+        clickWhenHittable(window.descendants(matching: .any)["Preferences"])
+        let scroll = window.scrollViews.firstMatch
+        #if ARRAS_APP_STORE
+        let destination = window.staticTexts["supporter-thanks"]
+        #else
+        let destination = window.links["support-arras"]
+        #endif
+        for _ in 0..<10 {
+            if destination.exists && destination.isHittable { break }
+            scroll.scroll(byDeltaX: 0, deltaY: -220)
+        }
+        XCTAssertTrue(destination.waitForExistence(timeout: 5))
+        XCTAssertTrue(destination.isHittable, window.debugDescription)
+        #if ARRAS_APP_STORE
+        XCTAssertFalse(window.links["support-arras"].exists)
+        #else
+        XCTAssertFalse(window.staticTexts["supporter-thanks"].exists)
+        #endif
+        XCTAssertFalse(app.windows["Welcome to Arras"].exists)
+        let screenshot = XCTAttachment(screenshot: window.screenshot())
+        screenshot.name = "Distribution support footer"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testDamagedLibraryShowsRecoveryInsteadOfEmptyLibrary() throws {
         let damaged = Data("damaged library fixture".utf8)
         try damaged.write(to: storageDirectory.appendingPathComponent("photos.json"))

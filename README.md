@@ -28,17 +28,17 @@ separate local library; import an existing library explicitly in Preferences and
 keep a backup before switching. [Support and edition details](https://tryarras.tech/support).
 See [build guidance](CONTRIBUTING.md#app-store-target) for the separate targets.
 
-## Download Arras 2.5.0
+## Download Arras 2.5.1
 
-**[Download the DMG](https://tryarras.tech/download?ref=github)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.0)
+**[Download the DMG](https://tryarras.tech/download?ref=github)** · [Release notes and ZIP](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.1)
 
 Requires **macOS 14 Sonoma or later**. One universal app supports **Apple Silicon
-and Intel**. The official 2.5.0 app and DMG are **Developer ID signed and notarized
+and Intel**. The official 2.5.1 app and DMG are **Developer ID signed and notarized
 by Apple**, with stapled tickets. Open the DMG, drag Arras to Applications, then
 open it. macOS may ask you to confirm opening an app downloaded from the internet.
 
 Arras is MIT-licensed and free, with no account or subscription. Photos and layouts
-stay on your Mac. Version 2.5.0 sends limited usage and weekly configuration
+stay on your Mac. The direct edition sends limited usage and weekly configuration
 statistics; photos, filenames, paths, layouts and personal content are excluded.
 Read [Security & Privacy](https://tryarras.tech/security) for permissions,
 network behavior and retention.
@@ -66,7 +66,7 @@ network behavior and retention.
 [![An editable Arras collage with sample photos](assets/collages-2.5.0.webp)](https://tryarras.tech/#details)
 
 See [more real screenshots](https://tryarras.tech/#workflows), the
-[2.5.0 feature guide](FEATURES.md) and [changelog](CHANGELOG.md#250) for details.
+[2.5.1 feature guide](FEATURES.md) and [changelog](CHANGELOG.md#251) for details.
 
 ## Start here
 
@@ -108,7 +108,7 @@ Tests must use isolated storage and never the user’s personal library.
 - [ARCHITECTURE.md](ARCHITECTURE.md): subsystem ownership and compatibility.
 - [SECURITY.md](SECURITY.md): signing, permissions, network activity and telemetry.
 - [CONTRIBUTING.md](CONTRIBUTING.md): build, verification and release guidance.
-- [CHANGELOG.md](CHANGELOG.md) and [release notes](release-notes/2.5.0.json): version history.
+- [CHANGELOG.md](CHANGELOG.md) and [release notes](release-notes/2.5.1.json): version history.
 
 Found a problem? [Open an issue](https://github.com/yashashwi-s/Arras/issues/new/choose).
 If Arras makes your desktop better, [star the repository](https://github.com/yashashwi-s/Arras).
