@@ -6,9 +6,13 @@
 
 Prepared for release. Shared fixes apply to both editions.
 
-- Group Update, Star and an optional App Store support link in the free
-  edition's Photos footer, with no reminders or feature limits. Store purchasers
-  instead see Star and a personal gold thank-you badge, with no purchase link.
+- Add Update, Star and Support actions to the free Photos footer using existing
+  native styling and original margins. Keep version information in Preferences.
+  Store builds show Star and Supported with a red heart. Place Website after
+  Security & Privacy in Privacy.
+- Offer the paid, statistics-free Store edition from the free app's Privacy tab,
+  clearly explaining that opening its purchase page does not stop reporting in
+  the current copy. Use yashashwisinghania@gmail.com for support.
 
 - Keep visible slideshows, GIFs and videos playing when macOS reports a
   display-sized Dock helper above them. Preserve pausing for actual app-window

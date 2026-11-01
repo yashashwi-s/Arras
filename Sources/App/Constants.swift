@@ -2,6 +2,7 @@ import AppKit
 
 struct Constants {
     static let appName = "Arras"
+    static let websiteURL = URL(string: "https://tryarras.tech/")!
     static let repositoryURL = URL(string: "https://github.com/yashashwi-s/Arras")!
 
     #if !ARRAS_APP_STORE

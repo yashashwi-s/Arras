@@ -1,49 +1,32 @@
 import SwiftUI
 
+/// The existing Store link style is shared by both editions.
 private struct FooterStarLink: View {
     var body: some View {
         Link(destination: Constants.repositoryURL) {
             Label("Star", systemImage: "star")
         }
         .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
-        .accessibilityLabel("Star on GitHub")
         .accessibilityIdentifier("footer-star-on-github")
-        .help("Star Arras on GitHub")
+        .accessibilityHint("Opens the Arras repository in your browser")
     }
 }
 
 #if ARRAS_APP_STORE
-private struct SupporterThanks: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    private var gold: Color {
-        colorScheme == .dark ? Color(red: 0.94, green: 0.79, blue: 0.48)
-            : Color(red: 0.49, green: 0.32, blue: 0.08)
-    }
-
-    var body: some View {
-        Label("Made possible by you", systemImage: "heart.fill")
-            .font(.system(size: 10, weight: .medium)).foregroundStyle(gold)
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(gold.opacity(0.08), in: Capsule())
-            .overlay { Capsule().strokeBorder(gold.opacity(contrast == .increased ? 0.7 : 0.25), lineWidth: 1) }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Thank you for supporting Arras. Your purchase helps me keep building it. Yashashwi, Arras developer.")
-            .accessibilityIdentifier("footer-supporter-thanks")
-            .help("Thank you for supporting Arras. Your purchase helps me keep building it and sharing the free, open-source edition. Yashashwi")
-    }
-}
 
 /// Library footer. Software updates belong in Preferences and the Mac App Store.
 struct UpdateStatusView: View {
     var body: some View {
         HStack(spacing: 8) {
-            Text("v\(Constants.version)")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.quaternary)
-            SupporterThanks()
             FooterStarLink()
+            Label {
+                Text("Supported").foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "heart.fill").foregroundStyle(.red)
+            }
+            .font(.system(size: 10))
+            .accessibilityIdentifier("footer-supported")
+            .help("Thank you for supporting Arras.")
         }
     }
 }
@@ -179,35 +162,37 @@ struct UpdateStatusLine: View {
     }
 }
 
-/// Stable footer actions; checking/installing still uses the shared verified updater.
+/// Compact footer actions. Version information remains in Preferences.
 struct UpdateStatusView: View {
-    @ObservedObject private var updater = Updater.shared
+    @ObservedObject var updater: Updater = Updater.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("v\(Constants.version)")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.quaternary)
-                .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
-
             if updater.updatesAllowed {
                 switch updater.phase {
                 case .available(let version, _):
-                    Button("Update") {
+                    Button("Update to \(version)") {
                         Task { await updater.installPendingUpdate() }
                     }
-                    .font(.system(size: 10)).buttonStyle(.borderedProminent).controlSize(.small)
-                    .accessibilityLabel("Update to \(version)")
-                    .accessibilityIdentifier("footer-check-for-updates")
-                    .help("Install Arras \(version)")
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
 
                 case .checking:
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
-                        .scaleEffect(0.6)
-                        .frame(width: 14, height: 14)
+                    HStack(spacing: 5) {
+                        ProgressView().progressViewStyle(.circular).controlSize(.mini)
+                            .frame(width: 12, height: 12)
+                        Text("Checking…").font(.system(size: 10))
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Checking for updates")
+                    .accessibilityIdentifier("footer-update-status")
+
+                case .upToDate:
+                    Text("up to date")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.tertiary)
 
                 case .downloading(let progress):
                     Text("\(Int(progress * 100))%")
@@ -220,7 +205,9 @@ struct UpdateStatusView: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
 
-                case .idle, .upToDate, .installed, .failed:
+                case .idle, .installed, .failed:
+                    // The cadence setting lives in Preferences; burying a picker in a footer menu
+                    // made a one-click action into a two-level decision for no benefit.
                     Button {
                         Task { await updater.check(userInitiated: true) }
                     } label: {
@@ -234,21 +221,14 @@ struct UpdateStatusView: View {
                     .accessibilityIdentifier("footer-check-for-updates")
                     .help(UpdateCheckPhrasing.lastChecked(updater.lastChecked))
                 }
-            } else {
-                Label("Update", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
-                    .accessibilityLabel("Updates paused for this test build")
-                    .accessibilityIdentifier("footer-update-paused")
-                    .help("Updates are paused for this test build")
             }
             FooterStarLink()
             Link(destination: Constants.supportPurchaseURL) {
                 Label("Support", systemImage: "heart")
             }
             .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
-            .accessibilityLabel("Support Arras on the App Store")
             .accessibilityIdentifier("footer-support-arras")
-            .help("Buying Arras Widgets supports development. Every feature stays available in the free edition.")
+            .accessibilityHint("Opens the optional App Store purchase to support development. All free features remain available.")
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }

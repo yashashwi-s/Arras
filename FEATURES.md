@@ -19,12 +19,16 @@ render from the sandbox target, with updates managed by Apple.
 
 ## Support independent development
 
-The free edition's Photos footer groups **Update**, **Star** and **Support**.
-Support opens the App Store edition's purchase page; the free edition keeps all
-its features and shows no purchase reminders. Store purchasers see only Star
-and a warm gold **Made possible by you** thank-you badge beside the version.
-Its help and accessible label include the developer's personal thanks; Store
-updates remain in Preferences. Neither edition adds an onboarding tour in 2.5.1.
+The free edition's Photos footer groups **Update**, **Star** and **Support**
+using the existing native link style and original margins. Version information
+stays in Preferences. Store builds show Star and a non-interactive Supported label
+with a red heart, without a purchase link or a thank-you sentence in the footer. Website follows Security & Privacy in the Privacy tab.
+
+In the free edition's Privacy tab, **Use without usage statistics** opens the
+paid App Store edition's purchase page. The disclosure explains that this does
+not turn off reporting in the current copy; the Store edition is a separate
+purchase with no Arras usage statistics. The support contact is
+**yashashwisinghania@gmail.com**. No onboarding tour is added in 2.5.1.
 
 ## Find your next step
 

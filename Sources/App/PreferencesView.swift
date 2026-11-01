@@ -56,6 +56,7 @@ struct PreferencesView: View {
                     menuBarSection
                     HStack {
                         Text("\(Constants.appName) \(Constants.version)").foregroundStyle(.secondary)
+                            .accessibilityIdentifier("preferences-version")
                         Spacer()
                         Link(destination: Constants.repositoryURL) {
                             HStack(spacing: 6) {

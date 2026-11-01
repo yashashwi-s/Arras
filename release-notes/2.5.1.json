@@ -7,6 +7,7 @@
     "Explain when a saved library cannot be opened and offer explicit recovery from a backup, preserving the damaged library before replacement.",
     "Prepare backups off the main thread, stream media and reject unsupported archive sizes safely. Preserve existing backups and library data when an operation fails.",
     "Report failed imports, saves and slideshow changes to Shortcuts instead of reporting success.",
-    "Find an optional Support Arras link beside Update and Star in the free edition’s Photos footer. Buying the App Store edition supports development; all free features remain available."
+    "Find an optional Support link beside Update and Star in the free edition’s Photos footer. The Store footer acknowledges support with a red heart. Version information remains in Preferences; Website and the updated support contact are in Privacy.",
+    "The free edition’s Privacy tab links to the separate paid App Store edition without usage statistics, with clear purchase disclosure."
   ]
 }

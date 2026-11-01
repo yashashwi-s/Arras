@@ -177,7 +177,7 @@ final class StarterExamplesTests: XCTestCase {
             for appearance in [ColorScheme.light, .dark] {
                 attachView(ContentView(manager: manager).frame(width: 460, height: 640).environment(\.colorScheme, appearance),
                            name: "Release footer at minimum width - \(appearance)",
-                           appearance: NSAppearance(named: appearance == .dark ? .darkAqua : .aqua))
+                           appearance: NSAppearance(named: appearance == .dark ? .darkAqua : .aqua), inset: 0)
             }
             if let collage = manager.photos.first(where: { $0.desktopCollage != nil }) {
                 attachView(DesktopCollageRow(item: collage, manager: manager).frame(width: 480), name: "Compact collage group")
@@ -211,8 +211,8 @@ final class StarterExamplesTests: XCTestCase {
     }
 
     @MainActor
-    private func attachView<V: View>(_ view: V, name: String, appearance: NSAppearance? = nil) {
-        let host = NSHostingView(rootView: view.padding(12).background(Color(nsColor: .windowBackgroundColor)))
+    private func attachView<V: View>(_ view: V, name: String, appearance: NSAppearance? = nil, inset: CGFloat = 12) {
+        let host = NSHostingView(rootView: view.padding(inset).background(Color(nsColor: .windowBackgroundColor)))
         host.appearance = appearance
         host.setFrameSize(host.fittingSize)
         host.layoutSubtreeIfNeeded()

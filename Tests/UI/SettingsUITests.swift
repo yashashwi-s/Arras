@@ -35,19 +35,23 @@ final class SettingsUITests: XCTestCase {
         let star = window.links["footer-star-on-github"]
         XCTAssertTrue(star.waitForExistence(timeout: 5))
         XCTAssertTrue(star.isHittable)
+        XCTAssertLessThan(star.frame.height, 20, "Footer labels must stay on one line")
         #if ARRAS_APP_STORE
-        let thanks = window.descendants(matching: .any)["footer-supporter-thanks"]
-        XCTAssertTrue(thanks.exists)
+        XCTAssertTrue(window.descendants(matching: .any)["footer-supported"].exists)
         XCTAssertFalse(window.links["footer-support-arras"].exists)
         XCTAssertFalse(window.buttons["footer-check-for-updates"].exists)
         #else
+        XCTAssertFalse(window.descendants(matching: .any)["footer-supported"].exists)
         let support = window.links["footer-support-arras"]
         XCTAssertTrue(support.exists)
         XCTAssertTrue(support.isHittable)
         XCTAssertLessThan(star.frame.maxX, support.frame.minX)
-        XCTAssertTrue(window.buttons["footer-check-for-updates"].exists || window.descendants(matching: .any)["footer-update-paused"].exists)
+        XCTAssertTrue(window.buttons["footer-check-for-updates"].exists)
         XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-thanks"].exists)
         #endif
+        XCTAssertFalse(window.links["footer-website"].exists)
+        XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-thanks"].exists)
+        XCTAssertFalse(window.staticTexts["v2.5.1"].exists)
         XCTAssertFalse(app.windows["Welcome to Arras"].exists)
         let screenshot = XCTAttachment(screenshot: window.screenshot())
         screenshot.name = "Distribution footer"
@@ -476,6 +480,12 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 8))
         clickWhenHittable(window.descendants(matching: .any)["Privacy"])
         XCTAssertTrue(window.links["Contact & Support"].waitForExistence(timeout: 3))
+        XCTAssertTrue(window.links["privacy-website"].exists)
+        #if ARRAS_APP_STORE
+        XCTAssertFalse(window.links["privacy-app-store-no-statistics"].exists)
+        #else
+        XCTAssertTrue(window.links["privacy-app-store-no-statistics"].exists)
+        #endif
         XCTAssertTrue(window.links["Security & Privacy"].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Restored Contact & Support and telemetry disclosure"

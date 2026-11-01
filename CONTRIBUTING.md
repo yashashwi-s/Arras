@@ -1103,29 +1103,36 @@ the expected checks. Main's post-merge workflow verifies the combined result.
 
 ## Maintenance release verification — 1 November 2026
 
-The owner requested 2.5.1 for both distributions, including the four maintenance
-PR heads (#7, #11, #12, #13). They remain merge ancestors of the maintenance
-branch. Onboarding and the separate clock checkout are excluded. The free
-edition groups Update, Star and an optional Store purchase link in its Photos
-footer; Store purchasers get Star and a gold thank-you badge with no purchase
-action. No app installation or personal-library test is required.
+The 2.5.1 branch preserves the exact maintenance heads from #7, #11, #12 and #13.
+Onboarding and the separate uncommitted clock work are excluded. Initial full
+[CI 41291345761](https://github.com/yashashwi-s/Arras/actions/runs/41291345761)
+passed both distributions before the final footer revisions.
 
-Both local focused suites ran 48 checks: 47 passed and one existing native
-WindowServer test skipped because another window covered its elevated fixture.
-The new video regression checks actual AVPlayer time advancement through the
-Dock-helper exclusion, real covering metadata and recovery, retaining the
-Low Power Mode pause. Its window metadata is a controlled fixture, not proof
-of the reporter's physical foreground/Space behavior. All 81 script checks,
-product metadata and 2.5.1 release notes passed. The first local UI attempt timed
-out enabling macOS automation before app interaction; it is not a passing UI
-check. Current logs/results are under `/private/tmp/arras-251-*`; CI and signed
-package validation provide the remaining release gates.
+Both original focused suites ran 48 checks: 47 passed and one live-window check
+skipped because its fixture was covered. The new video regression verifies actual
+AVPlayer time advancement with the reported Dock-helper metadata, pause/resume
+for real covering metadata and retained Low Power Mode behavior. It does not
+establish reporter-device foreground or physical Space acceptance. All 81 script
+checks, product metadata and release-note validation passed.
 
-The complete CI run [41291345761](https://github.com/yashashwi-s/Arras/actions/runs/41291345761)
-passed both editions on the initial maintenance commit. The owner then requested
-Update/Star/Support in the free Photos footer and Star/a gold thank-you in the
-Store footer. The revised footer and actual-player regression passed four local
-checks per edition. Native hosted-view captures were reviewed at 460-point width
-in light and dark appearances; these are real SwiftUI renders, not physical mouse
-acceptance. This footer revision still needs its final CI run. Main merge,
-publication and Store submission are held for the owner's preview approval.
+The final footer/Privacy renders and video checks passed five direct and four
+Store checks. The direct updater check held a private request and rendered its
+idle, checking and available states without production traffic. Native renders
+were inspected at minimum width in light and dark appearance. The first local
+UI-runner attempt timed out enabling macOS automation before app interaction;
+final native UI CI is still required before merging.
+
+Photos keeps its original footer margins. The free footer has Update, Star and
+Support; Store has Star and a non-interactive Supported label with a red heart.
+Version remains in Preferences. Website follows Security & Privacy in Privacy;
+the free-only statistics-free option clearly opens a separate paid Store edition,
+and the contact is yashashwisinghania@gmail.com. No telemetry protocol or
+reporting preference is changed by that link.
+
+Review copies use bundled samples and isolated temporary libraries. Installed
+apps and the personal library are not replaced. Final merge, publication and
+Store submission remain held for the owner's review. Packages signed from the
+superseded UI were discarded, with Apple receipts retained under
+`/private/tmp/arras-251-superseded-signing-aa35fcc`; rebuild and validate final
+release packages from the approved source. Current logs and previews use
+`/private/tmp/arras-251-*`.
