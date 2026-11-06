@@ -13,7 +13,7 @@ Download Arras only from the
 The release ZIP and DMG are the public artifacts; no Homebrew distribution is
 currently maintained.
 
-The current **2.5.0** app:
+The current direct-download **2.5.1** app:
 
 - requires macOS 14 or later;
 - uses bundle identifier `com.yashashwi.tableau` for upgrade compatibility;

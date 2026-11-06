@@ -4,7 +4,7 @@
 
 [Website](https://tryarras.tech/) · [Download for macOS](https://tryarras.tech/download?ref=github) · [FAQ](https://tryarras.tech/faq) · [Security & Privacy](https://tryarras.tech/security)
 
-[![Download on the Mac App Store](assets/mac-app-store-badge.svg)](https://apps.apple.com/app/id6824271927)
+[![Download on the Mac App Store](assets/mac-app-store-badge.svg)](https://apps.apple.com/app/id6824271927?pt=129614402&ct=github-readme&mt=12)
 
 Arras is a free, open-source Mac app for photos, slideshows and editable desktop
 collages. Keep a photo’s natural proportions, choose its look and layer, and
@@ -18,7 +18,7 @@ arrange a desktop that feels like yours.
 
 ## Distribution
 
-[Arras Widgets is available on the Mac App Store](https://apps.apple.com/app/id6824271927)
+[Arras Widgets is available on the Mac App Store](https://apps.apple.com/app/id6824271927?pt=129614402&ct=github-readme&mt=12)
 as a one-time US$4.99 purchase. Local prices may vary. Buying it supports independent
 development of Arras. Apple manages installation and updates; this sandboxed edition
 sends no Arras usage statistics. The listing supports Family Sharing for up to six
