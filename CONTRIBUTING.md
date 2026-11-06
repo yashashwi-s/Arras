@@ -198,6 +198,17 @@ build the actual Release artifact. Check:
 
 ## Verification evidence
 
+On 6 November 2026, Store-only **2.5.2** was built from
+`f23b0dd72c06a22752936756e040dc52a6e8a837` and uploaded to App Store Connect.
+Its signed universal archive and exported installer passed distribution and
+source-provenance validation; 82 Python checks passed. [CI 42185568733](https://github.com/yashashwi-s/Arras/actions/runs/42185568733)
+passed both target builds, unit suites and native UI suites. The first direct UI
+attempt missed an existing native group-drag assertion by 3.38 points; one retry
+passed without changing that assertion. This does not prove all physical input
+or Space behavior. The free release remains 2.5.1. Store review and manual release
+are separate steps; the English listing uses the current Reddit desktop media.
+
+
 The owner approved the **2.5.0** app, website and `tryarras.tech` domain cutover
 on 18 October 2026. This release uses the exact verified local Developer ID
 packages under `dist/notarized-20261018/`, with uploaded GitHub digests checked
