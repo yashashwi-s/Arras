@@ -1,8 +1,10 @@
 # Arras
 
-**Your photos. Your kind of desktop.**
+**Put photos on your Mac desktop at their natural proportions.**
 
 [Website](https://tryarras.tech/) · [Download for macOS](https://tryarras.tech/download?ref=github) · [FAQ](https://tryarras.tech/faq) · [Security & Privacy](https://tryarras.tech/security)
+
+[![Download on the Mac App Store](assets/mac-app-store-badge.svg)](https://apps.apple.com/app/id6824271927)
 
 Arras is a free, open-source Mac app for photos, slideshows and editable desktop
 collages. Keep a photo’s natural proportions, choose its look and layer, and
@@ -112,3 +114,4 @@ Tests must use isolated storage and never the user’s personal library.
 
 Found a problem? [Open an issue](https://github.com/yashashwi-s/Arras/issues/new/choose).
 If Arras makes your desktop better, [star the repository](https://github.com/yashashwi-s/Arras).
+Already use Arras Widgets? [Rate it on the Mac App Store](https://apps.apple.com/app/id6824271927?action=write-review).

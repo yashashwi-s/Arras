@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### App Store 2.5.2
+
+- Replace Supported with Star, Rate and a small red heart in the Store Photos
+  footer. Rate opens the App Store review page on request. Keep the free footer
+  and direct-download release at 2.5.1.
+- Give the Store target its own version and build number, validated during
+  packaging, so Store-only updates do not require a free-edition release.
+
 ## 2.5.1
 
 Released 1 November 2026. Shared fixes apply to both editions.

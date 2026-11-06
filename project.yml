@@ -125,6 +125,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore
+        MARKETING_VERSION: 2.5.2
+        CURRENT_PROJECT_VERSION: 2211
         CONFIGURATION_BUILD_DIR: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ARRAS_APP_STORE"
         ENABLE_APP_SANDBOX: YES

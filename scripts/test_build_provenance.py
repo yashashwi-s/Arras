@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from build_provenance import BUILD_INPUTS, prepare, snapshot, stamp
 from validate_app_bundle import validate
+from validate_product_metadata import load_project_scalars
 
 ROOT = Path(__file__).resolve().parent.parent
 TEST_SOURCES = ("Sources/App/One.swift", "Sources/App/Two.swift")
@@ -118,6 +119,10 @@ class BuildProvenanceTests(unittest.TestCase):
         info.update(ArrasAppStoreBuild=True, ArrasTelemetryEnabled=False,
                     CFBundleIdentifier='com.yashashwi.arras.appstore',
                     NSScreenCaptureUsageDescription='Capture a selected screen region.')
+        scalars = load_project_scalars(self.root / 'project.yml')
+        for field, setting in [('CFBundleShortVersionString', 'MARKETING_VERSION'),
+                               ('CFBundleVersion', 'CURRENT_PROJECT_VERSION')]:
+            info[field] = scalars.get(('targets', 'ArrasAppStore', 'settings', 'base', setting), info[field])
         path.write_bytes(plistlib.dumps(info))
         resources = self.bundle / 'Contents/Resources'; resources.mkdir(exist_ok=True)
         shutil.copyfile(ROOT / 'Sources/AppStore/PrivacyInfo.xcprivacy', resources / 'PrivacyInfo.xcprivacy')
@@ -129,14 +134,24 @@ class BuildProvenanceTests(unittest.TestCase):
         self.build_store()
         validate(self.bundle, self.root / 'project.yml', distribution='app-store')
 
+    def test_store_release_rejects_the_direct_editions_version(self):
+        self.build_store()
+        path = self.bundle / 'Contents/Info.plist'
+        info = plistlib.loads(path.read_bytes())
+        info['CFBundleShortVersionString'] = '2.5.1'
+        path.write_bytes(plistlib.dumps(info))
+        stamp(self.root, self.prepared, self.bundle)
+        with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString'):
+            validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+
     def test_direct_packaging_rejects_store_bundle(self):
         self.build_store()
-        with self.assertRaisesRegex(ValueError, 'ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
+        with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString|ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
             validate(self.bundle, self.root / 'project.yml')
 
     def test_store_packaging_rejects_direct_bundle(self):
         self.build()
-        with self.assertRaisesRegex(ValueError, 'ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
+        with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString|ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
             validate(self.bundle, self.root / 'project.yml', distribution='app-store')
 
     def test_store_stamp_and_validator_reject_telemetry_pilots(self):

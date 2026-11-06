@@ -21,8 +21,11 @@ render from the sandbox target, with updates managed by Apple.
 
 The free edition's Photos footer groups **Update**, **Star** and **Support**
 using the existing native link style and original margins. Version information
-stays in Preferences. Store builds show Star and a non-interactive Supported label
-with a red heart, without a purchase link or a thank-you sentence in the footer. Website follows Security & Privacy in the Privacy tab.
+stays in Preferences. The prepared Store-only 2.5.2 update shows **Star**, **Rate**
+and a small red heart at the right edge. Rate opens Apple's review page only when
+selected; there is no automatic rating prompt. The live 2.5.1 Store footer still
+shows Supported until that update is approved and released. Website follows
+Security & Privacy in the Privacy tab.
 
 In the free edition's Privacy tab, **Use without usage statistics** opens the
 paid App Store edition's purchase page. The disclosure explains that this does

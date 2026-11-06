@@ -7,6 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 from build_provenance import snapshot
+from validate_product_metadata import load_project_scalars
 
 
 def validate(bundle: Path, project: Path, pilot_build: str | None = None, distribution: str = "direct") -> None:
@@ -16,17 +17,22 @@ def validate(bundle: Path, project: Path, pilot_build: str | None = None, distri
     if app_store and pilot_build is not None:
         raise ValueError("App Store builds cannot enable a telemetry pilot")
     configuration = project.read_text()
+    scalars = load_project_scalars(project)
     def setting(name: str) -> str:
         match = re.search(rf"^\s*{name}:\s*[\"']?([^\s\"']+)", configuration, re.MULTILINE)
         if not match:
             raise ValueError(f"Missing {name} in {project}")
         return match.group(1)
 
+    def release_setting(name: str) -> str:
+        target = "ArrasAppStore" if app_store else "Arras"
+        return scalars.get(("targets", target, "settings", "base", name), setting(name))
+
     with (bundle / "Contents/Info.plist").open("rb") as source:
         info = plistlib.load(source)
     expected = {
-        "CFBundleShortVersionString": setting("MARKETING_VERSION"),
-        "CFBundleVersion": pilot_build or setting("CURRENT_PROJECT_VERSION"),
+        "CFBundleShortVersionString": release_setting("MARKETING_VERSION"),
+        "CFBundleVersion": pilot_build or release_setting("CURRENT_PROJECT_VERSION"),
         "ArrasPrivateTelemetryPilot": pilot_build is not None,
         "ArrasTelemetryEnabled": False if app_store else pilot_build is not None or setting("ArrasTelemetryEnabled").lower() == "true",
         "CFBundleIdentifier": "com.yashashwi.arras.appstore" if app_store else "com.yashashwi.tableau",
