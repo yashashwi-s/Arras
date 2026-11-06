@@ -19,13 +19,17 @@ struct UpdateStatusView: View {
     var body: some View {
         HStack(spacing: 8) {
             FooterStarLink()
-            Label {
-                Text("Supported").foregroundStyle(.secondary)
-            } icon: {
-                Image(systemName: "heart.fill").foregroundStyle(.red)
+            Link(destination: Constants.appStoreReviewURL) {
+                Label("Rate", systemImage: "star.bubble")
             }
+            .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
+            .accessibilityIdentifier("footer-rate-on-app-store")
+            .accessibilityHint("Opens the App Store review page")
+            Image(systemName: "heart.fill")
             .font(.system(size: 10))
-            .accessibilityIdentifier("footer-supported")
+            .foregroundStyle(.red)
+            .accessibilityIdentifier("footer-supporter-heart")
+            .accessibilityLabel("Thank you for supporting Arras")
             .help("Thank you for supporting Arras.")
         }
     }

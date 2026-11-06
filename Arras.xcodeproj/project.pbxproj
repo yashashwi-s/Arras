@@ -1219,7 +1219,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/AppStore/$(CONFIGURATION)";
-				CURRENT_PROJECT_VERSION = 2210;
+				CURRENT_PROJECT_VERSION = 2211;
 				DEVELOPMENT_TEAM = K28DKAV937;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1233,7 +1233,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.1;
+				MARKETING_VERSION = 2.5.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.arras.appstore;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = Arras;
@@ -1320,7 +1320,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/AppStore/$(CONFIGURATION)";
-				CURRENT_PROJECT_VERSION = 2210;
+				CURRENT_PROJECT_VERSION = 2211;
 				DEVELOPMENT_TEAM = K28DKAV937;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1334,7 +1334,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.1;
+				MARKETING_VERSION = 2.5.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.arras.appstore.development;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = "Arras App Store Dev";

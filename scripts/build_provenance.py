@@ -12,7 +12,7 @@ DIRECT_ONLY_SOURCES = {'Updater.swift', 'DownloadTask.swift', 'InstallLocation.s
                        'Telemetry.swift', 'TelemetryRuntime.swift'}
 APP_TARGETS = {'Arras': 'direct', 'ArrasAppStore': 'app-store'}
 
-BUILD_INPUTS = ('project.yml', 'build.sh', 'scripts/build_provenance.py', 'scripts/validate_app_bundle.py', 'scripts/verify_distribution.py', 'Arras.xcodeproj/project.pbxproj')
+BUILD_INPUTS = ('project.yml', 'build.sh', 'scripts/build_provenance.py', 'scripts/validate_app_bundle.py', 'scripts/validate_product_metadata.py', 'scripts/verify_distribution.py', 'Arras.xcodeproj/project.pbxproj')
 
 
 def git(root: Path, *arguments: str) -> str:

@@ -5,7 +5,9 @@ struct Constants {
     static let websiteURL = URL(string: "https://tryarras.tech/")!
     static let repositoryURL = URL(string: "https://github.com/yashashwi-s/Arras")!
 
-    #if !ARRAS_APP_STORE
+    #if ARRAS_APP_STORE
+    static let appStoreReviewURL = URL(string: "https://apps.apple.com/app/id6824271927?action=write-review")!
+    #else
     static let supportPurchaseURL = URL(string: "https://apps.apple.com/app/id6824271927")!
     #endif
 

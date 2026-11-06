@@ -63,6 +63,11 @@ Store Debug uses `com.yashashwi.arras.appstore.development` and the name
 fixture root. Unit tests inject scratch storage. Never test by replacing a user's
 library or launching the production Store identity against personal content.
 
+The shared template holds the direct-download version. Store-only updates override
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in the `ArrasAppStore` target's
+settings; bundle validation checks that target's values. Do not tag or replace
+the free download for an update that changes only the Store edition.
+
 ```sh
 ./build.sh --app-store
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \

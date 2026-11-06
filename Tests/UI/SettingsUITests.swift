@@ -37,11 +37,17 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(star.isHittable)
         XCTAssertLessThan(star.frame.height, 20, "Footer labels must stay on one line")
         #if ARRAS_APP_STORE
-        XCTAssertTrue(window.descendants(matching: .any)["footer-supported"].exists)
+        let rate = window.links["footer-rate-on-app-store"]
+        XCTAssertTrue(rate.exists)
+        XCTAssertTrue(rate.isHittable)
+        XCTAssertLessThan(star.frame.maxX, rate.frame.minX)
+        XCTAssertTrue(window.descendants(matching: .any)["footer-supporter-heart"].exists)
+        XCTAssertFalse(window.staticTexts["Supported"].exists)
         XCTAssertFalse(window.links["footer-support-arras"].exists)
         XCTAssertFalse(window.buttons["footer-check-for-updates"].exists)
         #else
-        XCTAssertFalse(window.descendants(matching: .any)["footer-supported"].exists)
+        XCTAssertFalse(window.links["footer-rate-on-app-store"].exists)
+        XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-heart"].exists)
         let support = window.links["footer-support-arras"]
         XCTAssertTrue(support.exists)
         XCTAssertTrue(support.isHittable)
