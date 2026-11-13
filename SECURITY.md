@@ -29,7 +29,9 @@ ask to confirm opening an app downloaded from the internet. Versions through
 The release asset digest and the SHA-256 in [appcast.json](appcast.json) let you
 confirm your download matches the published file. Both values come from the
 same GitHub publication infrastructure; the updater refuses a ZIP whose SHA-256
-does not match its feed.
+does not match its feed. The source also requires the extracted app to carry
+the official Developer ID Application signature for team `K28DKAV937` and
+bundle identifier `com.yashashwi.tableau` before installation.
 
 New local builds record a digest of application/build inputs before signing.
 Packaging verifies this against the current checkout and compares extracted ZIP
@@ -143,9 +145,10 @@ network connections, GitHub receives normal connection information. The GitHub
 link works when the count is unavailable.
 
 The updater validates HTTPS, a SemVer version, minimum macOS version, SHA-256,
-the presence of an extracted app, bundle identifier, embedded app version, and forward-only version
-precedence before swap. A helper retains the previous bundle until the new
-version writes a startup health marker; failure triggers rollback. The installer
+the extracted app's Developer ID signature and bundle identifier, its embedded
+version, and forward-only version precedence before swap. A helper retains the
+previous bundle until the expected version at the installation path acknowledges
+local startup. A failed launch or health timeout triggers rollback. The installer
 stages and validates the downloaded bundle before replacing the running app; it
 also removes the staged bundle's quarantine attribute as part of that verified
 update flow.

@@ -549,25 +549,28 @@ final class UpdaterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("expanded").path))
     }
 
-    func testArchivePreparationAcceptsTheSignedHostBundleOffMainThread() async throws {
+    func testArchivePreparationRejectsAdHocHostBundleOffMainThread() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let archive = directory.appendingPathComponent("update.zip")
         let bundle = Bundle.main.bundleURL
         let version = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
-        let staged = try await Task.detached(priority: .utility) {
-            XCTAssertFalse(Thread.isMainThread)
-            let zip = Process()
-            zip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-            zip.arguments = ["-c", "-k", "--keepParent", bundle.path, archive.path]
-            try zip.run(); zip.waitUntilExit()
-            XCTAssertEqual(zip.terminationStatus, 0)
-            let digest = SHA256.hash(data: try Data(contentsOf: archive)).map { String(format: "%02x", $0) }.joined()
-            return try Updater.prepareArchive(archive, checksum: digest, version: version)
+        let result = await Task.detached(priority: .utility) { () -> Result<URL, Error> in
+            Result {
+                XCTAssertFalse(Thread.isMainThread)
+                let zip = Process()
+                zip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                zip.arguments = ["-c", "-k", "--keepParent", bundle.path, archive.path]
+                try zip.run(); zip.waitUntilExit()
+                XCTAssertEqual(zip.terminationStatus, 0)
+                let digest = SHA256.hash(data: try Data(contentsOf: archive)).map { String(format: "%02x", $0) }.joined()
+                return try Updater.prepareArchive(archive, checksum: digest, version: version)
+            }
         }.value
-        XCTAssertEqual(staged.deletingLastPathComponent().lastPathComponent, "expanded")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: staged.appendingPathComponent("Contents/MacOS/Arras").path))
+        XCTAssertThrowsError(try result.get()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("official Arras release"))
+        }
     }
 
     @MainActor

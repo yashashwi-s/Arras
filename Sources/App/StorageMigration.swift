@@ -29,31 +29,40 @@ enum StorageMigration {
     /// their current desktop, which is unrecoverable — so when in doubt, do
     /// nothing.
     static func migrateIfNeeded(to destination: URL) {
-        let fm = FileManager.default
-        let destManifest = destination.appendingPathComponent("photos.json")
-
-        // Destination already has a layout — leave it strictly alone.
-        guard !fm.fileExists(atPath: destManifest.path) else { return }
-
         guard let source = containerDir else { return }
-        let sourceManifest = source.appendingPathComponent("photos.json")
-        guard fm.fileExists(atPath: sourceManifest.path) else { return }
-
         do {
-            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-
-            // Copy rather than move: leaving the container intact means a user
-            // who downgrades to a sandboxed build still finds their widgets,
-            // and a half-finished migration can simply be retried.
-            for name in try fm.contentsOfDirectory(atPath: source.path) {
-                let from = source.appendingPathComponent(name)
-                let to = destination.appendingPathComponent(name)
-                guard !fm.fileExists(atPath: to.path) else { continue }
-                try fm.copyItem(at: from, to: to)
-            }
-            NSLog("Arras: migrated widget data out of the sandbox container")
+            try copyLibraryIfNeeded(from: source, to: destination)
         } catch {
             NSLog("Arras: storage migration failed. \(error.localizedDescription)")
         }
+    }
+
+    static func copyLibraryIfNeeded(
+        from source: URL, to destination: URL,
+        copy: (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) }
+    ) throws {
+        let fm = FileManager.default
+        let destManifest = destination.appendingPathComponent("photos.json")
+        let sourceManifest = source.appendingPathComponent("photos.json")
+        guard !fm.fileExists(atPath: destManifest.path),
+              fm.fileExists(atPath: sourceManifest.path) else { return }
+
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        let staging = destination.appendingPathComponent(".migration-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? fm.removeItem(at: staging) }
+
+        let names = try fm.contentsOfDirectory(atPath: source.path).filter { $0 != "photos.json" }
+        // Publish each complete copy and move the manifest last. Interrupted copies
+        // stay in staging, and a retry can reuse any completed destination files.
+        for name in names + ["photos.json"] {
+            let from = source.appendingPathComponent(name)
+            let to = destination.appendingPathComponent(name)
+            guard !fm.fileExists(atPath: to.path) else { continue }
+            let staged = staging.appendingPathComponent(name)
+            try copy(from, staged)
+            try fm.moveItem(at: staged, to: to)
+        }
+        NSLog("Arras: migrated widget data out of the sandbox container")
     }
 }

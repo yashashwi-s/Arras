@@ -45,14 +45,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         AppActivation.shared.apply()
 
         #if !ARRAS_APP_STORE
-        // Let the swap helper know that this bundle reached its own startup before any update
-        // UI or network work can delay it. A matching version is required by the helper's health
-        // breadcrumb, so a rollback cannot accidentally acknowledge the replacement.
-        Updater.markUpdateHealthyIfNeeded()
-
-        // Before anything else can fail because of it: an app run from a disk image cannot
-        // replace itself, and discovering that at update time is a dead end.
-        if !isUITesting {
+        let updateReceipt = Updater.startupOwnsUpdateReceipt()
+            ? UserDefaults.standard.string(forKey: Updater.justUpdatedKey) : nil
+        // A replacement must be able to finish startup without a blocking
+        // install-location prompt while the swap helper is waiting for it.
+        if !isUITesting && updateReceipt == nil {
             InstallLocation.offerToInstallIfNeeded()
         }
         #endif
@@ -86,29 +83,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         if isUITesting {
             showSettingsWindow()
             presentUITestPreflightIfRequested()
-        } else if let installed = UserDefaults.standard.string(forKey: Updater.justUpdatedKey) {
-            // The swap helper is launched before this process exits, so a failed helper can
-            // leave the breadcrumb behind while the old bundle is opened again. Consume it in
-            // both cases and let Updater distinguish a real install from a rollback.
-            UserDefaults.standard.removeObject(forKey: Updater.justUpdatedKey)
-            UserDefaults.standard.removeObject(forKey: Updater.updateHealthMarkerKey)
+        } else if updateReceipt != nil {
             showUpdateSettings()
-            Updater.shared.announceInstallResult(expectedVersion: installed)
         } else if manager.photos.isEmpty {
             // First launch — there is nothing on the desktop yet to explain the app.
             showSettingsWindow()
         }
 
-        // Polls the appcast on launch and at the configured cadence. Notification
-        // permission is requested only if a notification is needed.
         if !isUITesting {
-            Updater.shared.start()
-            if let configuration = TelemetryConfiguration.current {
-                telemetry = TelemetryRuntime(manager: manager, configuration: configuration)
-            }
+            DispatchQueue.main.async { [weak self] in self?.finishDirectStartup(updateReceipt: updateReceipt) }
         }
         #endif
     }
+
+    #if !ARRAS_APP_STORE
+    private func finishDirectStartup(updateReceipt: String?) {
+        let defaults = UserDefaults.standard
+        if let version = updateReceipt,
+           defaults.string(forKey: Updater.justUpdatedKey) == version,
+           Updater.startupOwnsUpdateReceipt(defaults: defaults) {
+            if version == Constants.version, defaults.string(forKey: Updater.updateHealthMarkerKey) != nil,
+               !Updater.markUpdateHealthyIfNeeded(defaults: defaults) {
+                return
+            }
+            defaults.removeObject(forKey: Updater.justUpdatedKey)
+            defaults.removeObject(forKey: Updater.updateHealthMarkerKey)
+            defaults.removeObject(forKey: Updater.updateDestinationKey)
+            Updater.shared.announceInstallResult(expectedVersion: version)
+        }
+        Updater.shared.start()
+        if let configuration = TelemetryConfiguration.current {
+            telemetry = TelemetryRuntime(manager: manager, configuration: configuration)
+        }
+    }
+    #endif
 
     /// UI tests can request one isolated archive-preflight presentation without driving an
     /// Open Panel. The test supplies a temporary destination under its own storage directory;

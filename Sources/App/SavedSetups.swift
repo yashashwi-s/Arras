@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import SwiftUI
 
 struct SavedDesktopSetup: Codable, Identifiable {
@@ -9,21 +10,82 @@ struct SavedDesktopSetup: Codable, Identifiable {
 }
 
 struct DesktopSetupLibrary: Codable {
+    private struct DesktopChange: Codable {
+        let before: Data?
+        let after: Data
+        let previous: SavedDesktopSetup?
+        let removed: RemovedWidgets?
+    }
+
     var version = 1
     var setups: [SavedDesktopSetup] = []
     var previous: SavedDesktopSetup?
     var removed: RemovedWidgets?
+    private var desktopChange: DesktopChange?
 
-    static func read(in storage: URL) throws -> Self {
+    static func read(in storage: URL, desktopData: Data? = nil) throws -> Self {
+        var library = try readFile(in: storage)
+        try library.resolveDesktopChange(in: storage, desktopData: desktopData)
+        return library
+    }
+
+    private static func readFile(in storage: URL) throws -> Self {
         let url = storage.appendingPathComponent("setups.json")
         guard FileManager.default.fileExists(atPath: url.path) else { return Self() }
         let library = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        let snapshots = library.setups.map(\.photos) + [
+            library.previous?.photos, library.removed?.photos,
+            library.desktopChange?.previous?.photos, library.desktopChange?.removed?.photos
+        ].compactMap { $0 }
         guard library.version == 1,
               Set(library.setups.map(\.id)).count == library.setups.count,
-              (library.setups + [library.previous].compactMap { $0 }).allSatisfy({
-                  Set($0.photos.map(\.id)).count == $0.photos.count
-              }), Set(library.removed?.photos.map(\.id) ?? []).count == (library.removed?.photos.count ?? 0) else { throw SetupError.unreadable }
+              snapshots.allSatisfy({ Set($0.map(\.id)).count == $0.count }) else { throw SetupError.unreadable }
         return library
+    }
+
+    private mutating func resolveDesktopChange(in storage: URL, desktopData: Data? = nil) throws {
+        guard let change = desktopChange else { return }
+        let desktop = storage.appendingPathComponent("photos.json")
+        let current: Data?
+        if let desktopData {
+            current = Self.digest(desktopData)
+        } else {
+            current = FileManager.default.fileExists(atPath: desktop.path)
+                ? try Self.digest(Data(contentsOf: desktop)) : nil
+        }
+        if current == change.after {
+            previous = change.previous
+            removed = change.removed
+        } else if current != change.before {
+            throw SetupError.unreadable
+        }
+        desktopChange = nil
+    }
+
+    /// Settle a previous transaction before another desktop write can change its identity.
+    static func settleDesktopChange(in storage: URL) throws {
+        guard FileManager.default.fileExists(atPath: storage.appendingPathComponent("setups.json").path) else { return }
+        var library: Self
+        do { library = try readFile(in: storage) }
+        catch {
+            // Ordinary desktop writes historically remain available with a damaged setup store.
+            // Setup transactions themselves always require a readable store.
+            return
+        }
+        guard library.desktopChange != nil else { return }
+        try library.resolveDesktopChange(in: storage)
+        try library.write(in: storage)
+    }
+
+    func stageDesktopChange(to next: Self, before: Data?, after: Data, in storage: URL) throws {
+        var staged = self
+        staged.desktopChange = DesktopChange(before: before.map(Self.digest), after: Self.digest(after),
+                                             previous: next.previous, removed: next.removed)
+        try staged.write(in: storage)
+    }
+
+    private static func digest(_ data: Data) -> Data {
+        Data(SHA256.hash(data: data))
     }
 
     func write(in storage: URL) throws {
@@ -56,7 +118,7 @@ extension PhotoManager {
     func validateStoredPhotos(_ items: [PhotoItem]) throws {
         for item in items {
             for name in storedFilenames(in: item) where !name.isEmpty {
-                guard name == URL(fileURLWithPath: name).lastPathComponent,
+                guard Self.isManagedMediaFilename(name),
                       FileManager.default.fileExists(atPath: storageDir.appendingPathComponent(name).path) else { throw SetupError.missingMedia }
             }
             for name in item.desktopCollage?.fontFileNames ?? [] {
@@ -125,14 +187,10 @@ extension PhotoManager {
             throw SetupError.missing
         }
         try validateStoredPhotos(setup.photos)
-        // Write recovery before replacing the desktop. A failed second write leaves
-        // the current desktop intact and a valid recovery copy, never lost media.
+        let previous = library
         let expiredRecovery = library.previous?.photos ?? []
         library.previous = SavedDesktopSetup(name: "Before switching setups", photos: photos)
-        try library.write(in: storageDir)
-        // The desktop installer settles old interactions after the active model
-        // commits. Neither recovery-write nor active-save failure may cancel them.
-        guard restoreDesktopSetupItems(setup.photos) else { throw SetupError.couldNotSave }
+        guard restoreDesktopSetupItems(setup.photos, setupChange: (previous, library)) else { throw SetupError.couldNotSave }
         for filename in expiredRecovery.flatMap({ storedFilenames(in: $0) }) {
             removeStoredFileIfUnreferenced(filename)
         }

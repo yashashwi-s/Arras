@@ -411,7 +411,7 @@ extension PhotoManager {
             let names = managedFilenames(in: item).filter { !$0.isEmpty }
             guard !names.isEmpty || item.desktopCollage != nil else { throw LayoutArchiveError.missingStoredMedia(item.filename) }
             for name in names {
-                guard name == (name as NSString).lastPathComponent, name != ".", name != ".." else {
+                guard isManagedMediaFilename(name) else {
                     throw LayoutArchiveError.missingStoredMedia(name)
                 }
                 let value = item.mediaFidelity[name] ?? .unknown
@@ -430,7 +430,8 @@ extension PhotoManager {
             records.append(record)
             writer.addFile(name: "images/\(name)", url: source, expectedSHA256: record.sha256)
         }
-        for name in Set(plan.items.flatMap { $0.desktopCollage?.fontFileNames ?? [] }) {
+        var fontRecords: [ArchiveMediaRecord] = []
+        for name in Set(plan.items.flatMap { $0.desktopCollage?.fontFileNames ?? [] }).sorted() {
             guard CollageFontLibrary.isManagedFilename(name) else { throw LayoutArchiveError.missingStoredFont(name) }
             let source = CollageFontLibrary.directory(in: plan.storageDirectory).appendingPathComponent(name)
             let record: ArchiveMediaRecord
@@ -438,11 +439,13 @@ extension PhotoManager {
             catch let error as ArchiveIOError { throw error }
             catch { throw LayoutArchiveError.missingStoredFont(name) }
             guard record.byteCount <= ArchiveResourceLimits.fontBytes else { throw ArchiveIOError.tooLarge }
+            fontRecords.append(record)
             writer.addFile(name: "fonts/\(name)", url: source, expectedSHA256: record.sha256)
         }
         let status = ArchiveSourceStatus(media: records)
         let metadata = ArchiveExportMetadata(scope: plan.scope, archivalQuality: plan.archivalQuality, media: records,
-                                             statement: ArchiveExportMetadata.statement(archivalQuality: plan.archivalQuality, sourceStatus: status))
+                                             statement: ArchiveExportMetadata.statement(archivalQuality: plan.archivalQuality, sourceStatus: status),
+                                             fonts: fontRecords.isEmpty ? nil : fontRecords)
         let manifest = LayoutManifest(formatVersion: LayoutManifest.currentFormatVersion, appVersion: plan.version,
                                       exportedAt: Date(), photos: plan.items, itemCount: plan.items.count,
                                       preferences: plan.preferences,
@@ -533,7 +536,15 @@ extension PhotoManager {
 
         var integrityRecords: [String: ArchiveMediaRecord] = [:]
         for record in manifest.exportMetadata?.media ?? [] {
-            integrityRecords[record.filename] = record
+            guard integrityRecords.updateValue(record, forKey: record.filename) == nil else {
+                throw LayoutArchiveError.notAZipFile
+            }
+        }
+        var fontIntegrityRecords: [String: ArchiveMediaRecord] = [:]
+        for record in manifest.exportMetadata?.fonts ?? [] {
+            guard fontIntegrityRecords.updateValue(record, forKey: record.filename) == nil else {
+                throw LayoutArchiveError.notAZipFile
+            }
         }
         var stagedBytes: UInt64 = 0
         var stagedFiles = 0
@@ -542,18 +553,28 @@ extension PhotoManager {
         for name in Set(manifest.photos.flatMap { $0.desktopCollage?.fontFileNames ?? [] }) {
             try Task.checkCancellation()
             guard CollageFontLibrary.isManagedFilename(name),
-                  (reader.entrySize(named: "fonts/\(name)") ?? Int.max) <= ArchiveResourceLimits.fontBytes,
-                  let payload = reader.entryData(named: "fonts/\(name)") else {
+                  let size = reader.entrySize(named: "fonts/\(name)"),
+                  size <= ArchiveResourceLimits.fontBytes else {
                 throw LayoutArchiveError.missingStoredFont(name)
             }
-            guard UInt64(payload.count) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
+            let record = fontIntegrityRecords[name]
+            if manifest.exportMetadata?.fonts != nil, record == nil {
+                throw LayoutArchiveError.missingStoredFont(name)
+            }
+            guard UInt64(size) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
                   stagedFiles < Int(UInt16.max) else { throw ArchiveIOError.tooLarge }
             try FileManager.default.createDirectory(at: fontDirectory, withIntermediateDirectories: true)
             let newName = UUID().uuidString + "." + (name as NSString).pathExtension.lowercased()
             let stagedURL = fontDirectory.appendingPathComponent(newName)
-            stagedBytes += UInt64(payload.count)
+            do {
+                try reader.extractEntry(named: "fonts/\(name)", to: stagedURL, record: record)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw LayoutArchiveError.missingStoredFont(name)
+            }
+            stagedBytes += UInt64(size)
             stagedFiles += 1
-            try payload.write(to: stagedURL, options: .atomic)
             guard !CollageFontLibrary.names(at: stagedURL).isEmpty else { throw LayoutArchiveError.missingStoredFont(name) }
             fontMap[name] = stagedURL
         }
@@ -563,12 +584,17 @@ extension PhotoManager {
         for (index, sourceItem) in manifest.photos.enumerated() where !sourceItem.isRetiredCompositionContainer {
             try Task.checkCancellation()
             var names: [String] = []
-            for name in managedFilenames(in: sourceItem) where !name.isEmpty && !names.contains(name) {
+            var seenNames = Set<String>()
+            for name in managedFilenames(in: sourceItem) where !name.isEmpty && seenNames.insert(name).inserted {
                 names.append(name)
             }
             let sourceLabel = sourceItem.customName?.isEmpty == false
                 ? sourceItem.customName!
                 : (sourceItem.spaceImageFilenames.isEmpty ? "Photo" : "Space")
+            guard names.allSatisfy(isManagedMediaFilename) else {
+                skippedReasons.append("\(sourceLabel): invalid media filename")
+                continue
+            }
             guard !names.isEmpty || sourceItem.desktopCollage != nil else {
                 skippedReasons.append("\(sourceLabel): no referenced media")
                 continue
@@ -583,23 +609,24 @@ extension PhotoManager {
             var stageError: String?
             for name in names {
                 try Task.checkCancellation()
-                guard let payload = reader.entryData(named: "images/\(name)"), let newName = filenameMap[name] else {
+                guard let size = reader.entrySize(named: "images/\(name)"), let newName = filenameMap[name] else {
                     stageError = "missing media \(name)"; break
                 }
-                if manifest.exportMetadata != nil {
-                    guard let record = integrityRecords[name], record.matches(payload) else {
-                        stageError = "media integrity check failed for \(name)"; break
-                    }
+                let record = integrityRecords[name]
+                if manifest.exportMetadata != nil, record == nil {
+                    stageError = "missing media integrity record for \(name)"; break
                 }
-                guard UInt64(payload.count) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
+                guard UInt64(size) <= ArchiveResourceLimits.archiveBytes - stagedBytes,
                       stagedFiles < Int(UInt16.max) else { throw ArchiveIOError.tooLarge }
                 let stagedURL = stagingDirectory.appendingPathComponent(newName)
                 do {
-                    try payload.write(to: stagedURL, options: .atomic)
+                    try reader.extractEntry(named: "images/\(name)", to: stagedURL, record: record)
                     stagedURLs.append(stagedURL)
-                    stagedBytes += UInt64(payload.count)
+                    stagedBytes += UInt64(size)
                     stagedFiles += 1
-                } catch { stageError = newName; break }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch { stageError = name; break }
             }
             func stagedURL(for originalName: String) -> URL? {
                 guard let mappedName = filenameMap[originalName] else { return nil }
@@ -836,6 +863,9 @@ extension PhotoManager {
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
         let reader = try SimpleZipReader.read(from: url)
+        guard (reader.entrySize(named: "manifest.json") ?? 0) <= ArchiveResourceLimits.manifestBytes else {
+            throw ArchiveIOError.tooLarge
+        }
         guard let manifestData = reader.entryData(named: "manifest.json") else {
             throw LayoutArchiveError.missingManifest
         }

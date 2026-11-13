@@ -182,6 +182,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     /// helper keeps the previous bundle until this breadcrumb exists; LaunchServices accepting an
     /// `open` request alone is not enough to prove that the new copy actually launched.
     static let updateHealthMarkerKey = "updateHealthMarkerPath"
+    static let updateDestinationKey = "updateDestinationPath"
 
     private let lastCheckKey = "lastUpdateCheck"
     private let latestVersionKey = "latestKnownVersion"
@@ -274,14 +275,21 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         announceInstalled(version: expectedVersion)
     }
 
-    /// Called at the very beginning of app startup. A matching version proves that the replacement
-    /// bundle reached its own process, so the helper can safely discard its rollback copy. The
-    /// marker is deliberately written before update UI/network work, keeping the health handshake
-    /// bounded even if a later startup task fails.
-    static func markUpdateHealthyIfNeeded(defaults: UserDefaults = .standard) {
-        guard defaults.string(forKey: justUpdatedKey) == Constants.version,
+    static func startupOwnsUpdateReceipt(defaults: UserDefaults = .standard,
+                                        bundle: URL = Bundle.main.bundleURL) -> Bool {
+        guard let destination = defaults.string(forKey: updateDestinationKey) else { return true }
+        return bundle.resolvingSymlinksInPath().path == URL(fileURLWithPath: destination).resolvingSymlinksInPath().path
+    }
+
+    /// Acknowledge after local startup has installed its windows and event handlers
+    /// and yielded to the main queue. The helper can then release the previous bundle.
+    @discardableResult
+    static func markUpdateHealthyIfNeeded(defaults: UserDefaults = .standard,
+                                          bundle: URL = Bundle.main.bundleURL) -> Bool {
+        guard startupOwnsUpdateReceipt(defaults: defaults, bundle: bundle),
+              defaults.string(forKey: justUpdatedKey) == Constants.version,
               let path = defaults.string(forKey: updateHealthMarkerKey), !path.isEmpty else {
-            return
+            return false
         }
 
         do {
@@ -290,9 +298,11 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
                 options: .atomic
             )
             defaults.removeObject(forKey: updateHealthMarkerKey)
+            return true
         } catch {
             // Leave the breadcrumb in defaults so the swap helper times out and restores the
             // previous bundle rather than declaring a launch healthy without proof.
+            return false
         }
     }
 
@@ -333,6 +343,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
                                                        interval: activeCheckFrequency.rawValue, now: attempt) { return }
         lastAttempt = attempt
         defaults.set(attempt, forKey: lastAttemptKey)
+        pending = nil
         phase = .checking
 
         var request = URLRequest(url: Self.appcastURL)
@@ -373,7 +384,6 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         }
 
         guard Self.compare(appcast.latestVersion, isNewerThan: currentVersion) else {
-            pending = nil
             phase = .upToDate
             // "Up to date" is a receipt for an action, not a lasting state. Left
             // on screen it permanently replaces the Check for Updates button, so
@@ -444,7 +454,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
     func installPendingUpdate(automatically: Bool = false) async {
         guard updatesAllowed else { return }
         switch phase {
-        case .downloading, .installing:
+        case .checking, .downloading, .installing:
             return
         default:
             break
@@ -541,6 +551,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             let healthMarker = download.workDirectory.appendingPathComponent("update-health")
             try? FileManager.default.removeItem(at: healthMarker)
             defaults.set(healthMarker.path, forKey: Self.updateHealthMarkerKey)
+            defaults.set(Bundle.main.bundleURL.resolvingSymlinksInPath().path, forKey: Self.updateDestinationKey)
             defaults.set(appcast.latestVersion, forKey: Self.justUpdatedKey)
             installBreadcrumbWasSet = true
 
@@ -558,6 +569,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             if installBreadcrumbWasSet {
                 defaults.removeObject(forKey: Self.justUpdatedKey)
                 defaults.removeObject(forKey: Self.updateHealthMarkerKey)
+                defaults.removeObject(forKey: Self.updateDestinationKey)
             }
             phase = .failed(error.localizedDescription)
             if automatically {
@@ -657,15 +669,28 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
               FileManager.default.isExecutableFile(atPath: app.appendingPathComponent("Contents/MacOS").appendingPathComponent(executable).path) else {
             throw UpdateError.message("The update has no runnable application executable.")
         }
-        // Ad-hoc signatures establish internal bundle integrity, not publisher identity.
-        // The manifest checksum remains the download's trust anchor.
-        try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+        try verifyPublisher(of: app)
 
         // Downloaded bundles arrive quarantined; left in place, the swapped-in
         // app is refused at launch and the user is stranded with nothing running.
         _ = try? run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", app.path])
 
         return app
+    }
+
+    nonisolated static func verifyPublisher(of app: URL) throws {
+        // Pin the official Developer ID Application identity independently of the feed.
+        let requirement = """
+        anchor apple generic and identifier "com.yashashwi.tableau"
+        and certificate 1[field.1.2.840.113635.100.6.2.6] exists
+        and certificate leaf[field.1.2.840.113635.100.6.1.13] exists
+        and certificate leaf[subject.OU] = "K28DKAV937"
+        """
+        do {
+            try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--all-architectures", "-R", "=" + requirement, app.path])
+        } catch {
+            throw UpdateError.message("The downloaded update could not be verified as an official Arras release.")
+        }
     }
 
     /// Writes and detaches the helper that performs the swap.
@@ -752,8 +777,12 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         done
 
         if ! mv "$DEST" "$BACKUP"; then
-            /usr/bin/open "$DEST" >/dev/null 2>&1 || true
-            cleanup
+            # A cross-volume move can fail after creating part of the backup.
+            # Keep the recovery directory whenever the move changed either side.
+            if [ -d "$DEST" ]; then
+                /usr/bin/open "$DEST" >/dev/null 2>&1 || true
+                if [ ! -e "$BACKUP" ] && [ ! -L "$BACKUP" ]; then cleanup; fi
+            fi
             exit 1
         fi
 
@@ -764,7 +793,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
 
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
 
-        # Keep the rollback copy until the replacement has reached its own startup. `open`
+        # Keep the rollback copy until the replacement has finished local startup. `open`
         # returning zero only means LaunchServices accepted the request; the health breadcrumb
         # is written by the relaunched app after it has confirmed its bundle version.
         if ! /usr/bin/open "$DEST" >/dev/null 2>&1; then

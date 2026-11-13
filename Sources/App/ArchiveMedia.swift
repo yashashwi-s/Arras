@@ -68,11 +68,16 @@ struct ArchiveMediaRecord: Codable, Equatable, Sendable {
         defer { try? input.close() }
         var hash = SHA256()
         var count = 0
-        while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+        while true {
             try Task.checkCancellation()
-            guard chunk.count <= size - count else { throw ArchiveIOError.sourceChanged }
-            count += chunk.count
-            hash.update(data: chunk)
+            let consumed = try autoreleasepool {
+                guard let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty else { return false }
+                guard chunk.count <= size - count else { throw ArchiveIOError.sourceChanged }
+                count += chunk.count
+                hash.update(data: chunk)
+                return true
+            }
+            if !consumed { break }
         }
         guard count == size else { throw ArchiveIOError.sourceChanged }
         self.filename = filename
@@ -95,6 +100,7 @@ struct ArchiveExportMetadata: Codable, Equatable, Sendable {
     let archivalQuality: Bool
     let media: [ArchiveMediaRecord]
     let statement: String
+    var fonts: [ArchiveMediaRecord]? = nil
 
     var sourceStatus: ArchiveSourceStatus {
         ArchiveSourceStatus(media: media)

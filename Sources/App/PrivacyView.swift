@@ -25,6 +25,7 @@ struct PrivacyView: View {
                         .accessibilityHint("Opens your email app to contact support")
                 }
                 .font(.system(size: 11))
+                PrivacyAuthorCredit()
                 Spacer(minLength: 0)
             }
             .padding(20)
@@ -194,5 +195,21 @@ struct PrivacyView: View {
     private func caption(_ text: String) -> some View {
         Text(text).font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+
+struct PrivacyAuthorCredit: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("Built by")
+                .foregroundStyle(.secondary)
+            Link("Yashashwi Singhania", destination: Constants.developerWebsiteURL)
+                .foregroundStyle(Color.blue)
+                .accessibilityIdentifier("privacy-developer-website")
+        }
+        .font(.system(size: 11))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 }

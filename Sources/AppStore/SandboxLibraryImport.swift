@@ -42,7 +42,9 @@ enum SandboxLibraryImport {
         guard let data = try? Data(contentsOf: manifest),
               let original = try? JSONDecoder().decode([PhotoItem].self, from: data),
               Set(original.map(\.id)).count == original.count,
-              let originalSetups = try? DesktopSetupLibrary.read(in: canonicalSource) else { throw ImportError.invalidLibrary }
+              let originalSetups = try? DesktopSetupLibrary.read(in: canonicalSource, desktopData: data) else {
+            throw ImportError.invalidLibrary
+        }
 
         let staging = stagingParent.appendingPathComponent("ArrasLibraryImport-" + UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -51,6 +53,7 @@ enum SandboxLibraryImport {
         let all = original + originalSetups.retainedPhotos
         let media = Set(all.flatMap { PhotoManager.managedFilenames(in: $0) })
         for name in media {
+            guard PhotoManager.isManagedMediaFilename(name) else { throw ImportError.unsafeFile(name) }
             let file = try safeFile(name, in: canonicalSource)
             let copied = staging.appendingPathComponent(name)
             try fileManager.copyItem(at: file, to: copied)
@@ -106,9 +109,8 @@ enum SandboxLibraryImport {
 
     /// Copy only files referenced by decoded models; never follow links outside the selection.
     private static func safeFile(_ name: String, in directory: URL) throws -> URL {
-        guard !name.isEmpty, !name.hasPrefix("."), name == URL(fileURLWithPath: name).lastPathComponent else {
-            throw ImportError.unsafeFile(name)
-        }
+        guard !name.isEmpty, !name.hasPrefix("."), !name.contains("\0"),
+              name == (name as NSString).lastPathComponent else { throw ImportError.unsafeFile(name) }
         let file = directory.appendingPathComponent(name)
         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         guard values.isRegularFile == true, values.isSymbolicLink != true,

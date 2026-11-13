@@ -457,7 +457,9 @@ enum PhotosLibraryCollectionPicker {
         Task { @MainActor in
             manager.beginMediaImport()
             defer { manager.endMediaImport() }
+            let generation = manager.desktopGeneration
             let status = await PhotosLibraryAuthorization.requestIfNeeded()
+            guard !Task.isCancelled, manager.desktopGeneration == generation else { return }
             guard PhotosLibraryAuthorization.isUsable(status) else {
                 PhotosPermissionRecovery.present(for: status)
                 return
@@ -473,11 +475,13 @@ enum PhotosLibraryCollectionPicker {
                 return
             }
 
-            guard let selection = chooseCollection(collections, relinking: existingWidgetID != nil) else { return }
+            guard let selection = chooseCollection(collections, relinking: existingWidgetID != nil),
+                  manager.desktopGeneration == generation else { return }
 
             let progress = PhotosLibraryProgressPanel(collectionName: selection.displayName)
             defer { progress.close() }
             let sync = Task { @MainActor in
+                guard !Task.isCancelled, manager.desktopGeneration == generation else { return ImportBatchResult() }
                 if let existingWidgetID {
                     return await manager.relinkPhotosLibraryCollection(
                         existingWidgetID,
@@ -494,7 +498,7 @@ enum PhotosLibraryCollectionPicker {
             let result = await sync.value
             progress.close()
             onMenuUpdate?()
-            guard !sync.isCancelled else { return }
+            guard !sync.isCancelled, manager.desktopGeneration == generation else { return }
             ImportBatchPresenter.present(result, title: existingWidgetID == nil ? "Photos Collection Import" : "Photos Collection Refresh", noun: "asset")
         }
     }
@@ -738,9 +742,10 @@ extension PhotoManager {
         beginMediaImport()
         defer { endMediaImport() }
         let generation = desktopGeneration
-        let status = await authorizePhotos(progress: progress, offerRecovery: true)
-        guard desktopGeneration == generation else { return ImportBatchResult() }
+        let status = await authorizePhotos(progress: progress, allowPrompt: true)
+        guard !Task.isCancelled, desktopGeneration == generation else { return ImportBatchResult() }
         guard PhotosLibraryAuthorization.isUsable(status) else {
+            PhotosPermissionRecovery.present(for: status)
             return ImportBatchResult(entries: [
                 .init(source: selection.displayName, status: .failed, reason: photosAuthorizationFailure(status))
             ])
@@ -782,14 +787,15 @@ extension PhotoManager {
         }
         let status = await authorizePhotos(
             progress: progress,
-            offerRecovery: offerPermissionRecovery
+            allowPrompt: offerPermissionRecovery
         )
-        guard widgetSnapshotIsCurrent() else {
+        guard !Task.isCancelled, widgetSnapshotIsCurrent() else {
             setPhotosLibrarySyncState(.idle, progress: progress)
             return ImportBatchResult()
         }
         guard PhotosLibraryAuthorization.isUsable(status) else {
             markPhotosCollectionUnavailable(widgetID, message: photosAuthorizationFailure(status))
+            if offerPermissionRecovery { PhotosPermissionRecovery.present(for: status) }
             return ImportBatchResult(entries: [
                 .init(source: source.displayName, status: .failed, reason: photosAuthorizationFailure(status))
             ])
@@ -835,13 +841,14 @@ extension PhotoManager {
         func widgetSnapshotIsCurrent() -> Bool {
             snapshot.currentIndex(in: self) != nil
         }
-        let status = await authorizePhotos(progress: progress, offerRecovery: true)
-        guard widgetSnapshotIsCurrent() else {
+        let status = await authorizePhotos(progress: progress, allowPrompt: true)
+        guard !Task.isCancelled, widgetSnapshotIsCurrent() else {
             setPhotosLibrarySyncState(.idle, progress: progress)
             return ImportBatchResult()
         }
         guard PhotosLibraryAuthorization.isUsable(status) else {
             markPhotosCollectionUnavailable(widgetID, message: photosAuthorizationFailure(status))
+            PhotosPermissionRecovery.present(for: status)
             return ImportBatchResult(entries: [
                 .init(source: selection.displayName, status: .failed, reason: photosAuthorizationFailure(status))
             ])
@@ -1339,15 +1346,13 @@ extension PhotoManager {
 
     private func authorizePhotos(
         progress: (@MainActor (PhotosLibrarySyncState) -> Void)?,
-        offerRecovery: Bool
+        allowPrompt: Bool
     ) async -> PHAuthorizationStatus {
         setPhotosLibrarySyncState(.authorizing, progress: progress)
-        let status = await PhotosLibraryAuthorization.requestIfNeeded(allowPrompt: offerRecovery)
+        let status = await PhotosLibraryAuthorization.requestIfNeeded(allowPrompt: allowPrompt)
+        guard !Task.isCancelled else { return status }
         if !PhotosLibraryAuthorization.isUsable(status) {
             setPhotosLibrarySyncState(.failed(photosAuthorizationFailure(status)), progress: progress)
-            if offerRecovery {
-                PhotosPermissionRecovery.present(for: status)
-            }
         }
         return status
     }
@@ -1386,7 +1391,6 @@ extension PhotoManager {
         _ state: PhotosLibrarySyncState,
         progress: (@MainActor (PhotosLibrarySyncState) -> Void)?
     ) {
-        photosLibrarySyncState = state
         progress?(state)
     }
 

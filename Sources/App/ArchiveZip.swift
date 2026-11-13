@@ -129,7 +129,14 @@ struct SimpleZipWriter {
             case .file(let source, _):
                 let input = try FileHandle(forReadingFrom: source)
                 defer { try? input.close() }
-                while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty { try consume(chunk) }
+                while true {
+                    let consumed = try autoreleasepool {
+                        guard let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty else { return false }
+                        try consume(chunk)
+                        return true
+                    }
+                    if !consumed { break }
+                }
             }
             guard count == sizes[index].payloadBytes else { throw ArchiveIOError.sourceChanged }
             if case .file(_, let expected?) = entry.payload {
@@ -168,6 +175,8 @@ struct SimpleZipReader {
         let localHeaderOffset: Int
         let compressedSize: Int
         let method: UInt16
+        let flags: UInt16
+        let checksum: UInt32
     }
     private enum Source {
         case data(Data)
@@ -210,6 +219,7 @@ struct SimpleZipReader {
         }
     }
     private let source: Source
+    private let centralOffset: Int
     private var index: [String: IndexedEntry] = [:]
 
     static func read(from url: URL) throws -> Self {
@@ -229,17 +239,23 @@ struct SimpleZipReader {
         let tail = try source.read(at: tailOffset, count: source.count - tailOffset)
         guard let end = Self.findEndOfCentralDirectory(in: tail) else { throw LayoutArchiveError.notAZipFile }
         let count = Int(tail.readUInt16LE(at: end + 10))
+        guard tail.readUInt16LE(at: end + 4) == 0, tail.readUInt16LE(at: end + 6) == 0,
+              Int(tail.readUInt16LE(at: end + 8)) == count else { throw LayoutArchiveError.notAZipFile }
         let centralSize = Int(tail.readUInt32LE(at: end + 12))
         let centralOffset = Int(tail.readUInt32LE(at: end + 16))
         guard centralOffset <= end + tailOffset, centralSize <= end + tailOffset - centralOffset else { throw LayoutArchiveError.notAZipFile }
         guard centralSize <= ArchiveResourceLimits.manifestBytes else { throw ArchiveIOError.tooLarge }
+        self.centralOffset = centralOffset
         let bytes = try source.read(at: centralOffset, count: centralSize)
         let centralEnd = bytes.count
         var offset = 0
         for _ in 0..<count {
             guard offset + 46 <= centralEnd, bytes.readUInt32LE(at: offset) == 0x0201_4b50 else { throw LayoutArchiveError.notAZipFile }
             let method = bytes.readUInt16LE(at: offset + 10)
+            let flags = bytes.readUInt16LE(at: offset + 8)
+            let checksum = bytes.readUInt32LE(at: offset + 16)
             let size = Int(bytes.readUInt32LE(at: offset + 20))
+            let expandedSize = Int(bytes.readUInt32LE(at: offset + 24))
             let nameLength = Int(bytes.readUInt16LE(at: offset + 28))
             let extraLength = Int(bytes.readUInt16LE(at: offset + 30))
             let commentLength = Int(bytes.readUInt16LE(at: offset + 32))
@@ -247,22 +263,75 @@ struct SimpleZipReader {
             let start = offset + 46
             let next = start + nameLength + extraLength + commentLength
             guard next <= centralEnd, UInt64(size) <= ArchiveResourceLimits.entryBytes else { throw ArchiveIOError.tooLarge }
-            let name = String(decoding: bytes[start..<(start + nameLength)], as: UTF8.self)
-            guard index[name] == nil else { throw LayoutArchiveError.notAZipFile }
-            index[name] = IndexedEntry(localHeaderOffset: localOffset, compressedSize: size, method: method)
+            guard nameLength > 0, let name = String(bytes: bytes[start..<(start + nameLength)], encoding: .utf8),
+                  !name.contains("\0"), index[name] == nil, method != 0 || size == expandedSize else {
+                throw LayoutArchiveError.notAZipFile
+            }
+            index[name] = IndexedEntry(localHeaderOffset: localOffset, compressedSize: size, method: method,
+                                       flags: flags, checksum: checksum)
             offset = next
         }
         guard offset == centralEnd else { throw LayoutArchiveError.notAZipFile }
     }
 
-    func entryData(named name: String) -> Data? {
-        guard let entry = index[name], entry.method == 0 else { return nil }
-        guard let header = try? source.read(at: entry.localHeaderOffset, count: 30),
-              header.readUInt32LE(at: 0) == 0x0403_4b50 else { return nil }
+    private func payloadRange(named name: String) throws -> (range: Range<Int>, checksum: UInt32)? {
+        guard let entry = index[name], entry.method == 0, entry.flags & 1 == 0 else { return nil }
+        let header = try source.read(at: entry.localHeaderOffset, count: 30)
+        guard header.readUInt32LE(at: 0) == 0x0403_4b50,
+              header.readUInt16LE(at: 6) == entry.flags,
+              header.readUInt16LE(at: 8) == entry.method else { return nil }
         let nameLength = Int(header.readUInt16LE(at: 26))
         let extraLength = Int(header.readUInt16LE(at: 28))
         let start = entry.localHeaderOffset + 30 + nameLength + extraLength
-        return try? source.read(at: start, count: entry.compressedSize)
+        guard start <= centralOffset, entry.compressedSize <= centralOffset - start else { return nil }
+        let localName = try source.read(at: entry.localHeaderOffset + 30, count: nameLength)
+        guard localName.elementsEqual(name.utf8) else { return nil }
+        return (start..<(start + entry.compressedSize), entry.checksum)
+    }
+
+    func entryData(named name: String) -> Data? {
+        guard let entry = try? payloadRange(named: name),
+              let payload = try? source.read(at: entry.range.lowerBound, count: entry.range.count) else { return nil }
+        var checksum = ZipCRC32()
+        checksum.update(payload)
+        return checksum.value == entry.checksum ? payload : nil
+    }
+
+    /// Extract a STORE entry to a fresh staging path. The reader verifies the
+    /// bytes as they stream and removes partial output on any failure.
+    func extractEntry(named name: String, to url: URL, record: ArchiveMediaRecord? = nil) throws {
+        try Task.checkCancellation()
+        guard let entry = try payloadRange(named: name),
+              record.map({ $0.byteCount == entry.range.count }) ?? true else { throw LayoutArchiveError.notAZipFile }
+        let manager = FileManager.default
+        guard !manager.fileExists(atPath: url.path),
+              manager.createFile(atPath: url.path, contents: nil) else { throw ArchiveIOError.couldNotCreate }
+        var complete = false
+        defer { if !complete { try? manager.removeItem(at: url) } }
+        let output = try FileHandle(forWritingTo: url)
+        defer { try? output.close() }
+        var checksum = ZipCRC32()
+        var hash = SHA256()
+        var offset = entry.range.lowerBound
+        while offset < entry.range.upperBound {
+            try Task.checkCancellation()
+            // Foundation can retain autoreleased file buffers until the enclosing task finishes.
+            try autoreleasepool {
+                let chunk = try source.read(at: offset, count: min(1024 * 1024, entry.range.upperBound - offset))
+                checksum.update(chunk)
+                if record != nil { hash.update(data: chunk) }
+                try output.write(contentsOf: chunk)
+                offset += chunk.count
+            }
+        }
+        guard checksum.value == entry.checksum else { throw LayoutArchiveError.notAZipFile }
+        if let record {
+            let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+            guard digest == record.sha256 else { throw LayoutArchiveError.notAZipFile }
+        }
+        try Task.checkCancellation()
+        try output.close()
+        complete = true
     }
 
     private static func findEndOfCentralDirectory(in bytes: Data) -> Int? {

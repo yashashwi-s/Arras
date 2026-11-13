@@ -9,14 +9,20 @@ enum PhotoImportPolicy {
     /// PhotoKit integration as bytes and enters through `PhotoIngest.prepareLivePhoto`.
     static let videoTypes: [UTType] = [.movie, .quickTimeMovie, .mpeg4Movie]
     static let supportedTypes: [UTType] = imageTypes + videoTypes
+    private static let knownImageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tif", "tiff", "gif", "bmp", "webp"]
+    private static let knownVideoExtensions: Set<String> = ["mov", "mp4", "m4v"]
 
     static func isVideo(_ url: URL) -> Bool {
-        guard let type = UTType(filenameExtension: url.pathExtension.lowercased()) else { return false }
+        let ext = url.pathExtension.lowercased()
+        if knownVideoExtensions.contains(ext) { return true }
+        guard let type = UTType(filenameExtension: ext) else { return false }
         return videoTypes.contains { type.conforms(to: $0) }
     }
 
     static func isImage(_ url: URL) -> Bool {
-        guard let type = UTType(filenameExtension: url.pathExtension.lowercased()) else { return false }
+        let ext = url.pathExtension.lowercased()
+        if knownImageExtensions.contains(ext) { return true }
+        guard let type = UTType(filenameExtension: ext) else { return false }
         return imageTypes.contains { type.conforms(to: $0) }
     }
 

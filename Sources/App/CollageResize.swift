@@ -15,10 +15,10 @@ extension PhotoManager {
         guard let parent = photos.first(where: { $0.id == id && $0.desktopCollage != nil }),
               !parent.isLocked, let window = windows[id] as? CollageDesktopWindow else { return nil }
         cancelCollageResize(id)
-        suspendCollageAppearancePreview(id)
-        let originals = [parent] + collageMembers(id)
         let bounds = window.displayedBounds
         guard bounds.width > 0, bounds.height > 0 else { return nil }
+        suspendCollageAppearancePreview(id)
+        let originals = [parent] + collageMembers(id)
         // Freeze visible spacing motion at pickup. Its durable destinations are
         // kept separately so a no-motion click or cancellation can resume them.
         let pickup = originals.map { item -> PhotoItem in

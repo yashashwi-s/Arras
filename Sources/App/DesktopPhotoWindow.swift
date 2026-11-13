@@ -1830,9 +1830,13 @@ class DraggablePhotoView: NSView {
     override func cancelOperation(_ sender: Any?) {
         if (window as? DesktopPhotoWindow)?.cancelBackgroundGesture() == true { return }
         guard dragMode != .none, let win = window as? DesktopPhotoWindow else { return }
+        resetManipulation()
+        win.onCollageDragCancelled?()
+    }
+
+    func resetManipulation() {
         dragMode = .none
         collageOwnsPlacement = false
-        win.onCollageDragCancelled?()
         SnapGuideOverlay.shared.hide()
         SnapEngine.shared.endDrag()
     }

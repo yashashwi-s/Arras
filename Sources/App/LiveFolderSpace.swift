@@ -330,9 +330,10 @@ extension PhotoManager {
         valueOptions: .strongMemory
     )
 
+    @MainActor
     private final class LiveFolderRuntimeState {
-        var watchers: [UUID: LiveFolderWatcher] = [:]
-        var tasks: [UUID: Task<Void, Never>] = [:]
+        var watchers: [UUID: (token: UUID, watcher: LiveFolderWatcher)] = [:]
+        var tasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
         var notificationTokens: [NSObjectProtocol] = []
     }
 
@@ -420,6 +421,7 @@ extension PhotoManager {
             var unavailable = source
             unavailable.status = source.bookmarkData == nil ? .needsRelink : .missing
             guard storeLiveFolderSource(photos[index].id, source: unavailable) else { return statusSaveFailure() }
+            liveFolderState.watchers.removeValue(forKey: id)?.watcher.cancel()
             if source.status == .needsRelink || source.status == .missing {
                 return ImportBatchResult(entries: [
                     .init(source: source.displayName, status: .failed, reason: "The folder is unavailable. Choose Relink Folder… to select it again.")
@@ -442,6 +444,7 @@ extension PhotoManager {
             var unavailable = source
             unavailable.status = .missing
             guard storeLiveFolderSource(id, source: unavailable) else { return statusSaveFailure() }
+            liveFolderState.watchers.removeValue(forKey: id)?.watcher.cancel()
             return ImportBatchResult(entries: [
                 .init(source: source.displayName, status: .failed, reason: "The folder is unavailable; the last managed snapshot is still safe to display.")
             ])
@@ -454,6 +457,7 @@ extension PhotoManager {
             empty.status = .empty
             empty.lastReconciledAt = Date()
             guard storeLiveFolderSource(id, source: empty) else { return statusSaveFailure() }
+            installLiveFolderWatcher(for: photos[index], access: access)
             return ImportBatchResult(entries: [
                 .init(source: source.displayName, status: .skipped, reason: "No supported images were found; the last managed snapshot remains available.")
             ])
@@ -516,7 +520,9 @@ extension PhotoManager {
         for candidate in reconciliation.retained {
             guard currentIndexIfUnchanged() != nil else { break }
             guard let old = existingByID[candidate.sourceIdentifier] else { continue }
-            if old.sourceByteCount != candidate.sourceByteCount || old.sourceModificationDate != candidate.sourceModificationDate {
+            let managedFile = directory.appendingPathComponent(old.managedFilename)
+            if old.sourceByteCount != candidate.sourceByteCount || old.sourceModificationDate != candidate.sourceModificationDate
+                || !FileManager.default.fileExists(atPath: managedFile.path) {
                 let sourceURL = access.url.appendingPathComponent(candidate.sourceName, isDirectory: false)
                 let prepared = await Task.detached(priority: .utility) {
                     prepare(sourceURL, directory)
@@ -588,6 +594,7 @@ extension PhotoManager {
             var active = source
             active.status = .active
             guard storeLiveFolderSource(id, source: active) else { return statusSaveFailure() }
+            installLiveFolderWatcher(for: photos[index], access: access)
             return ImportBatchResult(entries: entries)
         }
 
@@ -642,8 +649,8 @@ extension PhotoManager {
         // A new/renamed sibling does not change the displayed bytes. Re-decoding
         // the current slide would refit its native geometry and invalidate the
         // just-finished resize's history even though its media stayed the same.
-        if displayedFilename != refreshedFilename { updateLiveFolderWindow(for: photos[index]) }
-        installLiveFolderWatcher(for: photos[index])
+        if displayedFilename != refreshedFilename || windows[id] == nil { updateLiveFolderWindow(for: photos[index]) }
+        installLiveFolderWatcher(for: photos[index], access: access)
 
         for skipped in reconciliation.skipped {
             entries.append(.init(source: skipped.sourceName, status: .skipped, reason: "The live Space cache limit was reached."))
@@ -839,20 +846,28 @@ extension PhotoManager {
     }
 
     private func updateLiveFolderWindow(for item: PhotoItem) {
-        guard let window = windows[item.id] else { return }
         let urls = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
         spaceImages[item.id] = urls
         guard let url = urls[safe: item.folderImageIndex], let content = PhotoContent.load(from: url) else { return }
-        let key = url.lastPathComponent
-        let targetFrame = item.folderImageConfigs[key].map { NSRectFromString($0.frameString) }
-        window.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: false)
+        if let window = windows[item.id] {
+            let targetFrame = item.folderImageConfigs[url.lastPathComponent].map { NSRectFromString($0.frameString) }
+            window.swapImage(content, targetFrame: targetFrame, mode: item.folderSizeMode, animate: false)
+        } else if item.isVisible, !item.isHiddenForDisplay, !item.isHiddenForPresence, collageAllowsWindow(item) {
+            createWindow(for: item, content: content)
+            if let parent = item.collageParentID { syncCollages(only: [parent]) }
+        }
         setupRotationTimer(for: item)
     }
 
     func installLiveFolderWatcher(for item: PhotoItem) {
+        installLiveFolderWatcher(for: item, access: nil)
+    }
+
+    private func installLiveFolderWatcher(for item: PhotoItem, access existingAccess: LiveFolderAccess?) {
+        let state = liveFolderState
+        state.watchers.removeValue(forKey: item.id)?.watcher.cancel()
         guard let source = item.liveFolderSource, !source.sourcePath.isEmpty else { return }
-        liveFolderState.watchers[item.id]?.cancel()
-        guard let access = resolveLiveFolderSource(source, overrideURL: nil, requiresSecurityScope: true) else {
+        guard let access = existingAccess ?? resolveLiveFolderSource(source, overrideURL: nil, requiresSecurityScope: true) else {
             if let index = photos.firstIndex(where: { $0.id == item.id }),
                var unavailable = photos[index].liveFolderSource {
                 unavailable.status = .needsRelink
@@ -860,14 +875,17 @@ extension PhotoManager {
             }
             return
         }
-        defer { access.stop() }
+        defer { if existingAccess == nil { access.stop() } }
         do {
-            let watcher = try LiveFolderWatcher(url: access.url, queue: .global(qos: .utility)) { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.scheduleLiveFolderReconcile(item.id)
+            let id = item.id
+            let token = UUID()
+            let watcher = try LiveFolderWatcher(url: access.url, queue: .global(qos: .utility)) { [weak self, weak state] in
+                Task { @MainActor [weak self, weak state] in
+                    guard state?.watchers[id]?.token == token else { return }
+                    self?.scheduleLiveFolderReconcile(id)
                 }
             }
-            liveFolderState.watchers[item.id] = watcher
+            state.watchers[id] = (token, watcher)
         } catch {
             // A missing/unmounted source is represented in the model and can be relinked later.
             if let index = photos.firstIndex(where: { $0.id == item.id }),
@@ -885,37 +903,29 @@ extension PhotoManager {
             installLiveFolderWatcher(for: item)
         }
         guard liveFolderState.notificationTokens.isEmpty else { return }
+        let state = liveFolderState
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
-            let token = NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
+            let token = NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self, weak state] _ in
+                Task { @MainActor [weak self, weak state] in
+                    guard let self, let state, !state.notificationTokens.isEmpty else { return }
                     for item in self.photos where item.liveFolderSource?.status.needsRelink == true {
                         self.scheduleLiveFolderReconcile(item.id)
                     }
                 }
             }
-            liveFolderState.notificationTokens.append(token)
+            state.notificationTokens.append(token)
         }
     }
 
     func stopLiveFolderWatcher(for id: UUID) {
-        liveFolderState.tasks[id]?.cancel()
-        liveFolderState.tasks.removeValue(forKey: id)
-        liveFolderState.watchers[id]?.cancel()
-        liveFolderState.watchers.removeValue(forKey: id)
-    }
-
-    /// Bulk settings transactions need to discard a watcher when a duplicated item is rolled
-    /// back after its single durable commit fails. Keep the actual watcher state private while
-    /// exposing this narrow cleanup hook to the selection transaction.
-    func stopLiveFolderWatcherForSelection(_ id: UUID) {
-        stopLiveFolderWatcher(for: id)
+        liveFolderState.tasks.removeValue(forKey: id)?.task.cancel()
+        liveFolderState.watchers.removeValue(forKey: id)?.watcher.cancel()
     }
 
     func stopAllLiveFolderWatchers() {
-        for task in liveFolderState.tasks.values { task.cancel() }
+        for task in liveFolderState.tasks.values { task.task.cancel() }
         liveFolderState.tasks.removeAll()
-        for watcher in liveFolderState.watchers.values { watcher.cancel() }
+        for watcher in liveFolderState.watchers.values { watcher.watcher.cancel() }
         liveFolderState.watchers.removeAll()
         for token in liveFolderState.notificationTokens {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
@@ -927,11 +937,17 @@ extension PhotoManager {
     }
 
     private func scheduleLiveFolderReconcile(_ id: UUID) {
-        liveFolderState.tasks[id]?.cancel()
-        liveFolderState.tasks[id] = Task { @MainActor [weak self] in
+        let state = liveFolderState
+        state.tasks[id]?.task.cancel()
+        let token = UUID()
+        let task = Task { @MainActor [weak self, weak state] in
+            defer {
+                if state?.tasks[id]?.token == token { state?.tasks.removeValue(forKey: id) }
+            }
             try? await Task.sleep(nanoseconds: Self.liveFolderDebounceNanoseconds)
             guard !Task.isCancelled, let self else { return }
             _ = await self.reconcileLiveFolder(id)
         }
+        state.tasks[id] = (token, task)
     }
 }

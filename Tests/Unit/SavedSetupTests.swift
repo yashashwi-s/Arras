@@ -53,8 +53,8 @@ final class SavedSetupTests: XCTestCase {
                     for (id, window) in windows { XCTAssertTrue(manager.windows[id] === window) }
                     XCTAssertEqual(try Data(contentsOf: storeURL), stored)
                     if operation == "switch-active-write" || operation == "switch-corrupt-store" {
-                        XCTAssertNotNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
-                                        "A successfully written recovery remains available when the active save fails")
+                        XCTAssertNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
+                                     "A failed desktop write must leave the prior recovery slot in effect")
                     } else { XCTAssertEqual(try Data(contentsOf: setupsURL), setups) }
                     if operation == "switch-corrupt-store" {
                         XCTAssertFalse(manager.persist(), "Unreadable stores must stay protected from later writes")

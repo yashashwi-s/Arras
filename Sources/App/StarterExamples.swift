@@ -153,7 +153,7 @@ extension PhotoManager {
         let previousPhotos = photos
         var writtenURLs: [URL] = []
         do {
-            var additions: [(PhotoItem, PhotoContent)] = []
+            var additions: [PhotoItem] = []
             var settings = example.collageSettings
             let scene = example.sceneBounds(settings: settings)
             let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -203,29 +203,16 @@ extension PhotoManager {
                     item.spaceImageFilenames = urls.map(\.lastPathComponent)
                     item.rotationInterval = "30s"
                 }
-                additions.append((item, content))
+                additions.append(item)
             }
             if var group = parent, let settings = group.desktopCollage {
-                let footprints = additions.map { CollageGeometry.footprint($0.0, frame: NSRectFromString($0.0.frameString)) }
+                let footprints = additions.map { CollageGeometry.footprint($0, frame: NSRectFromString($0.frameString)) }
                 let bounds = CollageGeometry.enclosing(footprints, fallback: .zero, settings: settings)
                 group.frameString = NSStringFromRect(bounds)
                 group.widgetWidth = bounds.width
-                additions.insert((group, .still(NSImage(size: bounds.size))), at: 0)
+                additions.insert(group, at: 0)
             }
-            photos.append(contentsOf: additions.map { $0.0 })
-            guard persist() else { throw StarterArtwork.Error.couldNotSave }
-            if makeVisible {
-                for (item, content) in additions {
-                    // Creating the parent may create its children through syncCollages.
-                    guard windows[item.id] == nil else { continue }
-                    if !item.spaceImageFilenames.isEmpty {
-                        spaceImages[item.id] = item.spaceImageFilenames.map { storageDir.appendingPathComponent($0) }
-                    }
-                    createWindow(for: item, content: content)
-                    if !item.spaceImageFilenames.isEmpty { setupRotationTimer(for: item) }
-                }
-                syncCollages()
-            }
+            guard commitImportedItems(additions, replacing: false) else { throw StarterArtwork.Error.couldNotSave }
             return true
         } catch {
             photos = previousPhotos

@@ -26,13 +26,27 @@ enum ScreenCapturePermission {
 #if ARRAS_APP_STORE
 extension PhotoManager {
     func captureScreenshotRegion() {
-        guard ScreenCapturePermission.ensureAccess() else { return }
+        guard !screenCaptureInProgress else { return }
+        screenCaptureInProgress = true
+        let generation = desktopGeneration
+        guard ScreenCapturePermission.ensureAccess(), desktopGeneration == generation else {
+            screenCaptureInProgress = false
+            return
+        }
+        beginMediaImport()
         Task { @MainActor in
-            guard let region = await ScreenRegionSelector.select() else { return }
+            defer {
+                screenCaptureInProgress = false
+                endMediaImport()
+            }
+            guard let region = await ScreenRegionSelector.select(),
+                  desktopGeneration == generation else { return }
             do {
                 let image = try await ScreenRegionCapture.capture(region)
+                guard desktopGeneration == generation else { return }
                 addPhoto(image)
             } catch {
+                guard desktopGeneration == generation else { return }
                 recordMediaImportFailure("Screen capture failed: \(error.localizedDescription)")
                 AppDialog.inform(title: "Couldn’t Capture Screen Region", message: error.localizedDescription, style: .warning)
             }
@@ -58,7 +72,14 @@ extension PhotoManager {
     /// `terminationHandler`, which AppKit invokes on a background queue, so
     /// this is safe to call from the main actor without freezing the app.
     func captureScreenshotRegion() {
-        guard ScreenCapturePermission.ensureAccess() else { return }
+        guard !screenCaptureInProgress else { return }
+        screenCaptureInProgress = true
+        let generation = desktopGeneration
+        guard ScreenCapturePermission.ensureAccess(), desktopGeneration == generation else {
+            screenCaptureInProgress = false
+            return
+        }
+        beginMediaImport()
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".png")
 
@@ -71,21 +92,28 @@ extension PhotoManager {
 
         task.terminationHandler = { [weak self] _ in
             Task { @MainActor in
-                defer { try? FileManager.default.removeItem(at: tempURL) }
+                defer {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    self?.screenCaptureInProgress = false
+                    self?.endMediaImport()
+                }
 
                 // Escape, or a click that didn't drag a region, leaves no file on
                 // disk -- that's the only cancel signal screencapture gives us.
                 // Without this check a cancelled capture would create an empty widget.
-                guard FileManager.default.fileExists(atPath: tempURL.path),
+                guard let self, self.desktopGeneration == generation,
+                      FileManager.default.fileExists(atPath: tempURL.path),
                       let image = NSImage(contentsOf: tempURL) else { return }
 
-                self?.addPhoto(image)
+                self.addPhoto(image)
             }
         }
 
         do {
             try task.run()
         } catch {
+            screenCaptureInProgress = false
+            endMediaImport()
             recordMediaImportFailure("Screen capture could not be started: \(error.localizedDescription).")
             AppDialog.inform(title: "Couldn’t Capture Screen Region", message: error.localizedDescription, style: .warning)
         }
