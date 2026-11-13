@@ -11,7 +11,7 @@ existing-library import and native region capture; it excludes Arras usage
 statistics and the direct updater. Its separate target, identity and output
 directory prevent mixing distribution packages. The listing supports Family Sharing
 for up to six family members when enabled. See [support and edition details](https://tryarras.tech/support).
-The 2.5.1 behavior below describes the direct-download edition
+The behavior below describes the direct-download edition
 unless stated otherwise.
 
 [View the Store update preferences](assets/app-store-preferences.png) — a native
@@ -19,23 +19,21 @@ render from the sandbox target, with updates managed by Apple.
 
 ## Support independent development
 
-The free edition's Photos footer groups **Update**, **Star** and **Support**
-using the existing native link style and original margins. Version information
-stays in Preferences. The prepared Store-only 2.5.2 update shows **Star**, **Rate**
-and a small red heart at the right edge. Rate opens Apple's review page only when
-selected; there is no automatic rating prompt. The live 2.5.1 Store footer still
-shows Supported until that update is approved and released. Website follows
-Security & Privacy in the Privacy tab.
+The free edition's Photos footer groups **Update**, **Star**, **Support** and a
+globe that opens the Arras website. The 2.5.2 Store footer shows **Star**, **Rate**
+and a red heart that opens the same website. Rate opens Apple’s review page when
+selected. Version information stays in Preferences. Both editions link to the
+developer’s portfolio from the credit in Privacy.
 
 In the free edition's Privacy tab, **Use without usage statistics** opens the
 paid App Store edition's purchase page. The disclosure explains that this does
 not turn off reporting in the current copy; the Store edition is a separate
 purchase with no Arras usage statistics. The support contact is
-**yashashwisinghania@gmail.com**. No onboarding tour is added in 2.5.1.
+**yashashwisinghania@gmail.com**.
 
 ## Find your next step
 
-This guide describes **Arras 2.5.1**. Start with an example or your own photos,
+This guide describes **Arras 2.5.2**. Start with an example or your own photos,
 then use the controls below to make the desktop yours.
 
 | What you want to do | Where to start | What you can do |
@@ -349,7 +347,7 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 - The official macOS 14-or-later DMG and ZIP contain a universal executable with
   both Apple Silicon (`arm64`) and Intel (`x86_64`) slices. Source builds support
   the same architectures when built with an appropriate macOS toolchain.
-- The 2.5.1 app and DMG are Developer ID signed and notarized by Apple, with
+- The official app and DMG are Developer ID signed and notarized by Apple, with
   verified app/DMG tickets. macOS may ask to confirm opening an internet download.
   Older 2.4.9 artifacts were ad-hoc signed and not notarized; their first-launch
   warning does not describe the current release.
@@ -362,6 +360,6 @@ aspect ratio instead of using a WidgetKit grid or forced crop.
 - Per-widget time/weekday visibility schedules are unavailable. Legacy schedule
   values remain readable for compatibility and do not affect visibility.
 
-Release history is recorded in [CHANGELOG.md](CHANGELOG.md#251).
+Release history is recorded in [CHANGELOG.md](CHANGELOG.md).
 [SECURITY.md](SECURITY.md) documents limited statistics;
 the [protocol reference](SECURITY.md#telemetry-protocol-and-activation) owns its schema and operating controls.
