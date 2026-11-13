@@ -134,11 +134,11 @@ class BuildProvenanceTests(unittest.TestCase):
         self.build_store()
         validate(self.bundle, self.root / 'project.yml', distribution='app-store')
 
-    def test_store_release_rejects_the_direct_editions_version(self):
+    def test_store_release_rejects_a_different_marketing_version(self):
         self.build_store()
         path = self.bundle / 'Contents/Info.plist'
         info = plistlib.loads(path.read_bytes())
-        info['CFBundleShortVersionString'] = '2.5.1'
+        info['CFBundleShortVersionString'] += '-old'
         path.write_bytes(plistlib.dumps(info))
         stamp(self.root, self.prepared, self.bundle)
         with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString'):
@@ -146,13 +146,25 @@ class BuildProvenanceTests(unittest.TestCase):
 
     def test_direct_packaging_rejects_store_bundle(self):
         self.build_store()
-        with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString|ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
-            validate(self.bundle, self.root / 'project.yml')
+        self.assert_cross_distribution_rejected('Arras', 'direct')
 
     def test_store_packaging_rejects_direct_bundle(self):
         self.build()
-        with self.assertRaisesRegex(ValueError, 'CFBundleShortVersionString|ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
-            validate(self.bundle, self.root / 'project.yml', distribution='app-store')
+        self.assert_cross_distribution_rejected('ArrasAppStore', 'app-store')
+
+    def assert_cross_distribution_rejected(self, target, distribution):
+        project = self.root / 'project.yml'
+        settings = load_project_scalars(project)
+        path = self.bundle / 'Contents/Info.plist'
+        info = plistlib.loads(path.read_bytes())
+        # Match the requested version so the test reaches the edition checks.
+        for field, setting in [('CFBundleShortVersionString', 'MARKETING_VERSION'),
+                               ('CFBundleVersion', 'CURRENT_PROJECT_VERSION')]:
+            info[field] = settings.get(('targets', target, 'settings', 'base', setting),
+                                       settings[('targetTemplates', 'ArrasApp', 'settings', 'base', setting)])
+        path.write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError, 'ArrasTelemetryEnabled|CFBundleIdentifier|ArrasAppStoreBuild'):
+            validate(self.bundle, project, distribution=distribution)
 
     def test_store_stamp_and_validator_reject_telemetry_pilots(self):
         self.build_store()

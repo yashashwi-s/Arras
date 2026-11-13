@@ -1,0 +1,12 @@
+{
+  "version": "2.5.2",
+  "title": "Lower memory use for large backups",
+  "summary": "Large backups use less memory, linked folders can rebuild missing local copies, and desktop recovery stays in sync if a save is interrupted.",
+  "details": [
+    "Read and write backup media in small chunks. Verify file integrity on import and clean up partial files when an import fails or is cancelled.",
+    "Keep the desktop and its recovery snapshots in sync when switching setups, removing widgets or restoring them.",
+    "Rebuild missing local copies from linked folders and keep the current slideshow usable if a refresh cannot finish.",
+    "Verify the publisher’s signature before installing an update and keep the previous copy available until the updated app finishes starting.",
+    "Open the Arras website from the globe in the Photos footer and find the developer credit in Privacy."
+  ]
+}

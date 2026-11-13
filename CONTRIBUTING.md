@@ -82,7 +82,8 @@ its distribution provisioning profile and Mac installer signing identity. Upload
 only to Apple, never GitHub Releases or generic public CI artifacts. Use the same
 processed build for TestFlight and review; do not use an internal-only export
 that cannot be submitted to review. Verify actual TestFlight installation,
-container permissions and library import before submitting with **manual release**.
+container permissions and library import before submitting with the release mode
+chosen for that version.
 The website Store badge is gated on an approved, publicly live listing; free
 direct download stays the main button.
 

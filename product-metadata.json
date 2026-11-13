@@ -34,7 +34,7 @@
     ],
     "signing": "developer-id",
     "notarized": true,
-    "version": "2.5.1"
+    "version": "2.5.2"
   },
   "sourceBuild": {
     "sourceUrl": "https://github.com/yashashwi-s/Arras",
@@ -59,7 +59,7 @@
     "sandboxed": true,
     "telemetry": false,
     "updates": "Mac App Store",
-    "releaseMode": "manual",
+    "releaseMode": "automatic",
     "appleId": "6824271927",
     "listingName": "Arras Widgets",
     "url": "https://apps.apple.com/app/id6824271927"

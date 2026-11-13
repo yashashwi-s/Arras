@@ -1,14 +1,20 @@
 # Changelog
 
-## Unreleased
+## 2.5.2
 
-### App Store 2.5.2
+- Read and write large backups in smaller chunks to reduce peak memory use.
+  Verify imported media and clean up partial files on cancellation or error.
+- Keep the active desktop and its recovery snapshots consistent when a setup
+  switch, removal or restore is interrupted.
+- Repair missing local copies from linked folders and preserve the current
+  slideshow when a refresh cannot finish.
+- Keep the previous direct download available for rollback until the updated
+  app finishes starting. Verify the publisher signature before installing.
+- Link to the Arras website from the free Photos footer and from the Store
+  edition’s red heart. Both editions credit the developer in Privacy.
 
-- Replace Supported with Star, Rate and a small red heart in the Store Photos
-  footer. Rate opens the App Store review page on request. Keep the free footer
-  and direct-download release at 2.5.1.
-- Give the Store target its own version and build number, validated during
-  packaging, so Store-only updates do not require a free-edition release.
+The Store edition also imports saved setups and removal recovery alongside an
+existing photo library. Its **Rate** link opens Apple’s review page on request.
 
 ## 2.5.1
 
