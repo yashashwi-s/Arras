@@ -230,10 +230,15 @@ final class SavedSetupTests: XCTestCase {
             try Data("damaged".utf8).write(to: manager.storageDir.appendingPathComponent("photos.json"))
             XCTAssertThrowsError(try manager.activateDesktopSetup(id))
             XCTAssertEqual(manager.photos[0].customName, "Current")
-            XCTAssertEqual(try DesktopSetupLibrary.read(in: manager.storageDir).previous?.photos.first?.customName, "Current")
+            XCTAssertNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
+                         "A failed setup switch must not publish a new recovery snapshot")
             let item = manager.photos[0]
             try FileManager.default.removeItem(at: manager.storageDir.appendingPathComponent(item.filename))
-            XCTAssertThrowsError(try manager.activateDesktopSetup(id))
+            XCTAssertThrowsError(try manager.activateDesktopSetup(id)) { error in
+                guard let setupError = error as? SetupError, case .missingMedia = setupError else {
+                    return XCTFail("Expected missing media, got \(error)")
+                }
+            }
             XCTAssertEqual(manager.photos[0].customName, "Current")
         }
     }
