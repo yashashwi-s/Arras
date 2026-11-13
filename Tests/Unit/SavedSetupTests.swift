@@ -53,8 +53,8 @@ final class SavedSetupTests: XCTestCase {
                     for (id, window) in windows { XCTAssertTrue(manager.windows[id] === window) }
                     XCTAssertEqual(try Data(contentsOf: storeURL), stored)
                     if operation == "switch-active-write" || operation == "switch-corrupt-store" {
-                        XCTAssertNotNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
-                                        "A successfully written recovery remains available when the active save fails")
+                        XCTAssertNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
+                                     "A failed desktop write must leave the prior recovery slot in effect")
                     } else { XCTAssertEqual(try Data(contentsOf: setupsURL), setups) }
                     if operation == "switch-corrupt-store" {
                         XCTAssertFalse(manager.persist(), "Unreadable stores must stay protected from later writes")
@@ -230,10 +230,15 @@ final class SavedSetupTests: XCTestCase {
             try Data("damaged".utf8).write(to: manager.storageDir.appendingPathComponent("photos.json"))
             XCTAssertThrowsError(try manager.activateDesktopSetup(id))
             XCTAssertEqual(manager.photos[0].customName, "Current")
-            XCTAssertEqual(try DesktopSetupLibrary.read(in: manager.storageDir).previous?.photos.first?.customName, "Current")
+            XCTAssertNil(try DesktopSetupLibrary.read(in: manager.storageDir).previous,
+                         "A failed setup switch must not publish a new recovery snapshot")
             let item = manager.photos[0]
             try FileManager.default.removeItem(at: manager.storageDir.appendingPathComponent(item.filename))
-            XCTAssertThrowsError(try manager.activateDesktopSetup(id))
+            XCTAssertThrowsError(try manager.activateDesktopSetup(id)) { error in
+                guard let setupError = error as? SetupError, case .missingMedia = setupError else {
+                    return XCTFail("Expected missing media, got \(error)")
+                }
+            }
             XCTAssertEqual(manager.photos[0].customName, "Current")
         }
     }

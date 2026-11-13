@@ -70,9 +70,7 @@ extension PhotoManager {
         item.frameString = NSStringFromRect(frame)
         item.stackOrder = (photos.map(\.stackOrder).max() ?? 0) + 1
         if let display = NSScreen.main { item.displayIdentifier = DisplayManager.identifier(for: display) }
-        photos.append(item)
-        guard persist() else { photos.removeAll { $0.id == item.id }; return nil }
-        createCollageWindow(item)
+        guard commitImportedItems([item], replacing: false) else { return nil }
         return item.id
     }
 
@@ -501,6 +499,7 @@ extension PhotoManager {
         SnapGuideOverlay.shared.hide()
         SnapEngine.shared.endDrag()
         for (id, drag) in collageDrags {
+            (windows[id]?.contentView as? DraggablePhotoView)?.resetManipulation()
             windows[id]?.setPhotoFrame(drag.interruptedDestination ?? drag.pickup)
             if let target = drag.targetID { (windows[target] as? CollageDesktopWindow)?.isCandidate = false }
         }

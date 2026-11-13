@@ -558,16 +558,8 @@ extension PhotoManager {
         persistenceSuppressed = false
 
         guard !createdIDs.isEmpty, persist() else {
-            persistenceSuppressed = false
-            let newIDs = Set(photos.map(\.id)).subtracting(originalIDs)
-            for id in newIDs {
-                windows[id]?.hidePhoto()
-                windows.removeValue(forKey: id)
-                cancelRotationTimer(for: id)
-                stopLiveFolderWatcherForSelection(id)
-                spaceImages.removeValue(forKey: id)
-            }
-            let newFilenames = Set(photos.flatMap { storedFilenamesForSelection($0) }).subtracting(originalFilenames)
+            let newFilenames = Set(photos.filter { !originalIDs.contains($0.id) }
+                .flatMap { storedFilenamesForSelection($0) }).subtracting(originalFilenames)
             photos = originalPhotos
             selectedPhotoIDs = originalSelection
             selectionAnchorID = originalAnchor
@@ -577,6 +569,7 @@ extension PhotoManager {
             return 0
         }
 
+        activateCommittedAdditions(photos.filter { !originalIDs.contains($0.id) })
         selectedPhotoIDs = Set(createdIDs)
         selectionAnchorID = createdIDs.last
         return createdIDs.count

@@ -53,7 +53,8 @@ extension PhotoManager {
         guard var draft = collageAppearanceDrafts[id], !draft.suspended,
               let layout = collageAppearanceLayout(id, settings: draft.settings),
               let window = windows[id] as? CollageDesktopWindow else { return }
-        guard draft.renderedSettings != layout.settings || draft.renderedFrames != layout.frames || window.photoFrame != layout.bounds else { return }
+        guard draft.renderedSettings != layout.settings || draft.renderedFrames != layout.frames
+                || window.photoFrame != layout.bounds || window.settings != layout.settings else { return }
         draft.settings.compositionScale = layout.settings.compositionScale
         draft.renderedSettings = layout.settings
         draft.renderedFrames = layout.frames

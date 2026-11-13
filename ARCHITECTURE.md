@@ -171,15 +171,19 @@ Source files below live in `Sources/App/`.
 `SavedSetups.swift` stores named local model snapshots and the desktop from before
 the last setup switch in an atomic `setups.json`. Setups share existing managed
 media and font files; garbage collection must check both active and saved references.
-Unreadable setup metadata blocks deletion. Switching validates file availability,
-writes the recovery snapshot first, commits the active model, then rebuilds windows.
+Unreadable setup metadata blocks deletion. Switching validates file availability
+and stages both versions of the recovery slots in `setups.json`. The active
+`photos.json` selects the matching version by SHA-256. An interruption before
+the active write leaves the old slots in effect. An interruption after that
+write leaves the new slots in effect. Arras consolidates the slots before a
+later active write and rebuilds windows after the active model commits.
 Saving settles provisional gestures only after the setup write succeeds; switching
 leaves cancellation to the desktop installer after the active-model commit. Failed
 recovery/setup or active-store writes retain gesture ownership and native geometry.
 Global preferences remain separate. Portable `.arras` export is still explicit.
 
-`RemovedWidgets.swift` keeps the last removal in the same snapshot store before
-committing the active desktop. Its media and fonts remain protected across
+`RemovedWidgets.swift` records removals and consumes recovery through the same
+transaction as setup switching. Recovery media and fonts remain protected across
 relaunch. Recovery merges missing IDs into the current desktop, preserves later
 edits and additions, and rejoins detached children only if they have not moved to
 another collage. Its durable addition shares import runtime restoration, preserving
@@ -190,8 +194,8 @@ for retry. The same scene-specific interaction guard protects each case; unrelat
 drafts remain live and are not written into the recovered model. Failed saves
 restore the whole active model without altering native windows or recovery data.
 A subsequent successful removal or explicit discard releases
-the previous recovery after checking all remaining references. Failed removal
-rolls back the active model and attempts to restore the previous recovery record.
+the previous recovery after checking all remaining references. A failed active
+write leaves the previous recovery record in effect.
 Removal does not globally cancel interactions: missing IDs are a no-op, affected
 unfinished scenes wait for retry, and unrelated previews/gestures keep ownership.
 After durable removal, only surviving affected parents are synchronized and refit.
@@ -432,8 +436,11 @@ is requested only when needed. Notification eligibility is checked before and
 after status lookup and permission requests; cadence or automatic-mode changes
 suppress stale scheduled alerts without acknowledging them. Only accepted submissions persist their
 deduplication marker. Manual and automatic installs share HTTPS,
-checksum, ZIP, identity/version, quarantine handling and rollback validation;
-turning automatic installation off mid-download prevents installation.
+checksum, ZIP, version, pinned Developer ID identity, quarantine handling and
+rollback validation. Turning automatic installation off mid-download prevents
+installation. The helper keeps the prior app until the expected version at
+the destination writes a health marker after local startup yields to the main
+queue.
 Automatic replacement also waits for all active media-import scopes, including
 Photos downloads, ordinary files, replacements and linked-folder reconciliation.
 The main-actor count is balanced with `defer`, so overlapping imports cannot clear

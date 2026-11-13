@@ -47,6 +47,21 @@ struct PhotoItem: Identifiable, Codable {
     /// AppKit's own ordering does not.
     var stackOrder: Int
 
+    /// Layouts and archives can contain arbitrary saved ranks. Compact extreme
+    /// ranks before a placement action needs to allocate the next or prior rank.
+    static func normalizingStackOrder(_ items: [Self]) -> [Self] {
+        guard items.contains(where: { $0.stackOrder > Int.max - 1024 || $0.stackOrder < Int.min + 1024 }) else {
+            return items
+        }
+        let ranks = Set(items.map(\.stackOrder)).sorted()
+        let compacted = Dictionary(uniqueKeysWithValues: ranks.enumerated().map { ($0.element, $0.offset) })
+        return items.map { item in
+            var result = item
+            result.stackOrder = compacted[item.stackOrder, default: 0]
+            return result
+        }
+    }
+
     // Naming
     var customName: String?
 

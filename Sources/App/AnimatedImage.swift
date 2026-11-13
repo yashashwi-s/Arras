@@ -105,11 +105,10 @@ enum PhotoContent {
             return .video(video)
         }
 
-        guard let data = try? Data(contentsOf: url),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else { return nil }
 
-        if let frames = AnimatedImageIO.decodeForPlayback(data: data),
+        if let frames = AnimatedImageIO.decodeForPlayback(source: source),
            let representative = NSImage(contentsOf: url) ?? image(at: source, index: 0) {
             return .animated(frames, representative: representative)
         }
@@ -245,8 +244,8 @@ enum AnimatedImageIO {
     /// relaunches. It also generalizes to APNG/WebP dictionaries for free,
     /// in case a future import path ever hands us those bytes directly.
     static func decodeForPlayback(url: URL) -> AnimatedImageFrames? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return decodeForPlayback(data: data)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return decodeForPlayback(source: source)
     }
 
     private static let playbackByteBudget = 64 * 1024 * 1024
@@ -258,6 +257,10 @@ enum AnimatedImageIO {
 
     static func decodeForPlayback(data: Data) -> AnimatedImageFrames? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return decodeForPlayback(source: source)
+    }
+
+    static func decodeForPlayback(source: CGImageSource) -> AnimatedImageFrames? {
         let count = CGImageSourceGetCount(source)
         guard count > 1, count <= 10_000 else { return nil }
         // Preserve timing and every frame while bounding the decoded playback footprint.

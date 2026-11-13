@@ -73,21 +73,19 @@ enum InstallLocation {
     private static func moveAndRelaunch() throws {
         let source = bundleURL
         let target = destination
-        let manager = FileManager.default
-
-        if manager.fileExists(atPath: target.path) {
-            _ = try manager.replaceItemAt(target, withItemAt: try stagedCopy(of: source))
-        } else {
-            try manager.copyItem(at: source, to: target)
-        }
+        try copyBundle(from: source, to: target)
 
         // Downloaded bundles arrive quarantined. Left in place, the copy we just made gets the
         // same Gatekeeper prompt the user already dismissed once to get this far.
         let strip = Process()
         strip.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
         strip.arguments = ["-dr", "com.apple.quarantine", target.path]
-        try? strip.run()
-        strip.waitUntilExit()
+        do {
+            try strip.run()
+            strip.waitUntilExit()
+        } catch {
+            NSLog("Arras: could not start quarantine removal. %@", error.localizedDescription)
+        }
 
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
@@ -107,16 +105,24 @@ enum InstallLocation {
         }
     }
 
-    /// `replaceItemAt` needs the replacement on the same volume as the destination.
-    private static func stagedCopy(of source: URL) throws -> URL {
-        let staging = try FileManager.default.url(
+    /// Stage on the destination volume before exposing the new bundle.
+    static func copyBundle(from source: URL, to target: URL,
+                           copy: (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) }) throws {
+        let manager = FileManager.default
+        let replacing = manager.fileExists(atPath: target.path)
+        let staging = try manager.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
-            appropriateFor: destination,
+            appropriateFor: replacing ? target : target.deletingLastPathComponent(),
             create: true
         )
-        let copy = staging.appendingPathComponent(source.lastPathComponent)
-        try FileManager.default.copyItem(at: source, to: copy)
-        return copy
+        defer { try? manager.removeItem(at: staging) }
+        let staged = staging.appendingPathComponent(source.lastPathComponent)
+        try copy(source, staged)
+        if replacing {
+            _ = try manager.replaceItemAt(target, withItemAt: staged)
+        } else {
+            try manager.moveItem(at: staged, to: target)
+        }
     }
 }

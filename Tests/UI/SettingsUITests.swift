@@ -41,7 +41,10 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(rate.exists)
         XCTAssertTrue(rate.isHittable)
         XCTAssertLessThan(star.frame.maxX, rate.frame.minX)
-        XCTAssertTrue(window.descendants(matching: .any)["footer-supporter-heart"].exists)
+        let heart = window.links["footer-supporter-heart"]
+        XCTAssertTrue(heart.exists)
+        XCTAssertTrue(heart.isHittable)
+        XCTAssertLessThan(rate.frame.maxX, heart.frame.minX)
         XCTAssertFalse(window.staticTexts["Supported"].exists)
         XCTAssertFalse(window.links["footer-support-arras"].exists)
         XCTAssertFalse(window.buttons["footer-check-for-updates"].exists)
@@ -55,7 +58,6 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.buttons["footer-check-for-updates"].exists)
         XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-thanks"].exists)
         #endif
-        XCTAssertFalse(window.links["footer-website"].exists)
         XCTAssertFalse(window.descendants(matching: .any)["footer-supporter-thanks"].exists)
         XCTAssertFalse(window.staticTexts["v2.5.1"].exists)
         XCTAssertFalse(app.windows["Welcome to Arras"].exists)

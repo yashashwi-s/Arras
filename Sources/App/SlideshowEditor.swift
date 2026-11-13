@@ -91,7 +91,8 @@ struct SlideshowEditor: View {
 
     private func thumbnail(_ filename: String) -> some View {
         Group {
-            if let image = NSImage(contentsOf: manager.storageDir.appendingPathComponent(filename)) {
+            if PhotoManager.isManagedMediaFilename(filename),
+               let image = NSImage(contentsOf: manager.storageDir.appendingPathComponent(filename)) {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
                 Image(systemName: "photo").foregroundStyle(.secondary)

@@ -210,6 +210,8 @@ enum LayoutArchiveImportFlow {
             return
         }
 
+        let confirmedDesktop = manager.desktopGeneration
+        let confirmedWidgetIDs = Set(manager.photos.map(\.id))
         let selectedCount = preflight.candidates.filter { selection.selectedIDs.contains($0.id) }.count
         let widgetWord = selectedCount == 1 ? "widget" : "widgets"
         let recovering = manager.libraryRecoveryRequired
@@ -233,6 +235,15 @@ enum LayoutArchiveImportFlow {
         case .alertSecondButtonReturn where canReplace: mode = .replace
         default:
             preflight.cleanup()
+            return
+        }
+
+        if mode != .merge, (manager.desktopGeneration != confirmedDesktop
+            || Set(manager.photos.map(\.id)) != confirmedWidgetIDs) {
+            preflight.cleanup()
+            presentAlert(title: "Desktop Changed",
+                         message: "The widgets changed while the confirmation was open. Open the backup again to review the current desktop.",
+                         style: .warning)
             return
         }
 

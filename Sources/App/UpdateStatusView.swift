@@ -25,12 +25,17 @@ struct UpdateStatusView: View {
             .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
             .accessibilityIdentifier("footer-rate-on-app-store")
             .accessibilityHint("Opens the App Store review page")
-            Image(systemName: "heart.fill")
+            Link(destination: Constants.websiteURL) {
+                Image(systemName: "heart.fill")
+                    .frame(minWidth: 20, minHeight: 20)
+                    .foregroundStyle(.red)
+            }
             .font(.system(size: 10))
-            .foregroundStyle(.red)
+            .buttonStyle(.borderless)
+            .controlSize(.small)
             .accessibilityIdentifier("footer-supporter-heart")
-            .accessibilityLabel("Thank you for supporting Arras")
-            .help("Thank you for supporting Arras.")
+            .accessibilityLabel("Arras website")
+            .help("Visit tryarras.tech. Thank you for supporting Arras.")
         }
     }
 }
@@ -233,6 +238,16 @@ struct UpdateStatusView: View {
             .font(.system(size: 10)).buttonStyle(.borderless).controlSize(.small)
             .accessibilityIdentifier("footer-support-arras")
             .accessibilityHint("Opens the optional App Store purchase to support development. All free features remain available.")
+            Link(destination: Constants.websiteURL) {
+                Image(systemName: "globe")
+                    .frame(minWidth: 20, minHeight: 20)
+            }
+            .font(.system(size: 10))
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Visit tryarras.tech")
+            .accessibilityLabel("Arras website")
+            .accessibilityIdentifier("footer-arras-website")
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: updater.phase)
     }
