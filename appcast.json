@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.5.1",
-  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.5.1/Arras.app.zip?source=arras-updater&version=2.5.1",
-  "sha256": "886d30ee5f99b9ac5e38dcca675ce40711c11feeb44ee279bae24cdf5ce50d65",
-  "releaseNotes": "Keep your desktop moving: Fix visible video widgets and slideshows being paused by a macOS desktop helper, with safer backups, library recovery and clearer Shortcuts errors.",
+  "latestVersion": "2.5.2",
+  "downloadURL": "https://github.com/yashashwi-s/Arras/releases/download/v2.5.2/Arras.app.zip?source=arras-updater&version=2.5.2",
+  "sha256": "628e7e450dd0461d8baf6520c1e2d2d6fa8ddcde26c935ee8ea93cb5d0c53513",
+  "releaseNotes": "Lower memory use for large backups: Large backups use less memory, linked folders can rebuild missing local copies, and desktop recovery stays in sync if a save is interrupted.",
   "minimumOSVersion": "14.0",
   "announcement": null
 }
