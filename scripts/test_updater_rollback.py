@@ -35,7 +35,9 @@ class RollbackTests(unittest.TestCase):
             root = Path(directory); work = root / 'work'; backup = work / 'previous.app'; destination = root / 'Arras.app'
             backup.mkdir(parents=True); destination.mkdir()
             (backup / 'executable').write_text('known good')
-            script = 'WORK="$1"; BACKUP="$2"; DEST="$3"\ncleanup() { rm -rf "$WORK"; }\nstop_replacement() { :; }\n'
+            script = ('WORK="$1"; BACKUP="$2"; DEST="$3"\n'
+                      'cleanup() { rm -rf "$WORK"; }\nstop_replacement() { :; }\n'
+                      'replacement_still_at_destination() { :; }\n')
             if failure == 'move': script += 'mv() { return 1; }\n'
             if failure == 'remove': script += 'rm() { return 1; }\n'
             result = subprocess.run(['/bin/sh', '-c', script + function + '\nrestore_previous', 'fixture', str(work), str(backup), str(destination)])
@@ -60,7 +62,8 @@ class RollbackTests(unittest.TestCase):
         script = script.replace('/usr/bin/open', '"$FIXTURE_OPEN"')
         script = script.replace('/usr/bin/ditto', '"$FIXTURE_COPY"')
         script = script.replace('#!/bin/sh', '#!/bin/sh\nsleep() { :; }')
-        for scenario in ('healthy', 'copy_failure', 'launch_failure', 'no_health'):
+        for scenario in ('healthy', 'copy_failure', 'launch_failure', 'no_health',
+                         'relocated', 'relocated_with_new_occupant'):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 work = root / 'work'; new = work / 'new.app'; backup = work / 'previous.app'
@@ -70,21 +73,41 @@ class RollbackTests(unittest.TestCase):
                 (destination / 'version').write_text('old')
                 launcher = root / 'launch.sh'
                 launcher.write_text('''#!/bin/sh
-if [ "$(cat "$1/version")" = old ]; then exit 0; fi
+if [ "$(cat "$1/version")" = old ]; then touch "$FIXTURE_REOPENED"; exit 0; fi
 case "$FIXTURE_SCENARIO" in
   launch_failure) exit 1 ;;
   no_health) exit 0 ;;
+  relocated*)
+    mv "$1" "$FIXTURE_MOVED"
+    if [ "$FIXTURE_SCENARIO" = relocated_with_new_occupant ]; then
+      mkdir "$1"
+      printf other > "$1/version"
+    fi
+    ;;
   *) touch "$FIXTURE_HEALTH" ;;
 esac
 ''')
                 launcher.chmod(0o755)
                 import os
+                moved = root / 'Relocated.app'
+                reopened = root / 'reopened'
                 env = dict(os.environ, FIXTURE_OPEN=str(launcher),
                            FIXTURE_COPY='/usr/bin/false' if scenario == 'copy_failure' else '/usr/bin/ditto',
-                           FIXTURE_SCENARIO=scenario, FIXTURE_HEALTH=str(health))
+                           FIXTURE_SCENARIO=scenario, FIXTURE_HEALTH=str(health),
+                           FIXTURE_MOVED=str(moved), FIXTURE_REOPENED=str(reopened))
                 result = subprocess.run(['/bin/sh', '-c', script, 'fixture', '999999999',
                                          str(new), str(destination), str(backup), str(work), str(health)],
                                         env=env, timeout=10, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0 if scenario == 'healthy' else 1, result.stderr)
-                self.assertEqual((destination / 'version').read_text(), 'new' if scenario == 'healthy' else 'old')
-                self.assertFalse(work.exists())
+                if scenario.startswith('relocated'):
+                    self.assertEqual((moved / 'version').read_text(), 'new')
+                    self.assertEqual((backup / 'version').read_text(), 'old')
+                    self.assertTrue(health.with_suffix('.relocated').exists())
+                    self.assertFalse(reopened.exists())
+                    if scenario == 'relocated_with_new_occupant':
+                        self.assertEqual((destination / 'version').read_text(), 'other')
+                    else:
+                        self.assertFalse(destination.exists())
+                else:
+                    self.assertEqual((destination / 'version').read_text(), 'new' if scenario == 'healthy' else 'old')
+                    self.assertFalse(work.exists())

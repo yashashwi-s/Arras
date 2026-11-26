@@ -104,7 +104,8 @@ python3 scripts/notarize_distribution.py \
   --keychain-profile arras-notary \
   --work-dir build/notarization \
   --output-dir dist/notarized \
-  --wait-seconds 900
+  --wait-seconds 900 \
+  --require-release-metadata
 ```
 
 Use a Developer ID **Application** certificate and a previously validated
@@ -132,6 +133,22 @@ Reviewed signing/version metadata must match before publication packaging; a
 pending result or any failed check stops the workflow before the release steps.
 Local `build.sh --release` output remains an ad-hoc development package, separate
 from this Developer ID distribution output.
+
+### Publishing from a local signed build
+
+Record the exact build commit and its passing CI run. Save the bundle validation
+output, the notarization receipt, both Apple acceptance logs, and the app and DMG
+ticket and policy checks with the release records. Upload the verified packages
+to a GitHub draft and compare GitHub's asset digests against the receipt before
+publishing. A tag job started by local publication is a separate build. The
+release record should identify the packages users actually receive.
+
+After publication, update `appcast.json` on `main` with the public ZIP URL and
+digest. Run `python3 scripts/audit_public_release.py` to download both public
+assets and verify them against GitHub and the feed. Keep that report with the
+receipt. The updater reads the feed on `main`; a source tag retains the feed
+snapshot that existed at build time. Updating the feed after the assets become
+public keeps it from advertising a download that does not exist yet.
 
 `project.yml` owns project configuration. Generate `Arras.xcodeproj`; do not
 hand-edit it. Tests must use injected temporary storage and must never read or
@@ -1167,3 +1184,26 @@ separate from this GitHub release. Onboarding and clocks were closed as deferred
 with their work retained. Superseded UI packages were discarded; current signing
 receipts and checks remain under `/private/tmp/arras-251-*` and the ignored local
 notarization directory.
+
+### Direct-download 2.5.2 verification — 13 November 2026
+
+[Arras 2.5.2](https://github.com/yashashwi-s/Arras/releases/tag/v2.5.2), build
+2213, was built from `e6391bc62b7e3571925eb4e72743c7eb57e3c807`. The exact source
+passed [CI](https://github.com/yashashwi-s/Arras/actions/runs/43470435234),
+including both editions' unit and desktop UI checks. The local distribution
+script validated the app bundle, both architectures, the signatures, the
+stapled tickets and Gatekeeper policy. It mounted the DMG and verified the app
+and Applications shortcut, and compared the ZIP and DMG contents to the signed
+build. Apple accepted the app (`5754a363-a9ab-4bac-b203-06e745c70b6f`) and DMG
+(`2cc512fd-5919-482c-85ad-ac6b98f87cb5`) without reported issues.
+
+| Published asset | SHA-256 |
+| --- | --- |
+| `Arras.app.zip` | `628e7e450dd0461d8baf6520c1e2d2d6fa8ddcde26c935ee8ea93cb5d0c53513` |
+| `Arras.dmg` | `ca790dfb73f2179bfeb07306d9a5f5edc0d36d3650b82879b5a40f858a863274` |
+
+The public downloads match the receipt. The updater feed was published in
+`42f2c4c` and uses the same ZIP digest. The separate tag workflow
+[43472957658](https://github.com/yashashwi-s/Arras/actions/runs/43472957658)
+was canceled after publication to avoid a second build of the same release.
+These checks did not replace a live 2.5.1 installation with 2.5.2.

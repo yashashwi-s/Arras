@@ -20,10 +20,13 @@ render from the sandbox target, with updates managed by Apple.
 ## Support independent development
 
 The free edition's Photos footer groups **Update**, **Star**, **Support** and a
-globe that opens the Arras website. The 2.5.2 Store footer shows **Star**, **Rate**
+globe that opens the Arras website. The Store footer shows **Star**, **Rate**
 and a red heart that opens the same website. Rate opens Apple’s review page when
-selected. Version information stays in Preferences. Both editions link to the
-developer’s portfolio from the credit in Privacy.
+selected, and the Store edition also requests an optional native macOS rating
+after three active days with saved widgets. The status menu includes **Support
+Arras…** (free) or **Rate Arras…** (Store) above **Quit**. Version information
+stays in Preferences. Both editions link to the developer’s portfolio from the
+credit in Privacy.
 
 In the free edition's Privacy tab, **Use without usage statistics** opens the
 paid App Store edition's purchase page. The disclosure explains that this does
@@ -33,7 +36,7 @@ purchase with no Arras usage statistics. The support contact is
 
 ## Find your next step
 
-This guide describes **Arras 2.5.2**. Start with an example or your own photos,
+This guide describes **Arras 2.5.3**. Start with an example or your own photos,
 then use the controls below to make the desktop yours.
 
 | What you want to do | Where to start | What you can do |

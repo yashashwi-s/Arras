@@ -45,11 +45,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         AppActivation.shared.apply()
 
         #if !ARRAS_APP_STORE
+        let relocatedRecovery = isUITesting ? nil : Updater.takeRelocatedUpdateRecovery()
         let updateReceipt = Updater.startupOwnsUpdateReceipt()
             ? UserDefaults.standard.string(forKey: Updater.justUpdatedKey) : nil
         // A replacement must be able to finish startup without a blocking
         // install-location prompt while the swap helper is waiting for it.
-        if !isUITesting && updateReceipt == nil {
+        if !isUITesting && updateReceipt == nil && relocatedRecovery == nil {
             InstallLocation.offerToInstallIfNeeded()
         }
         #endif
@@ -77,13 +78,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         } else if manager.photos.isEmpty {
             showSettingsWindow()
         }
+        if !isUITesting {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                guard let self,
+                      !self.manager.hasPendingMediaImport,
+                      !self.manager.hasActiveArrangementInteraction,
+                      self.collageEditor == nil else { return }
+                let photoCount = self.manager.photos.filter { $0.desktopCollage == nil }.count
+                AppStoreReviewPrompt.shared.evaluate(
+                    photoCount: photoCount,
+                    collageCount: self.manager.collageRootItems.count
+                )
+            }
+        }
         #else
         // Show settings after an update attempt, so success or rollback is visible rather
         // than the app appearing to have closed and reopened for no reason.
         if isUITesting {
             showSettingsWindow()
             presentUITestPreflightIfRequested()
-        } else if updateReceipt != nil {
+        } else if updateReceipt != nil || relocatedRecovery != nil {
             showUpdateSettings()
         } else if manager.photos.isEmpty {
             // First launch — there is nothing on the desktop yet to explain the app.
@@ -91,15 +105,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         }
 
         if !isUITesting {
-            DispatchQueue.main.async { [weak self] in self?.finishDirectStartup(updateReceipt: updateReceipt) }
+            DispatchQueue.main.async { [weak self] in
+                self?.finishDirectStartup(updateReceipt: updateReceipt, relocatedRecovery: relocatedRecovery)
+            }
         }
         #endif
     }
 
     #if !ARRAS_APP_STORE
-    private func finishDirectStartup(updateReceipt: String?) {
+    private func finishDirectStartup(updateReceipt: String?, relocatedRecovery: URL?) {
         let defaults = UserDefaults.standard
-        if let version = updateReceipt,
+        if let relocatedRecovery {
+            Updater.shared.announceRelocatedUpdate(recovery: relocatedRecovery)
+        } else if let version = updateReceipt,
            defaults.string(forKey: Updater.justUpdatedKey) == version,
            Updater.startupOwnsUpdateReceipt(defaults: defaults) {
             if version == Constants.version, defaults.string(forKey: Updater.updateHealthMarkerKey) != nil,
@@ -695,6 +713,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
         menu.addItem(.separator())
 
+        #if ARRAS_APP_STORE
+        let reviewItem = NSMenuItem(title: "Rate Arras…", action: #selector(rateOnAppStore), keyEquivalent: "")
+        reviewItem.target = self
+        menu.addItem(reviewItem)
+        #else
+        let supportItem = NSMenuItem(title: "Support Arras…", action: #selector(supportArras), keyEquivalent: "")
+        supportItem.target = self
+        menu.addItem(supportItem)
+        #endif
+
         let quitItem = NSMenuItem(title: "Quit \(Constants.appName)", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -743,6 +771,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     @objc func starOnGitHub() {
         NSWorkspace.shared.open(Constants.repositoryURL)
     }
+
+    #if ARRAS_APP_STORE
+    @objc func rateOnAppStore() {
+        NSWorkspace.shared.open(Constants.appStoreReviewURL)
+    }
+    #else
+    @objc func supportArras() {
+        NSWorkspace.shared.open(Constants.supportPurchaseURL)
+    }
+    #endif
 
     /// Keeps the one managed Settings window visually native and attached to the Space where
     /// the user asked for it. Without `.moveToActiveSpace`, ordering an existing window brings

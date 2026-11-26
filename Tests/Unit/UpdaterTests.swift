@@ -599,6 +599,40 @@ final class UpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testAnnouncementLinksRequireAnHTTPSHostWithoutCredentials() {
+        let safe = "https://tryarras.tech/changelog#v252"
+        XCTAssertEqual(Updater.announcementURL(safe)?.absoluteString, safe)
+        XCTAssertEqual(Updater.announcementURL("HTTPS://tryarras.tech")?.host, "tryarras.tech")
+        for unsafe in [nil, "", "http://tryarras.tech", "https:tryarras.tech", "/changelog",
+                       "//tryarras.tech", "file:///Applications/Arras.app", "x-apple.systempreferences:privacy",
+                       "https://user:password@tryarras.tech"] {
+            XCTAssertNil(Updater.announcementURL(unsafe), "Accepted unsafe link: \(unsafe ?? "nil")")
+        }
+    }
+
+    @MainActor
+    func testRelocatedUpdateReportsRecoveryOnceAndPreservesBackup() throws {
+        let suite = "ArrasRelocatedUpdate-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let backup = directory.appendingPathComponent("previous.app")
+        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let marker = directory.appendingPathComponent("update-health")
+        defaults.set(marker.path, forKey: Updater.updateHealthMarkerKey)
+        defaults.set(directory.appendingPathComponent("Arras.app").path, forKey: Updater.updateDestinationKey)
+        defaults.set(Constants.version, forKey: Updater.justUpdatedKey)
+        XCTAssertNil(Updater.takeRelocatedUpdateRecovery(defaults: defaults))
+        XCTAssertEqual(defaults.string(forKey: Updater.updateHealthMarkerKey), marker.path)
+        try Data().write(to: marker.appendingPathExtension("relocated"))
+        XCTAssertEqual(Updater.takeRelocatedUpdateRecovery(defaults: defaults)?.path, backup.path)
+        XCTAssertNil(defaults.string(forKey: Updater.updateDestinationKey))
+        XCTAssertNil(Updater.takeRelocatedUpdateRecovery(defaults: defaults))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+    }
+
+    @MainActor
     func testVersionComparisonUsesSemVerPrecedence() {
         XCTAssertTrue(Updater.compare("2.4.10", isNewerThan: "2.4.9"))
         XCTAssertTrue(Updater.compare("3.0.0", isNewerThan: "2.99.99"))

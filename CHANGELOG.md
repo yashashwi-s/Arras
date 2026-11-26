@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.3
+
+- Open update announcement links only when they point to an HTTPS website.
+- Preserve the rollback copy if Arras is moved during an update. Leave the moved
+  app and any replacement at the original location intact.
+- Add **Support Arras…** (direct download) and **Rate Arras…** (Mac App
+  Store) to the status menu above **Quit**, and request an optional native App
+  Store rating after three active days with saved widgets.
+
 ## 2.5.2
 
 - Read and write large backups in smaller chunks to reduce peak memory use.

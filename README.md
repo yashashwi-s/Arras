@@ -1,14 +1,15 @@
 # Arras
 
-**Put photos on your Mac desktop at their natural proportions.**
+**Native Mac desktop photo widgets, editable collages, slideshows, and floating reference images without cropping.**
 
-[Website](https://tryarras.tech/) · [Download for macOS](https://tryarras.tech/download?ref=github) · [FAQ](https://tryarras.tech/faq) · [Security & Privacy](https://tryarras.tech/security)
+[Website](https://tryarras.tech/) · [Download for macOS](https://tryarras.tech/download?ref=github) · [Guides](https://tryarras.tech/guides) · [FAQ](https://tryarras.tech/faq) · [Security & Privacy](https://tryarras.tech/security)
 
 [![Download on the Mac App Store](assets/mac-app-store-badge.svg)](https://apps.apple.com/app/id6824271927?pt=129614402&ct=github-readme&mt=12)
 
-Arras is a free, open-source Mac app for photos, slideshows and editable desktop
-collages. Keep a photo’s natural proportions, choose its look and layer, and
-arrange a desktop that feels like yours.
+Arras is a free, open-source macOS app (Swift & AppKit) for putting uncropped
+photos, animated GIFs, muted local videos, slideshows, and editable collages
+directly on your Mac desktop. Keep a photo’s natural aspect ratio, style it
+with frames, mats, and shapes, or float a visual reference above your apps.
 
 [![Watch the 10.4-second Arras 2.5.0 desktop film](assets/launch-2.5.0-poster.jpg)](https://tryarras.tech/puremac/arras/launch-2.5.0.mp4)
 
@@ -67,7 +68,18 @@ network behavior and retention.
 
 [![An editable Arras collage with sample photos](assets/collages-2.5.0.webp)](https://tryarras.tech/#details)
 
-See [more real screenshots](https://tryarras.tech/#workflows), the
+## Arras vs Apple’s built-in Photos widget
+
+| Capability | Arras (macOS 14+) | Apple Photos Widget |
+| --- | --- | --- |
+| Aspect ratio & sizing | True aspect ratio, free corner resize | Fixed square/rectangle grid, auto-cropped |
+| Single photo from Finder | Drag & drop or paste directly | Requires creating an Apple Photos album |
+| Editable desktop collages | Live groups with independent photos & labels | Not supported |
+| Floating above app windows | Behind Icons, On Desktop, Above Widgets, Floating | Desktop layer only |
+| Linked Finder folders & GIFs/Video | Finder folders, Photos albums, GIF/APNG, muted video | Photos library stills only |
+| Full color in monochrome widget mode | Always keeps full photo color | Tints to monochrome when desktop widgets dim |
+
+See [full comparisons](https://tryarras.tech/vs/apple-photos-widget), [more real screenshots](https://tryarras.tech/#workflows), the
 [feature guide](FEATURES.md) and [changelog](CHANGELOG.md) for details.
 
 ## Start here

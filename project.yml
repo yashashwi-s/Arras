@@ -23,8 +23,8 @@ targetTemplates:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.photography"
         INFOPLIST_KEY_CFBundleDisplayName: "Arras"
         GENERATE_INFOPLIST_FILE: NO
-        CURRENT_PROJECT_VERSION: 2213
-        MARKETING_VERSION: 2.5.2
+        CURRENT_PROJECT_VERSION: 2214
+        MARKETING_VERSION: 2.5.3
         INFOPLIST_KEY_LSUIElement: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Arras needs access to your Photos library so you can pick images to display on your desktop."
         ENABLE_HARDENED_RUNTIME: YES
@@ -125,8 +125,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yashashwi.arras.appstore
-        MARKETING_VERSION: 2.5.2
-        CURRENT_PROJECT_VERSION: 2212
+        MARKETING_VERSION: 2.5.3
+        CURRENT_PROJECT_VERSION: 2214
         CONFIGURATION_BUILD_DIR: "$(BUILD_DIR)/AppStore/$(CONFIGURATION)"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ARRAS_APP_STORE"
         ENABLE_APP_SANDBOX: YES
@@ -150,6 +150,7 @@ targets:
       - path: Tests/Unit
         excludes: [UpdaterTests.swift, TelemetryTests.swift]
       - path: Tests/AppStore/SandboxMigrationTests.swift
+      - path: Tests/AppStore/AppStoreReviewPromptTests.swift
     dependencies:
       - target: ArrasAppStore
     settings:

@@ -27,6 +27,7 @@
 		1544699675F42733B91DC98F /* LayoutArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC56D3B15FF195A007DA0A /* LayoutArchive.swift */; };
 		16D55663EE2DAABBEC028661 /* PhotoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F073918226F1F3FBAB54C270 /* PhotoItem.swift */; };
 		1709E5BFD8E7EB092F272BEA /* PhotoToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CB513D1A616B046725F36E /* PhotoToolsView.swift */; };
+		187BAF59FE954B5265D54EA1 /* AppStoreReviewPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3EEBEFC549042647086D2E8 /* AppStoreReviewPromptTests.swift */; };
 		188EF567817DDC69CC0FAA13 /* BackupFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E3C6EA5541F0F7F608F2F0 /* BackupFormat.swift */; };
 		1B12A955D389CEDEB9ACFC1D /* ArchiveMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42CAD2C8C55FD722093DCC66 /* ArchiveMedia.swift */; };
 		1B4EC510EF892C7C0A2115A9 /* LiveFolderSpaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFC37604C1F3C279D8448F8 /* LiveFolderSpaceTests.swift */; };
@@ -203,6 +204,7 @@
 		D1131CCD132590F1C3741660 /* WindowCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA72F81E7944BACCA5BE863 /* WindowCoverageTests.swift */; };
 		D1E1AF043D65CCC7B02412E8 /* DesktopCollage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BE0D8A733494039319406F /* DesktopCollage.swift */; };
 		D265545843C8B3A3B350C753 /* StarterExamplesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D191BBCC25409C9CAEEFE9A /* StarterExamplesTests.swift */; };
+		D3DF9B576686EA6A56850F4F /* AppStoreReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA80F181FD31F5CF756A3C38 /* AppStoreReviewPrompt.swift */; };
 		D3E32646E7BCEC97804F82A0 /* StorageMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71BDDD627BBE4350C8001C80 /* StorageMigration.swift */; };
 		D48905D4A53932FF49300586 /* ImportLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5086BF05A0B8751CFF6FBE /* ImportLifecycleTests.swift */; };
 		D8B740A95D4BD846FDCFFBB2 /* RepositoryStarsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E8F45F35D2CF900ADD6418 /* RepositoryStarsTests.swift */; };
@@ -360,6 +362,7 @@
 		B21EC15B78CBA23C3EF9F7D9 /* ArrangementHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementHistoryTests.swift; sourceTree = "<group>"; };
 		B29DB3F38251326B9B4159D3 /* PhotosResourceTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosResourceTransfer.swift; sourceTree = "<group>"; };
 		B3B90229452DDECE135C9C2F /* PhotosLibraryCollection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosLibraryCollection.swift; sourceTree = "<group>"; };
+		B3EEBEFC549042647086D2E8 /* AppStoreReviewPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewPromptTests.swift; sourceTree = "<group>"; };
 		B4404696069D16CF80560C07 /* CollageEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollageEditorTests.swift; sourceTree = "<group>"; };
 		B765233560C8F224F4AE2E28 /* ReferenceInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceInspector.swift; sourceTree = "<group>"; };
 		BA01BD3EE9298D19AF8C6EF9 /* AppDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDialogTests.swift; sourceTree = "<group>"; };
@@ -386,6 +389,7 @@
 		E1BE6B05C64C7DB9C36F5CB2 /* StarterExamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterExamples.swift; sourceTree = "<group>"; };
 		E52B9FE0B69EDA19F9D1B572 /* PDFImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImport.swift; sourceTree = "<group>"; };
 		EA137CB222ADF934AE92BF46 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		EA80F181FD31F5CF756A3C38 /* AppStoreReviewPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewPrompt.swift; sourceTree = "<group>"; };
 		EC6D1B295BBF349333B532A6 /* SavedSetups.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedSetups.swift; sourceTree = "<group>"; };
 		EE23412E99E4D8B532F328A2 /* MenuBarCustomization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarCustomization.swift; sourceTree = "<group>"; };
 		EFD90B4F3420DFFE7834C60A /* PhotoRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoRowView.swift; sourceTree = "<group>"; };
@@ -481,6 +485,7 @@
 		88AF79AC7B1C0353412C5D4E /* AppStore */ = {
 			isa = PBXGroup;
 			children = (
+				B3EEBEFC549042647086D2E8 /* AppStoreReviewPromptTests.swift */,
 				0F4FFB3B5B70D8898B2D1EEB /* SandboxMigrationTests.swift */,
 			);
 			path = AppStore;
@@ -574,6 +579,7 @@
 		BB10679910C5EB4EE77C2E60 /* AppStore */ = {
 			isa = PBXGroup;
 			children = (
+				EA80F181FD31F5CF756A3C38 /* AppStoreReviewPrompt.swift */,
 				A3357A23177C95201807E1A7 /* AppStoreUpdates.swift */,
 				C92FD87E3FA259F2DC080827 /* PrivacyInfo.xcprivacy */,
 				1A53AF0375DB3698668D9E69 /* SandboxLibraryImport.swift */,
@@ -882,6 +888,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				073DF8F4485D7BB0BF0E4FF7 /* AppDialogTests.swift in Sources */,
+				187BAF59FE954B5265D54EA1 /* AppStoreReviewPromptTests.swift in Sources */,
 				5B086A394065D27BA14D4E20 /* ArchiveZipTests.swift in Sources */,
 				B0754B23EF099C5367F19CAD /* ArrangementHistoryTests.swift in Sources */,
 				CB7909C92651A3F3849B0947 /* ArrasIntentsTests.swift in Sources */,
@@ -1011,6 +1018,7 @@
 				94B9013CCD15471BC451105B /* AppActivation.swift in Sources */,
 				CA67CB4E138EA996D4365D9C /* AppDelegate.swift in Sources */,
 				6B46456F1587521F0E2F2174 /* AppDialog.swift in Sources */,
+				D3DF9B576686EA6A56850F4F /* AppStoreReviewPrompt.swift in Sources */,
 				E8927E6433D5AC107068D0D6 /* AppStoreUpdates.swift in Sources */,
 				60DA5A43C5F3C0329FCC27E7 /* ArchiveMedia.swift in Sources */,
 				E84BE576DB2826B72BAF073D /* ArchiveZip.swift in Sources */,
@@ -1219,7 +1227,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/AppStore/$(CONFIGURATION)";
-				CURRENT_PROJECT_VERSION = 2212;
+				CURRENT_PROJECT_VERSION = 2214;
 				DEVELOPMENT_TEAM = K28DKAV937;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1233,7 +1241,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.2;
+				MARKETING_VERSION = 2.5.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.arras.appstore;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = Arras;
@@ -1320,7 +1328,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CONFIGURATION_BUILD_DIR = "$(BUILD_DIR)/AppStore/$(CONFIGURATION)";
-				CURRENT_PROJECT_VERSION = 2212;
+				CURRENT_PROJECT_VERSION = 2214;
 				DEVELOPMENT_TEAM = K28DKAV937;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1334,7 +1342,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.2;
+				MARKETING_VERSION = 2.5.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.arras.appstore.development;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = "Arras App Store Dev";
@@ -1373,7 +1381,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2213;
+				CURRENT_PROJECT_VERSION = 2214;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1386,7 +1394,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.2;
+				MARKETING_VERSION = 2.5.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = Arras;
@@ -1540,7 +1548,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2213;
+				CURRENT_PROJECT_VERSION = 2214;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1553,7 +1561,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.2;
+				MARKETING_VERSION = 2.5.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.yashashwi.tableau;
 				PRODUCT_MODULE_NAME = Arras;
 				PRODUCT_NAME = Arras;

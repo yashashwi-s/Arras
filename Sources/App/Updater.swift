@@ -281,6 +281,22 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         return bundle.resolvingSymlinksInPath().path == URL(fileURLWithPath: destination).resolvingSymlinksInPath().path
     }
 
+    static func takeRelocatedUpdateRecovery(defaults: UserDefaults = .standard) -> URL? {
+        guard defaults.string(forKey: justUpdatedKey) == Constants.version,
+              let marker = defaults.string(forKey: updateHealthMarkerKey), !marker.isEmpty else { return nil }
+        let files = FileManager.default
+        let backup = URL(fileURLWithPath: marker).deletingLastPathComponent().appendingPathComponent("previous.app")
+        guard files.fileExists(atPath: marker + ".relocated"), files.fileExists(atPath: backup.path) else { return nil }
+        defaults.removeObject(forKey: justUpdatedKey)
+        defaults.removeObject(forKey: updateHealthMarkerKey)
+        defaults.removeObject(forKey: updateDestinationKey)
+        return backup
+    }
+
+    func announceRelocatedUpdate(recovery: URL) {
+        phase = .failed("Arras moved during the update. The previous copy is saved at \(recovery.path).")
+    }
+
     /// Acknowledge after local startup has installed its windows and event handlers
     /// and yielded to the main queue. The helper can then release the previous bundle.
     @discardableResult
@@ -717,9 +733,19 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         BACKUP="$4"
         WORK="$5"
         HEALTH="$6"
+        REPLACEMENT_ID=
 
         cleanup() {
             rm -rf "$WORK"
+        }
+
+        replacement_still_at_destination() {
+            [ -z "$REPLACEMENT_ID" ] && return 0
+            if [ ! -L "$DEST" ] && [ "$(/usr/bin/stat -f '%d:%i' "$DEST" 2>/dev/null)" = "$REPLACEMENT_ID" ]; then
+                return 0
+            fi
+            : > "$HEALTH.relocated"
+            return 1
         }
 
         stop_replacement() {
@@ -749,9 +775,13 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
         }
 
         restore_previous() {
+            # If Finder moved the replacement, it may still be running. Leave it and
+            # any new occupant of the destination alone; keep the previous copy.
+            replacement_still_at_destination || return 1
             # A hung replacement must not keep running against the restored resources.
             # If it cannot be stopped, retain the backup for recovery.
             stop_replacement || return 1
+            replacement_still_at_destination || return 1
             # On failure the work directory is the user's only recovery copy.
             # Never delete it or move into a partially removed destination.
             if ! rm -rf "$DEST" || [ -e "$DEST" ] || [ -L "$DEST" ]; then
@@ -790,6 +820,10 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             restore_previous
             exit 1
         fi
+        # The directory's device and inode distinguish this copy from a different
+        # bundle placed at the same path while we wait for startup.
+        REPLACEMENT_ID=$(/usr/bin/stat -f '%d:%i' "$DEST") || exit 1
+        replacement_still_at_destination || exit 1
 
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
 
@@ -924,7 +958,7 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             identifier: identifier,
             title: announcement.title,
             body: announcement.body,
-            url: announcement.url.flatMap(URL.init(string:))
+            url: Self.announcementURL(announcement.url)
         ) { userInitiated || self.activeCheckFrequency != .never }
         finishNotification(identifier: identifier, key: notifiedAnnouncementKey, value: announcement.id, accepted: accepted)
     }
@@ -999,7 +1033,14 @@ final class Updater: NSObject, ObservableObject, UNUserNotificationCenterDelegat
             AppDelegate.current?.showUpdateSettings()
             return
         }
-        if let url, let value = URL(string: url) { NSWorkspace.shared.open(value) }
+        if let value = Self.announcementURL(url) { NSWorkspace.shared.open(value) }
+    }
+
+    static func announcementURL(_ raw: String?) -> URL? {
+        guard let raw, let url = URL(string: raw),
+              url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil else { return nil }
+        return url
     }
 
     // MARK: - Version comparison

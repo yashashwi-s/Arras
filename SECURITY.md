@@ -148,7 +148,10 @@ The updater validates HTTPS, a SemVer version, minimum macOS version, SHA-256,
 the extracted app's Developer ID signature and bundle identifier, its embedded
 version, and forward-only version precedence before swap. A helper retains the
 previous bundle until the expected version at the installation path acknowledges
-local startup. A failed launch or health timeout triggers rollback. The installer
+local startup. A failed launch or health timeout triggers rollback if the same
+replacement still occupies the installation path. If it moved, the helper
+preserves the previous copy without reopening it. Announcement links open only
+HTTPS URLs with a host and no embedded credentials. The installer
 stages and validates the downloaded bundle before replacing the running app; it
 also removes the staged bundle's quarantine attribute as part of that verified
 update flow.

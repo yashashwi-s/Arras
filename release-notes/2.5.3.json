@@ -1,0 +1,10 @@
+{
+  "version": "2.5.3",
+  "title": "Safer updates and quick support links",
+  "summary": "Update announcements require HTTPS links, rollback keeps backups safe if Arras moves during an update, and the status menu adds quick Support and Rate links.",
+  "details": [
+    "Open update announcement links only when they point to an HTTPS website without embedded credentials.",
+    "Preserve the previous app backup if Arras is moved during an update, leaving both the moved copy and any replacement untouched.",
+    "Add Support Arras in the direct-download menu bar and Rate Arras in the Mac App Store menu bar, plus an optional native App Store rating prompt after three active days."
+  ]
+}
