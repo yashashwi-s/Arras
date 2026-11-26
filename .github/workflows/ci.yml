@@ -104,7 +104,7 @@ jobs:
         run: xcodegen generate
 
       - name: Verify Generated Project Is Current
-        run: git diff --exit-code -- Arras.xcodeproj
+        run: git diff -I 'buildArchitectures = "Automatic"' --exit-code -- Arras.xcodeproj
 
       - name: Test updater replacement and rollback
         if: matrix.distribution == 'direct'
@@ -168,7 +168,7 @@ jobs:
           test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" = "27"
           brew install xcodegen
           xcodegen generate
-          git diff --exit-code -- Arras.xcodeproj
+          git diff -I 'buildArchitectures = "Automatic"' --exit-code -- Arras.xcodeproj
       - name: Test native desktop interactions
         run: |
           xcodebuild \

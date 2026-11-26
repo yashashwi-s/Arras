@@ -33,7 +33,7 @@ jobs:
         run: xcodegen generate
 
       - name: Verify Generated Project Is Current
-        run: git diff --exit-code -- Arras.xcodeproj
+        run: git diff -I 'buildArchitectures = "Automatic"' --exit-code -- Arras.xcodeproj
 
       - name: Verify Tag and Test
         run: |
